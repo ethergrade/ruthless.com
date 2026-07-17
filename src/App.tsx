@@ -4,7 +4,7 @@ import { Header } from './app/components/layout/Header';
 import { Sidebar } from './app/components/layout/Sidebar';
 import { BottomPanel } from './app/components/layout/BottomPanel';
 import { MarketMap } from './app/components/map/MarketMap';
-import { MainMenu } from './app/components/layout/MainMenu';
+import { MainMenu, SaveGameModal } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { ActionComposer } from './app/components/actions/ActionComposer';
@@ -37,6 +37,7 @@ function App() {
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   const playerCompany = state?.companies.get(state.playerCompanyId);
 
@@ -50,7 +51,7 @@ function App() {
     }
   };
 
-  const handleSave = () => saveGame();
+  const handleSave = () => setShowSaveModal(true);
   const handleLoad = () => {
     if (loadGame()) setActivePanel(null);
   };
@@ -58,6 +59,18 @@ function App() {
     // persist progress, then return to the main menu without losing the game
     if (state) saveGame();
     setShowMainMenu(true);
+  };
+
+  const handleRebid = (action: import('./types').TurnAction) => {
+    if (!state || !playerCompany) return;
+    // re-plan a failed order with a 25% higher budget to improve the odds
+    const maxBudget = Math.floor(playerCompany.cash * 0.5);
+    const bumped = Math.min(Math.floor(action.budget * 1.25), maxBudget);
+    addAction({
+      ...action,
+      budget: Math.max(action.budget + 1, bumped),
+      outcome: undefined,
+    });
   };
 
   const handleBid = (listingId: string, amount: number) => {
@@ -157,10 +170,13 @@ function App() {
       </div>
 
       <BottomPanel
+        key={state?.turn ?? 0}
+        defaultTab="orders"
         state={state}
         playerCompany={playerCompany}
         newsFeed={state?.newsFeed || []}
         notifications={ui.notifications}
+        onRebid={handleRebid}
         onDismissNotification={dismissNotification}
       />
 
@@ -196,6 +212,14 @@ function App() {
         notifications={ui.notifications}
         onDismiss={dismissNotification}
       />
+
+      {showSaveModal && (
+        <SaveGameModal
+          defaultName={playerCompany?.name ? `Save ${playerCompany.name}` : 'My Save'}
+          onSave={(name) => { saveGame(name); setShowSaveModal(false); }}
+          onCancel={() => setShowSaveModal(false)}
+        />
+      )}
     </div>
   );
 }

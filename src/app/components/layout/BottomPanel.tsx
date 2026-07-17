@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState } from '../../../types';
+import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
   state: GameState | null;
   playerCompany: Company | undefined;
   newsFeed: NewsItem[];
   notifications: string[];
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders';
+  onRebid: (action: TurnAction) => void;
   onDismissNotification: (index: number) => void;
 }
-
-import type { GameState } from '../../../types';
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
   state,
   playerCompany,
   newsFeed,
   notifications,
+  defaultTab = 'kpi',
+  onRebid,
   onDismissNotification,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news'>('kpi');
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders'>(defaultTab);
 
   if (!state || !playerCompany) return null;
+
 
   return (
     <div className="bottom-panel">
@@ -37,16 +41,20 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <button className={`tab ${activeTab === 'capabilities' ? 'active' : ''}`} onClick={() => setActiveTab('capabilities')}>
           Capabilities
         </button>
+        <button className={`tab ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
+          Orders
+        </button>
         <button className={`tab ${activeTab === 'news' ? 'active' : ''}`} onClick={() => setActiveTab('news')}>
           News
         </button>
       </div>
 
       <div className="bottom-content">
-        {activeTab === 'kpi' && <KPIPanel company={playerCompany} />}
+        {activeTab === 'kpi' && <KPIPanel company={playerCompany} history={state.kpiHistory} />}
         {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
+        {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} onRebid={onRebid} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
       </div>
 
@@ -64,26 +72,25 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   );
 };
 
-const KPIPanel: React.FC<{ company: Company }> = ({ company }) => {
+const KPIPanel: React.FC<{ company: Company; history: Record<string, number[]> }> = ({ company, history }) => {
   const kpis = [
-    { label: 'Cash', value: company.cash, format: 'currency', trend: company.cashFlow },
-    { label: 'Cash Flow', value: company.cashFlow, format: 'currency' },
-    { label: 'Valuation', value: company.valuation, format: 'currency' },
-    { label: 'Market Influence', value: company.marketInfluence, format: 'percent' },
-    { label: 'Brand Trust', value: company.brandTrust, format: 'percent' },
-    { label: 'Security Posture', value: company.securityPosture, format: 'percent' },
-    { label: 'Innovation', value: company.innovation, format: 'percent' },
-    { label: 'AI Capability', value: company.aiCapability, format: 'percent' },
-    { label: 'Consulting', value: company.consultingCapacity, format: 'percent' },
-    { label: 'Debt', value: company.debt, format: 'currency', trend: -company.debt },
-    { label: 'Op. Costs', value: company.operatingCosts, format: 'currency' },
-    { label: 'Revenue', value: company.revenue, format: 'currency' },
+    { key: 'cash', label: 'Cash', value: company.cash, format: 'currency', trend: company.cashFlow },
+    { key: 'cashFlow', label: 'Cash Flow', value: company.cashFlow, format: 'currency' },
+    { key: 'valuation', label: 'Valuation', value: company.valuation, format: 'currency' },
+    { key: 'marketInfluence', label: 'Market Influence', value: company.marketInfluence, format: 'percent' },
+    { key: 'brandTrust', label: 'Brand Trust', value: company.brandTrust, format: 'percent' },
+    { key: 'securityPosture', label: 'Security Posture', value: company.securityPosture, format: 'percent' },
+    { key: 'innovation', label: 'Innovation', value: company.innovation, format: 'percent' },
+    { key: 'aiCapability', label: 'AI Capability', value: company.aiCapability, format: 'percent' },
+    { key: 'revenue', label: 'Revenue', value: company.revenue, format: 'currency' },
+    { key: 'debt', label: 'Debt', value: company.debt, format: 'currency', trend: -company.debt },
+    { key: 'operatingCosts', label: 'Op. Costs', value: company.operatingCosts, format: 'currency' },
   ];
 
   return (
     <div className="kpi-grid">
-      {kpis.map((kpi, i) => (
-        <div key={i} className={`kpi-card ${kpi.value > 0 && kpi.format === 'currency' ? 'positive' : kpi.value < 0 && kpi.format === 'currency' ? 'negative' : ''}`}>
+      {kpis.map((kpi) => (
+        <div key={kpi.key} className={`kpi-card ${kpi.value > 0 && kpi.format === 'currency' ? 'positive' : kpi.value < 0 && kpi.format === 'currency' ? 'negative' : ''}`}>
           <div className="kpi-card-label">{kpi.label}</div>
           <div className="kpi-card-value">
             {kpi.format === 'currency'
@@ -95,9 +102,27 @@ const KPIPanel: React.FC<{ company: Company }> = ({ company }) => {
               {kpi.trend > 0 ? '▲' : kpi.trend < 0 ? '▼' : '●'} {kpi.trend > 0 ? '+' : ''}${(Math.abs(kpi.trend) / 1e3).toFixed(0)}K
             </div>
           )}
+          {history[kpi.key] && history[kpi.key].length > 1 && <Sparkline data={history[kpi.key]} />}
         </div>
       ))}
     </div>
+  );
+};
+
+const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
+  const w = 80, h = 22, pad = 2;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = pad + (1 - (v - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const up = data[data.length - 1] >= data[0];
+  return (
+    <svg className={`sparkline ${up ? 'up' : 'down'}`} width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+      <polyline points={pts} fill="none" stroke={up ? '#00d4aa' : '#ff6b6b'} strokeWidth="1.5" />
+    </svg>
   );
 };
 
@@ -115,7 +140,7 @@ const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments
           <StatBar label="Morale" value={Math.round(dept.morale * 100)} max={100} />
           <StatBar label="Risk" value={Math.round(dept.risk * 100)} max={100} inverted />
         </div>
-        <div className="dept-cost">$${dept.recurringCost.toLocaleString()}/turn</div>
+        <div className="dept-cost">${dept.recurringCost.toLocaleString()}/turn</div>
       </div>
     ))}
   </div>
@@ -149,16 +174,44 @@ const ProductsPanel: React.FC<{ products: Product[] }> = ({ products }) => (
   </div>
 );
 
-const CapabilitiesPanel: React.FC<{ company: Company }> = ({ company }) => (
-  <div className="capabilities-grid">
-    <CapabilityCard title="Security" value={company.securityPosture} icon="🔒" color="#ff4444" />
-    <CapabilityCard title="AI" value={company.aiCapability} icon="🤖" color="#00d4aa" />
-    <CapabilityCard title="Consulting" value={company.consultingCapacity} icon="👥" color="#ffc107" />
-    <CapabilityCard title="Innovation" value={company.innovation} icon="💡" color="#e83e8c" />
-    <CapabilityCard title="Trust" value={company.brandTrust} icon="🤝" color="#007bff" />
-    <CapabilityCard title="Exec Orders" value={company.executiveOrderLimit * 33} max={100} icon="📋" color="#6f42c1" />
-  </div>
-);
+const CapabilitiesPanel: React.FC<{ company: Company }> = ({ company }) => {
+  // Derive capabilities dynamically from the company's actual assets.
+  const deptByType = new Map<string, number>();
+  company.departments.forEach(d => {
+    deptByType.set(d.type, Math.max(deptByType.get(d.type) ?? 0, d.level));
+  });
+  const avgProductQuality = company.products.length
+    ? company.products.reduce((s, p) => s + p.quality, 0) / company.products.length
+    : 0;
+  const cards: { title: string; value: number; icon: string; color: string }[] = [
+    { title: 'Security', value: company.securityPosture, icon: 'shield', color: '#ff4444' },
+    { title: 'AI', value: company.aiCapability, icon: 'ai', color: '#00d4aa' },
+    { title: 'Consulting', value: company.consultingCapacity, icon: 'consult', color: '#ffc107' },
+    { title: 'Innovation', value: company.innovation, icon: 'bulb', color: '#e83e8c' },
+    { title: 'Trust', value: company.brandTrust, icon: 'heart', color: '#007bff' },
+    { title: 'Product Quality', value: avgProductQuality, icon: 'star', color: '#6f42c1' },
+  ];
+  return (
+    <div className="capabilities-grid">
+      {cards.map(c => (
+        <CapabilityCard key={c.title} title={c.title} value={c.value} icon={c.icon} color={c.color} />
+      ))}
+      {Array.from(deptByType.entries()).map(([type, level]) => (
+        <CapabilityCard
+          key={type}
+          title={type.replace('_', ' ')}
+          value={level * 33}
+          max={99}
+          icon="dept"
+          color="#20c997"
+        />
+      ))}
+      {company.products.length === 0 && deptByType.size === 0 && (
+        <div className="empty-state">No capabilities yet — build departments & launch products</div>
+      )}
+    </div>
+  );
+};
 
 const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
   <div className="news-feed">
@@ -176,6 +229,28 @@ const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
     )}
   </div>
 );
+
+const OrdersPanel: React.FC<{ actions: TurnAction[]; onRebid: (action: TurnAction) => void }> = ({ actions, onRebid }) => {
+  if (actions.length === 0) return <div className="empty-state">No orders planned</div>;
+  const label = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  return (
+    <div className="orders-list">
+      {actions.slice(-20).reverse().map((a) => (
+        <div key={a.id} className={`order-row ${a.status}`}>
+          <span className="order-type">{label(a.type)}</span>
+          <span className="order-budget">${a.budget.toLocaleString()}</span>
+          <span className={`order-status ${a.status}`}>
+            {a.status === 'planned' ? <><Icon name="clock" size={12} /> planned</> : a.status === 'resolved' ? <><Icon name="check" size={12} /> done</> : <><Icon name="cross" size={12} /> failed</>}
+          </span>
+          {a.outcome?.message && <span className="order-msg">{a.outcome.message}</span>}
+          {a.status === 'failed' && (
+            <button className="btn btn-ghost order-rebid" onClick={() => onRebid(a)}><Icon name="rerun" size={12} /> RE-BID</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const StatBar: React.FC<{ label: string; value: number; max: number; inverted?: boolean }> = ({
   label, value, max, inverted,
@@ -199,7 +274,7 @@ const CapabilityCard: React.FC<{ title: string; value: number; max?: number; ico
   const pct = Math.min(100, (value / max) * 100);
   return (
     <div className="capability-card">
-      <span className="capability-icon" style={{ color }}>{icon}</span>
+      <span className="capability-icon" style={{ color }}><Icon name={icon as IconName} size={18} /></span>
       <div className="capability-info">
         <span className="capability-title">{title}</span>
         <div className="capability-bar">

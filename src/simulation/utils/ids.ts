@@ -8,6 +8,7 @@ let counters = {
   executive: 0,
   action: 0,
   building: 0,
+  event: 0,
 };
 
 export const generateId = {
@@ -18,8 +19,9 @@ export const generateId = {
   executive: (): ExecutiveId => `exec_${++counters.executive}` as ExecutiveId,
   action: (): ActionId => `action_${++counters.action}` as ActionId,
   building: (): string => `bld_${++counters.building}`,
+  event: (): string => `evt_${++counters.event}`,
 };
 
 export const resetIdCounters = (): void => {
-  counters = { company: 0, tile: 0, product: 0, department: 0, executive: 0, action: 0, building: 0 };
+  counters = { company: 0, tile: 0, product: 0, department: 0, executive: 0, action: 0, building: 0, event: 0 };
 };

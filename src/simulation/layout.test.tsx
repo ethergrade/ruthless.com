@@ -72,10 +72,11 @@ describe('Fase 2 — layout components render without crashing', () => {
         playerCompany: player,
         newsFeed: [],
         notifications: [],
+        onRebid: () => {},
         onDismissNotification: () => {},
       })
     );
-    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'News']) {
+    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'News']) {
       expect(html).toContain(tab);
     }
     expect(html).toContain('class="bottom-panel"');

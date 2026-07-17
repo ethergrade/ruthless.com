@@ -3,6 +3,7 @@ import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
+import { Icon } from '../../components/ui/Icon';
 import type { CompanyArchetype } from '../../../types';
 
 interface MainMenuProps {
@@ -24,9 +25,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [showNewGame, setShowNewGame] = useState(false);
   const [showLoadGame, setShowLoadGame] = useState(false);
   const [seed, setSeed] = useState('');
+  const [selectedColor, setSelectedColor] = useState('#00d4aa');
+  const [disasters, setDisasters] = useState(true);
 
   const handleStart = () => {
-    initializeGame(seed ? parseInt(seed) : undefined);
+    initializeGame(
+      seed ? parseInt(seed) : undefined,
+      companyName.trim() || undefined,
+      selectedArchetype,
+      selectedColor,
+      disasters,
+    );
     onStartGame();
   };
 
@@ -51,23 +60,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 
         <div className="menu-buttons">
           <button className="menu-btn primary" onClick={() => setShowNewGame(true)}>
-            <span className="btn-icon">▶</span>
+            <span className="btn-icon"><Icon name="play" /></span>
             <span>NEW GAME</span>
           </button>
           <button className="menu-btn secondary" onClick={handleLoad}>
-            <span className="btn-icon">📂</span>
+            <span className="btn-icon"><Icon name="folder" /></span>
             <span>LOAD GAME</span>
           </button>
           <button className="menu-btn secondary" onClick={() => setShowNewGame(true)}>
-            <span className="btn-icon">🎮</span>
+            <span className="btn-icon"><Icon name="gamepad" /></span>
             <span>SCENARIO EDITOR</span>
           </button>
           <button className="menu-btn secondary" onClick={() => setShowNewGame(true)}>
-            <span className="btn-icon">📚</span>
+            <span className="btn-icon"><Icon name="book" /></span>
             <span>CAMPAIGN EDITOR</span>
           </button>
           <button className="menu-btn ghost" onClick={() => window.open('https://github.com', '_blank')}>
-            <span className="btn-icon">📖</span>
+            <span className="btn-icon"><Icon name="doc" /></span>
             <span>DOCUMENTATION</span>
           </button>
         </div>
@@ -83,6 +92,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
           setCompanyName={setCompanyName}
           selectedArchetype={selectedArchetype}
           setSelectedArchetype={setSelectedArchetype}
+          selectedColor={selectedColor}
+          setSelectedColor={setSelectedColor}
+          disasters={disasters}
+          setDisasters={setDisasters}
           seed={seed}
           setSeed={setSeed}
           onStart={handleStart}
@@ -105,12 +118,17 @@ const NewGameModal: React.FC<{
   setCompanyName: (name: string) => void;
   selectedArchetype: CompanyArchetype;
   setSelectedArchetype: (a: CompanyArchetype) => void;
+  selectedColor: string;
+  setSelectedColor: (c: string) => void;
+  disasters: boolean;
+  setDisasters: (d: boolean) => void;
   seed: string;
   setSeed: (s: string) => void;
   onStart: () => void;
   onCancel: () => void;
-}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, seed, setSeed, onStart, onCancel }) => {
+}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, disasters, setDisasters, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
+  const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
 
   return (
     <Modal title="NEW GAME SETUP" onClose={onCancel} size="lg">
@@ -162,6 +180,30 @@ const NewGameModal: React.FC<{
                 maxLength={10}
               />
             </div>
+
+            <div className="form-group">
+              <label>Company Color</label>
+              <div className="color-picker">
+                {COLORS.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`color-swatch ${selectedColor === c ? 'selected' : ''}`}
+                    style={{ background: c }}
+                    onClick={() => setSelectedColor(c)}
+                    aria-label={c}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Cataclismi (SimCity-like)</label>
+              <label className="toggle-row">
+                <input type="checkbox" checked={disasters} onChange={e => setDisasters(e.target.checked)} />
+                <span>Abilita borse, nuove tecnologie e cataclismi di mercato</span>
+              </label>
+            </div>
           </div>
 
           <div className="setup-right">
@@ -191,6 +233,33 @@ const NewGameModal: React.FC<{
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
           <button className="btn btn-primary" onClick={onStart} disabled={!companyName.trim()}>
             START GAME
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+export const SaveGameModal: React.FC<{ defaultName: string; onSave: (name: string) => void; onCancel: () => void }> = ({ defaultName, onSave, onCancel }) => {
+  const [name, setName] = useState(defaultName || 'My Save');
+  return (
+    <Modal title="SAVE GAME" onClose={onCancel} size="md">
+      <div className="save-game-modal">
+        <div className="form-group">
+          <label>Save Name</label>
+          <input
+            type="text"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Enter save name"
+            maxLength={32}
+            autoFocus
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(name.trim() || 'My Save')} disabled={!name.trim()}>
+            SAVE
           </button>
         </div>
       </div>

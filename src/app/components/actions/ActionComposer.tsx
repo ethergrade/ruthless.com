@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type {
   ActionType, Company, CompanyId, MarketTile, ProductCategory,
-  VoiceTone, CampaignAuthenticity, RuthlessDept, TileId,
+  VoiceTone, CampaignAuthenticity, RuthlessDept, TileId, ProductId,
 } from '../../../types';
 import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
@@ -25,7 +25,7 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct')[];
 }
 
 const ACTION_DEFS: ActionDef[] = [
@@ -35,10 +35,10 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0 },
   { type: 'reduce_costs', label: 'Reduce Costs', group: 'Corporate', baseCost: 0 },
   { type: 'launch_product', label: 'Launch Product', group: 'Product & R&D', baseCost: 300000, needs: ['productEditor'] },
-  { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000 },
+  { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000, needs: ['targetProduct'] },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000 },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000 },
-  { type: 'marketing_campaign', label: 'Marketing Campaign', group: 'Market & Sales', baseCost: 150000, needs: ['tone', 'auth'] },
+  { type: 'marketing_campaign', label: 'Marketing Campaign', group: 'Market & Sales', baseCost: 150000, needs: ['targetProduct', 'tone', 'auth'] },
   { type: 'launch_consulting_practice', label: 'Consulting Practice', group: 'Market & Sales', baseCost: 150000 },
   { type: 'ceo_social', label: 'CEO Social Post', group: 'Market & Sales', baseCost: 100000, needs: ['tone', 'auth'] },
   { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000 },
@@ -79,6 +79,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [tone, setTone] = useState<VoiceTone>(playerCompany.voiceTone ?? 'aggressive');
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
   const [auctionAssetId, setAuctionAssetId] = useState<string>('');
+  const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
 
   // product editor state
   const [productName, setProductName] = useState<string>('');
@@ -109,6 +110,7 @@ export const ActionComposer: React.FC<Props> = ({
     targetTileId: targetTileId || undefined,
     tone: needs.includes('tone') ? tone : undefined,
     authenticity: needs.includes('auth') ? auth : undefined,
+    targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
     productName: type === 'launch_product' ? productName : undefined,
     productCategory: type === 'launch_product' ? productCategory : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
@@ -127,6 +129,7 @@ export const ActionComposer: React.FC<Props> = ({
       targetTileId: targetTileId || undefined,
       tone: needs.includes('tone') ? tone : undefined,
       authenticity: needs.includes('auth') ? auth : undefined,
+      targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
       productName: type === 'launch_product' ? productName : undefined,
       productCategory: type === 'launch_product' ? productCategory : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
@@ -252,6 +255,19 @@ export const ActionComposer: React.FC<Props> = ({
             <label>Sector / Category</label>
             <select value={productCategory} onChange={e => setProductCategory(e.target.value as ProductCategory)}>
               {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* target product for improve / marketing */}
+        {needs.includes('targetProduct') && (
+          <div className="ac-field">
+            <label>Target Product</label>
+            <select value={targetProductId} onChange={e => setTargetProductId(e.target.value as ProductId)}>
+              <option value="">— select product —</option>
+              {playerCompany.products.map(p => (
+                <option key={p.id} value={p.id}>{p.name} · {p.category.toUpperCase()}</option>
+              ))}
             </select>
           </div>
         )}

@@ -321,6 +321,8 @@ export interface TurnAction {
   authenticity?: CampaignAuthenticity;
   /** Tile id to build a building on. */
   targetTileId?: TileId;
+  /** Product id to improve / market (improve_product, marketing_campaign). */
+  targetProductId?: ProductId;
   /** Generated/editable product name + category (product creation). */
   productName?: string;
   productCategory?: ProductCategory;
@@ -341,9 +343,21 @@ export interface GameEvent {
   id: string;
   turn: number;
   category: EventCategory;
+  /** Discriminates world events so the engine can apply real effects (point 5/8). */
+  kind?: 'stock_surge' | 'stock_crash' | 'tech_breakthrough' | 'cataclysm' | 'regulatory' | 'talent' | 'product' | 'ma' | 'reputation' | 'market' | 'cyber' | 'financial';
   title: string;
   description: string;
   impact: Record<string, number>;
+  /** Real effects applied to the game state when this event fires (world events). */
+  effects?: {
+    marketInfluenceDelta?: number;
+    cashDelta?: number;
+    aiCapabilityDelta?: number;
+    innovationDelta?: number;
+    securityDelta?: number;
+    tileDamage?: number; // 0..1 control loss on a random owned tile
+    scope: 'all' | 'player' | 'rivals' | 'random_tile';
+  };
   affectedCompanies: CompanyId[];
   duration: number;
   options?: EventOption[];
@@ -381,6 +395,8 @@ export interface GameState {
   newsFeed: NewsItem[];
   marketBriefing: MarketBriefing;
   auctionHouse: AuctionListing[];   // req 2: assets up for auction
+  kpiHistory: Record<string, number[]>; // keyed by KPI key, last N turns, for sparklines
+  disastersEnabled: boolean;
   isGameOver: boolean;
   victoryType?: VictoryType;
   seed: number;

@@ -98,6 +98,8 @@ export class TurnEngine {
         cyberAlerts: [], maOpportunities: [], clientRequests: [],
       },
       auctionHouse: [],
+      kpiHistory: {},
+      disastersEnabled: false,
       isGameOver: false,
       seed: this.rng.getSeed(),
     };
@@ -179,8 +181,27 @@ export class TurnEngine {
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
     this.resolveAuctions(newsItems);
+    this.applyGlobalEvents(newsItems);
     Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
     this.state.marketBriefing = this.generateMarketBriefing();
+
+    // Record KPI snapshot for the player (drives sparklines in the UI).
+    const player = this.state.companies.get(this.state.playerCompanyId);
+    if (player) {
+      const snap: Record<string, number> = {
+        cash: player.cash, cashFlow: player.cashFlow, valuation: player.valuation,
+        marketInfluence: player.marketInfluence, brandTrust: player.brandTrust,
+        securityPosture: player.securityPosture, innovation: player.innovation,
+        aiCapability: player.aiCapability, revenue: player.revenue,
+      };
+      const hist = this.state.kpiHistory;
+      for (const [k, v] of Object.entries(snap)) {
+        const arr = hist[k] ?? [];
+        arr.push(Math.round(v));
+        if (arr.length > 20) arr.shift();
+        hist[k] = arr;
+      }
+    }
 
     this.state.turn++;
     this.checkVictoryConditions();
@@ -483,16 +504,16 @@ export class TurnEngine {
         this.buildDepartment(company, action.budget);
         break;
       case 'launch_product':
-        this.launchProduct(company, action.budget);
+        this.launchProduct(company, action);
         break;
       case 'improve_product':
-        this.improveProduct(company, action.budget);
+        this.improveProduct(company, action.budget, action.targetProductId);
         break;
       case 'expand_market':
         this.expandMarket(company, action.budget);
         break;
       case 'marketing_campaign':
-        this.runMarketingCampaign(company, action.budget);
+        this.runMarketingCampaign(company, action.budget, action.targetProductId);
         break;
       case 'hire_executive':
         this.hireExecutive(company, action.budget);
@@ -576,10 +597,12 @@ export class TurnEngine {
     });
   }
 
-  private launchProduct(company: Company, _budget: number): void {
+  private launchProduct(company: Company, action: TurnAction): void {
     const categories = ['saas', 'ai', 'cybersecurity', 'consulting', 'managed_service'];
-    const category = this.rng.shuffle(categories).pop()!;
-    const name = `Product_${company.products.length + 1}`;
+    const category = (action.productCategory && categories.includes(action.productCategory))
+      ? action.productCategory as ProductCategory
+      : this.rng.shuffle(categories).pop()!;
+    const name = action.productName?.trim() || `Product_${company.products.length + 1}`;
 
     company.products.push({
       id: generateId.product(),
@@ -600,9 +623,10 @@ export class TurnEngine {
     });
   }
 
-  private improveProduct(company: Company, _budget: number): void {
+  private improveProduct(company: Company, _budget: number, targetProductId?: string): void {
     if (company.products.length === 0) return;
-    const product = this.rng.shuffle([...company.products]).pop()!;
+    const product = (targetProductId && company.products.find(p => p.id === targetProductId))
+      || this.rng.shuffle([...company.products]).pop()!;
     const improvement = _budget / 100000;
     product.quality = Math.min(100, product.quality + improvement * 5);
     product.marketFit = Math.min(100, product.marketFit + improvement * 3);
@@ -627,9 +651,13 @@ export class TurnEngine {
     }
   }
 
-  private runMarketingCampaign(company: Company, _budget: number): void {
+  private runMarketingCampaign(company: Company, _budget: number, targetProductId?: string): void {
     company.brandTrust = Math.min(100, company.brandTrust + _budget / 50000);
     company.marketInfluence = Math.min(100, company.marketInfluence + _budget / 100000);
+    if (targetProductId) {
+      const p = company.products.find(pr => pr.id === targetProductId);
+      if (p) p.marketFit = Math.min(100, p.marketFit + _budget / 200000);
+    }
   }
 
   private hireExecutive(company: Company, _budget: number): void {
@@ -1035,25 +1063,33 @@ export class TurnEngine {
   }
 
   private recalculateCompanyMetrics(company: Company): void {
-    // Revenue from products scaled by how much market the company actually controls.
-    // quality/marketFit drive a per-product multiplier; controlled tiles add share.
+    // Market influence first (controlled territory + brand trust), used by product revenue.
+    const influence = Math.min(100, company.controlledTiles.length * 2.5 + company.brandTrust * 0.5);
+    company.marketInfluence = Math.max(0, influence);
+
+    // Revenue from products: units sold scale with the company's market reach
+    // (influence) and the product's market fit, priced at the product price.
     const productRevenue = company.products.reduce((sum, p) => {
       const qualityMul = 0.4 + (p.quality / 100) * 0.6;
       const fitMul = 0.3 + (p.marketFit / 100) * 0.7;
-      return sum + p.price * 4 * qualityMul * fitMul;
+      const units = Math.max(0, (company.marketInfluence + p.marketFit) * 0.5);
+      return sum + units * p.price * qualityMul * fitMul;
+    }, 0);
+
+    // Revenue from controlled market territory (resolved each turn in resolveMarket,
+    // but reflected here so cashFlow tells the real story).
+    const tileRevenue = company.controlledTiles.reduce((sum, tileId) => {
+      const tile = this.state.marketTiles.get(tileId);
+      return tile ? sum + tile.value * tile.controlStrength * 0.01 : sum;
     }, 0);
 
     const deptCost = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
+    const productCost = company.products.reduce((sum, p) => sum + p.operatingCost, 0);
 
-    company.revenue = productRevenue;
-    company.operatingCosts = deptCost;
+    company.revenue = Math.round(productRevenue + tileRevenue);
+    company.operatingCosts = Math.round(deptCost + productCost);
     company.cashFlow = company.revenue - company.operatingCosts;
     company.valuation = Math.max(1, company.revenue * 4 + company.cash - company.debt);
-
-    // Market influence = controlled territory + brand trust, capped at 100.
-    // Expressed as a 0..100 score (controlledTiles * 2.5 + brandTrust * 0.5).
-    const influence = Math.min(100, company.controlledTiles.length * 2.5 + company.brandTrust * 0.5);
-    company.marketInfluence = Math.max(0, influence);
   }
 
   private resolveMarket(): void {
@@ -1199,7 +1235,109 @@ export class TurnEngine {
       });
     }
 
-    return { demandShifts, globalEvents: [], competitorMoves, cyberAlerts, maOpportunities: [], clientRequests: [] };
+    const globalEvents: GameEvent[] = [];
+
+    // World events that condition player & AI choices (point 5 + SimCity-like cataclysms, point 8).
+    if (this.state.disastersEnabled) {
+      // Stock market swing — affects everyone's valuation/influence.
+      if (this.rng.nextBoolean(0.35)) {
+        const up = this.rng.nextBoolean(0.5);
+        globalEvents.push({
+          id: generateId.event(),
+          turn: this.state.turn,
+          category: 'financial',
+          kind: up ? 'stock_surge' : 'stock_crash',
+          title: up ? 'Bull Market Rally' : 'Market Correction',
+          description: up
+            ? 'Investor confidence surges — valuations and market reach climb across the board.'
+            : 'A sharp sell-off hits the sector — influence and cash reserves contract.',
+          impact: { marketInfluence: up ? 8 : -10, cash: up ? 200000 : -150000 },
+          effects: {
+            marketInfluenceDelta: up ? 8 : -10,
+            cashDelta: up ? 200000 : -150000,
+            scope: 'all',
+          },
+          affectedCompanies: [],
+          duration: 1,
+          severity: up ? 'high' : 'critical',
+        });
+      }
+
+      // Technology breakthrough — boosts AI/innovation for all (race to adopt).
+      if (this.rng.nextBoolean(0.25)) {
+        globalEvents.push({
+          id: generateId.event(),
+          turn: this.state.turn,
+          category: 'product',
+          kind: 'tech_breakthrough',
+          title: 'Breakthrough Technology Emerges',
+          description: 'A new platform shifts the competitive landscape. Early adopters leap ahead in AI and innovation.',
+          impact: { aiCapability: 6, innovation: 5 },
+          effects: { aiCapabilityDelta: 6, innovationDelta: 5, scope: 'all' },
+          affectedCompanies: [],
+          duration: 1,
+          severity: 'high',
+        });
+      }
+
+      // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + cash hit).
+      if (this.rng.nextBoolean(0.18)) {
+        const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
+        const name = this.rng.shuffle(kinds).pop()!;
+        globalEvents.push({
+          id: generateId.event(),
+          turn: this.state.turn,
+          category: 'cyber',
+          kind: 'cataclysm',
+          title: `Cataclysm: ${name}`,
+          description: `${name} strikes the market — a random territory loses control and owners take a cash hit.`,
+          impact: { control: -25, cash: -300000 },
+          effects: { tileDamage: 0.25, cashDelta: -300000, scope: 'random_tile' },
+          affectedCompanies: [],
+          duration: 1,
+          severity: 'critical',
+        });
+      }
+    }
+
+    return { demandShifts, globalEvents, competitorMoves, cyberAlerts, maOpportunities: [], clientRequests: [] };
+  }
+
+  /** Applies real effects of world events (stock swings, tech leaps, cataclysms) to the state. */
+  private applyGlobalEvents(newsItems: NewsItem[]): void {
+    const events = this.state.marketBriefing.globalEvents;
+    for (const ev of events) {
+      const fx = ev.effects;
+      if (!fx) continue;
+      const applyTo = (c: Company) => {
+        if (fx.marketInfluenceDelta) c.marketInfluence = Math.max(0, Math.min(100, c.marketInfluence + fx.marketInfluenceDelta));
+        if (fx.cashDelta) c.cash += fx.cashDelta;
+        if (fx.aiCapabilityDelta) c.aiCapability = Math.max(0, Math.min(100, c.aiCapability + fx.aiCapabilityDelta));
+        if (fx.innovationDelta) c.innovation = Math.max(0, Math.min(100, c.innovation + fx.innovationDelta));
+        if (fx.securityDelta) c.securityPosture = Math.max(0, Math.min(100, c.securityPosture + fx.securityDelta));
+        if (fx.tileDamage) {
+          const owned = c.controlledTiles.filter(t => this.state.marketTiles.has(t));
+          if (owned.length) {
+            const tile = this.state.marketTiles.get(this.rng.shuffle(owned).pop()!)!;
+            tile.controlStrength = Math.max(0, tile.controlStrength - fx.tileDamage);
+            if (tile.controlStrength <= 0.05) { tile.controllerId = undefined; tile.controlStrength = 0; c.controlledTiles = c.controlledTiles.filter(t => t !== tile.id); }
+          }
+        }
+      };
+      if (fx.scope === 'all') {
+        this.state.companies.forEach(applyTo);
+      } else if (fx.scope === 'player') {
+        const p = this.state.companies.get(this.state.playerCompanyId); if (p) applyTo(p);
+      } else if (fx.scope === 'rivals') {
+        this.state.companies.forEach(c => { if (!c.isPlayer) applyTo(c); });
+      } else if (fx.scope === 'random_tile') {
+        // damage a random tile's owner (could be player or rival)
+        const owners = Array.from(this.state.companies.values()).filter(c => c.controlledTiles.length > 0);
+        if (owners.length) applyTo(this.rng.shuffle(owners).pop()!);
+      }
+      const imp: 'minor' | 'major' | 'critical' = ev.severity === 'critical' ? 'critical' : ev.severity === 'low' || ev.severity === 'medium' ? 'minor' : 'major';
+      newsItems.push(this.createNewsItem(this.state.turn, ev.category, ev.title, ev.description, undefined, imp));
+    }
   }
 
   private createNewsItem(
