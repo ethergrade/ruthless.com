@@ -179,6 +179,7 @@ export class TurnEngine {
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
     this.resolveAuctions(newsItems);
+    Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
     this.state.marketBriefing = this.generateMarketBriefing();
 
     this.state.turn++;
@@ -206,7 +207,7 @@ export class TurnEngine {
         newsItems.push(this.createNewsItem(
           this.state.turn,
           'product',
-          `Action Executed: ${action.type}`,
+          `Azione Eseguita: ${action.type}`,
           outcome.message,
           this.state.playerCompanyId,
           'minor'
@@ -215,7 +216,7 @@ export class TurnEngine {
         newsItems.push(this.createNewsItem(
           this.state.turn,
           'financial',
-          `Action Failed: ${action.type}`,
+          `Azione Fallita: ${action.type}`,
           outcome.message,
           this.state.playerCompanyId,
           'major'
@@ -550,13 +551,18 @@ export class TurnEngine {
         break;
     }
 
-    this.recalculateCompanyMetrics(company);
+    // metrics are recomputed once per turn in endTurn() (see recalcAllCompanies)
   }
 
   private buildDepartment(company: Company, _budget: number): void {
-    const deptTypes = ['product_rd', 'ai_data', 'cybersecurity', 'consulting_services', 'sales_marketing', 'acquisitions'];
-    const type = this.rng.shuffle(deptTypes).pop()!;
     const level = Math.max(1, Math.floor(_budget / 200000));
+    // Pick a department type that the company currently lacks or has weakest,
+    // so growth stays balanced instead of random spam.
+    const owned = new Set(company.departments.map(d => d.type));
+    const preferred: DepartmentType[] = ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions'];
+    const missing = preferred.filter(t => !owned.has(t));
+    const pool = missing.length > 0 ? missing : preferred;
+    const type = this.rng.shuffle(pool).pop()!;
 
     company.departments.push({
       id: generateId.department(),
@@ -659,8 +665,30 @@ export class TurnEngine {
     company.consultingCapacity = Math.min(100, company.consultingCapacity + _budget / 10000);
   }
 
-  private scoutAcquisition(_company: Company): void {
-    // Add M&A opportunity to market briefing
+  private scoutAcquisition(company: Company): void {
+    // Surface 1-2 M&A opportunities from rival corps into the market briefing.
+    const candidates = Array.from(this.state.companies.values())
+      .filter(c => c.id !== company.id && c.isStartup !== true);
+    this.rng.shuffle(candidates);
+    const count = this.rng.nextInt(1, Math.min(2, candidates.length || 1));
+    for (let i = 0; i < count; i++) {
+      const target = candidates[i];
+      if (!target) break;
+      this.state.marketBriefing.maOpportunities.push({
+        targetId: target.id,
+        targetName: target.name,
+        price: Math.max(1, Math.round(target.valuation * this.rng.nextFloat(0.8, 1.4))),
+        revenue: Math.round(target.revenue),
+        talent: target.executives.length,
+        technology: Math.round(target.innovation),
+        clients: target.controlledTiles.length,
+        reputation: Math.round(target.brandTrust),
+        cyberRisk: 100 - Math.round(target.securityPosture),
+        techDebt: Math.round(target.products.reduce((s, p) => s + p.technicalDebt, 0) / (target.products.length || 1)),
+        cultureFit: this.rng.nextInt(30, 90),
+        integrationDifficulty: this.rng.nextInt(20, 80),
+      });
+    }
   }
 
   private acquireCompany(company: Company, _budget: number): void {
@@ -932,7 +960,18 @@ export class TurnEngine {
       }
     } else if (listing.kind === 'department') {
       const idx = seller.departments.findIndex(d => d.id === listing.assetId);
-      if (idx >= 0) { const [d] = seller.departments.splice(idx, 1); if (d) { d.buildingId = undefined; winner.departments.push(d); } }
+      if (idx >= 0) {
+        const [d] = seller.departments.splice(idx, 1);
+        if (d) {
+          d.buildingId = undefined;
+          winner.departments.push(d);
+          // drop reference from the seller's building that hosted it
+          seller.buildings.forEach(b => {
+            const di = b.departmentIds.indexOf(d.id);
+            if (di >= 0) b.departmentIds.splice(di, 1);
+          });
+        }
+      }
     } else {
       // technology / patent: give a one-off innovation + cash already transferred
       winner.innovation = Math.min(100, winner.innovation + 5);

@@ -13,6 +13,16 @@ export default defineConfig({
     target: 'es2022',
     minify: 'esbuild',
     base: './',
+    chunkSizeWarningLimit: 1600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          phaser: ['phaser'],
+          react: ['react', 'react-dom'],
+          zustand: ['zustand'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

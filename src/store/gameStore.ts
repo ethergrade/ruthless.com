@@ -6,6 +6,7 @@ import type {
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
+import { generateId } from '../simulation/utils/ids';
 
 interface GameStore {
   state: GameState | null;
@@ -92,7 +93,7 @@ export const useGameStore = create<GameStore>()(
           state: prev.state
             ? {
                 ...prev.state,
-                actions: [...prev.state.actions, { ...action, id: `action_${Date.now()}`, status: 'planned' }],
+                actions: [...prev.state.actions, { ...action, id: generateId.action(), status: 'planned' }],
               }
             : null,
         })),
@@ -152,7 +153,7 @@ export const useGameStore = create<GameStore>()(
         try {
           const engine = new TurnEngine(state.seed);
           engine.setState(state);
-          set({ state, engine, selectedCompanyId: state.playerCompanyId });
+          set({ state, engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {
@@ -175,7 +176,7 @@ export const useGameStore = create<GameStore>()(
         try {
           const engine = new TurnEngine(state.seed);
           engine.setState(state);
-          set({ state, engine, selectedCompanyId: state.playerCompanyId });
+          set({ state, engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {
