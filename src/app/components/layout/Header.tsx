@@ -6,10 +6,11 @@ interface HeaderProps {
   maxTurns: number;
   playerCompany: Company | undefined;
   onEndTurn: () => void;
+  onSave: () => void;
   isProcessing: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, isProcessing }) => {
+export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, onSave, isProcessing }) => {
   if (!playerCompany) return null;
 
   const alerts = [];
@@ -54,6 +55,14 @@ export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, o
             ))}
           </div>
         )}
+
+        <button
+          className="btn btn-secondary end-turn-btn"
+          onClick={onSave}
+          disabled={isProcessing}
+        >
+          SAVE
+        </button>
 
         <button
           className="btn btn-primary end-turn-btn"

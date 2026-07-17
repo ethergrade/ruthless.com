@@ -4,8 +4,11 @@ import type { MarketSegment,
   Company,
   MarketTile,
   Product,
+  ProductCategory,
   TurnAction,
   ActionType,
+  DepartmentType,
+  ExecutiveRole,
   GameEvent,
   NewsItem,
   MarketBriefing,
@@ -14,8 +17,6 @@ import type { MarketSegment,
   CyberAlert,
   CompanyId,
   ProductId,
-  ExecutiveId,
-  ActionId,
   EventCategory,
 } from '../../types';
 import { generateId } from '../utils/ids';
@@ -36,10 +37,18 @@ export class TurnEngine {
   constructor(seed?: number) {
     this.rng = createRNG(seed);
     this.state = this.initializeGameState();
+    this.state.marketBriefing = this.generateMarketBriefing();
   }
 
   getState(): GameState {
     return this.state;
+  }
+
+  // Replace the entire state (used by load/save). Restores RNG continuity
+  // from the saved seed so subsequent turns stay deterministic per save.
+  setState(state: GameState): void {
+    this.state = state;
+    this.rng.setSeed(state.seed);
   }
 
   getRNG(): ReturnType<typeof createRNG> {
@@ -73,7 +82,10 @@ export class TurnEngine {
       actions: [],
       events: [],
       newsFeed: [],
-      marketBriefing: this.generateMarketBriefing(),
+      marketBriefing: {
+        demandShifts: [], globalEvents: [], competitorMoves: [],
+        cyberAlerts: [], maOpportunities: [], clientRequests: [],
+      },
       isGameOver: false,
       seed: this.rng.getSeed(),
     };
@@ -106,7 +118,7 @@ export class TurnEngine {
     this.resolveMarket();
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
-    this.generateMarketBriefing();
+    this.state.marketBriefing = this.generateMarketBriefing();
 
     this.state.turn++;
     this.checkVictoryConditions();
@@ -130,7 +142,6 @@ export class TurnEngine {
       action.outcome = outcome;
 
       if (outcome.success) {
-        this.applyActionEffects(action);
         newsItems.push(this.createNewsItem(
           this.state.turn,
           'product',
@@ -154,7 +165,7 @@ export class TurnEngine {
     this.state.actions = this.state.actions.filter(a => a.status === 'planned');
   }
 
-  private processAIActions(events: GameEvent[], newsItems: NewsItem[]): void {
+  private processAIActions(_events: GameEvent[], _newsItems: NewsItem[]): void {
     const aiCompanies = Array.from(this.state.companies.values()).filter(c => !c.isPlayer);
 
     aiCompanies.forEach(company => {
@@ -165,7 +176,7 @@ export class TurnEngine {
         action.outcome = outcome;
 
         if (outcome.success) {
-          this.applyActionEffects(action);
+          // effects already applied inside resolveAction -> applyActionEffectsToCompany
         }
       });
     });
@@ -419,7 +430,7 @@ export class TurnEngine {
 
     company.departments.push({
       id: generateId.department(),
-      type: type as any,
+      type: type as DepartmentType,
       level,
       capacity: level * 10,
       efficiency: 0.7,
@@ -438,7 +449,7 @@ export class TurnEngine {
       id: generateId.product(),
       companyId: company.id,
       name,
-      category: category as any,
+      category: category as ProductCategory,
       maturity: 20,
       quality: 50,
       security: category === 'cybersecurity' ? 80 : 40,
@@ -491,7 +502,7 @@ export class TurnEngine {
 
     company.executives.push({
       id: generateId.executive(),
-      role: role as any,
+      role: role as ExecutiveRole,
       level: 1,
       experience: 5,
       specialization: role,
@@ -543,11 +554,25 @@ export class TurnEngine {
   }
 
   private recalculateCompanyMetrics(company: Company): void {
-    company.revenue = company.products.reduce((sum, p) => sum + p.price * p.marketFit / 100 * 100, 0);
-    company.operatingCosts = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
+    // Revenue from products scaled by how much market the company actually controls.
+    // quality/marketFit drive a per-product multiplier; controlled tiles add share.
+    const productRevenue = company.products.reduce((sum, p) => {
+      const qualityMul = 0.4 + (p.quality / 100) * 0.6;
+      const fitMul = 0.3 + (p.marketFit / 100) * 0.7;
+      return sum + p.price * 4 * qualityMul * fitMul;
+    }, 0);
+
+    const deptCost = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
+
+    company.revenue = productRevenue;
+    company.operatingCosts = deptCost;
     company.cashFlow = company.revenue - company.operatingCosts;
-    company.valuation = Math.max(1, company.revenue * 5 + company.cash - company.debt);
-    company.marketInfluence = Math.min(100, company.controlledTiles.length * 2 + company.brandTrust * 0.5);
+    company.valuation = Math.max(1, company.revenue * 4 + company.cash - company.debt);
+
+    // Market influence = controlled territory + brand trust, capped at 100.
+    // Expressed as a 0..100 score (controlledTiles * 2.5 + brandTrust * 0.5).
+    const influence = Math.min(100, company.controlledTiles.length * 2.5 + company.brandTrust * 0.5);
+    company.marketInfluence = Math.max(0, influence);
   }
 
   private resolveMarket(): void {
@@ -572,7 +597,8 @@ export class TurnEngine {
       company.debt = Math.max(0, company.debt - company.cashFlow * 0.1);
       this.recalculateCompanyMetrics(company);
 
-      if (company.cash < -1000000 && company.debt > company.valuation) {
+      // Bankruptcy: out of cash and unable to cover costs with valuation.
+      if (company.cash < -500000 && company.debt > company.valuation) {
         this.triggerDefeat(company.id, 'bankruptcy');
       }
     });
@@ -626,13 +652,29 @@ export class TurnEngine {
     const player = this.state.companies.get(this.state.playerCompanyId);
     if (!player) return;
 
-    if (player.marketInfluence >= 45 && player.brandTrust >= 70 && player.securityPosture >= 60) {
+    // Victory: dominant market share AND healthy trust AND solid security.
+    if (player.marketInfluence >= 45 && player.brandTrust >= 60 && player.securityPosture >= 60) {
       this.state.isGameOver = true;
       this.state.victoryType = 'market_dominance';
+      return;
     }
 
+    // Defeat: player went bankrupt (handled in resolveFinancials) or got wiped out.
+    if (player.cash < -500000 && player.debt > player.valuation) {
+      this.state.isGameOver = true;
+      this.state.victoryType = undefined;
+      return;
+    }
+
+    // End of campaign: decide winner by market influence.
     if (this.state.turn >= this.state.maxTurns) {
       this.state.isGameOver = true;
+      const leader = Array.from(this.state.companies.values()).sort(
+        (a, b) => b.marketInfluence - a.marketInfluence
+      )[0];
+      this.state.victoryType = leader.id === this.state.playerCompanyId
+        ? 'market_dominance'
+        : undefined;
     }
   }
 

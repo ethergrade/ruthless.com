@@ -12,6 +12,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     minify: 'esbuild',
+    base: './',
   },
   server: {
     port: 5173,

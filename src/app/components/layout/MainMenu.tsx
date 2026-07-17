@@ -91,7 +91,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 
       {showLoadGame && (
         <LoadGameModal
-          onLoad={handleLoad}
+          _onLoad={handleLoad}
           onCancel={() => setShowLoadGame(false)}
         />
       )}
@@ -197,7 +197,7 @@ const NewGameModal: React.FC<{
   );
 };
 
-const LoadGameModal: React.FC<{ onLoad: () => void; onCancel: () => void }> = ({ onLoad, onCancel }) => {
+const LoadGameModal: React.FC<{ _onLoad: () => void; onCancel: () => void }> = ({ _onLoad, onCancel }) => {
   const saves = [
     { id: 1, name: 'Auto-save', turn: 12, date: '2026-07-17', company: 'NexusTech', cash: 12500000 },
     { id: 2, name: 'Mid-game', turn: 8, date: '2026-07-16', company: 'ApexDigital', cash: 8200000 },

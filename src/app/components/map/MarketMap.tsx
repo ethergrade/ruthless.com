@@ -54,41 +54,41 @@ export const MarketMap: React.FC<{
   }, [state, selectedTileId]);
 
   function preload(this: Phaser.Scene) {
-    const g = this.make.graphics({ x: 0, y: 0, add: false } as any);
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
 
     g.fillStyle(0x1a1a2e);
     g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
     g.lineStyle(1, 0x2a2a4a);
     g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_base', TILE_WIDTH, TILE_HEIGHT) as any;
+    g.generateTexture('tile_base', TILE_WIDTH, TILE_HEIGHT);
 
     g.clear();
     g.fillStyle(0x00d4aa, 0.3);
     g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
     g.lineStyle(2, 0x00d4aa);
     g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_player', TILE_WIDTH, TILE_HEIGHT) as any;
+    g.generateTexture('tile_player', TILE_WIDTH, TILE_HEIGHT);
 
     g.clear();
     g.fillStyle(0xff6b35, 0.3);
     g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
     g.lineStyle(2, 0xff6b35);
     g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_enemy', TILE_WIDTH, TILE_HEIGHT) as any;
+    g.generateTexture('tile_enemy', TILE_WIDTH, TILE_HEIGHT);
 
     g.clear();
     g.fillStyle(0x007bff, 0.3);
     g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
     g.lineStyle(2, 0x007bff);
     g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_contested', TILE_WIDTH, TILE_HEIGHT) as any;
+    g.generateTexture('tile_contested', TILE_WIDTH, TILE_HEIGHT);
 
     g.clear();
     g.fillStyle(0x1a1a2e, 0.8);
     g.fillRoundedRect(0, 0, 200, 100, 8);
     g.lineStyle(1, 0x00d4aa, 0.5);
     g.strokeRoundedRect(0, 0, 200, 100, 8);
-    g.generateTexture('tooltip_bg', 200, 100) as any;
+    g.generateTexture('tooltip_bg', 200, 100);
 
     g.destroy();
   }
@@ -96,8 +96,7 @@ export const MarketMap: React.FC<{
   function create(this: Phaser.Scene) {
     const { marketTiles, companies } = state!;
     const companyColors = new Map<string, number>();
-      companies.forEach((c, _i) => {
-      const _colors = [0x00d4aa, 0xff6b35, 0x007bff, 0xffc107, 0xe83e8c, 0x6f42c1];
+      companies.forEach((c) => {
       companyColors.set(c.id, Phaser.Display.Color.HexStringToColor(c.color).color);
     });
 

@@ -5,6 +5,7 @@ import type {
   CompanyId, TileId
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
+import { MiniDB } from '../data/db';
 
 interface GameStore {
   state: GameState | null;
@@ -33,6 +34,9 @@ interface GameStore {
   addNewsItem: (item: NewsItem) => void;
   setMarketBriefing: (briefing: MarketBriefing) => void;
   loadGame: () => boolean;
+  saveGame: (slot?: string) => boolean;
+  loadSlot: (slot: string) => boolean;
+  hasAutosave: () => boolean;
 }
 
 const initialUI = {
@@ -65,6 +69,9 @@ export const useGameStore = create<GameStore>()(
 
         const result = engine.endTurn();
         set({ state: result.newState });
+
+        // Persist progress automatically so the player never loses their game.
+        MiniDB.autosave(result.newState);
 
         if (result.newsItems.length > 0) {
           result.newsItems.forEach(item => {
@@ -105,7 +112,7 @@ export const useGameStore = create<GameStore>()(
       setActivePanel: (panel) => set((prev) => ({ ui: { ...prev.ui, activePanel: panel } })),
       setShowActionModal: (show, action) => set((prev) => ({ ui: { ...prev.ui, showActionModal: show, pendingAction: action || null } })),
 
-      addNotification: (title, body, importance = 'minor') =>
+      addNotification: (title, body, _importance = 'minor') =>
         set((prev) => ({
           ui: {
             ...prev.ui,
@@ -139,22 +146,44 @@ export const useGameStore = create<GameStore>()(
         })),
 
       loadGame: () => {
-        const saved = localStorage.getItem('strategyless_save');
-        if (saved) {
-          try {
-            const state = JSON.parse(saved);
-            const engine = new TurnEngine(state.seed);
-            engine['state'] = state;
-            set({ state, engine });
-            get().addNotification('Game loaded', '');
-            return true;
-          } catch {
-            get().addNotification('Failed to load game', '', 'critical');
-            return false;
-          }
+        const state = MiniDB.loadAuto();
+        if (!state) return false;
+        try {
+          const engine = new TurnEngine(state.seed);
+          engine.setState(state);
+          set({ state, engine, selectedCompanyId: state.playerCompanyId });
+          get().addNotification('Game loaded', '');
+          return true;
+        } catch {
+          get().addNotification('Failed to load game', '', 'critical');
+          return false;
         }
-        return false;
       },
+
+      saveGame: (slot = 'manual') => {
+        const { state } = get();
+        if (!state) return false;
+        MiniDB.save(slot, state);
+        get().addNotification('Game saved', '');
+        return true;
+      },
+
+      loadSlot: (slot) => {
+        const state = MiniDB.load(slot);
+        if (!state) return false;
+        try {
+          const engine = new TurnEngine(state.seed);
+          engine.setState(state);
+          set({ state, engine, selectedCompanyId: state.playerCompanyId });
+          get().addNotification('Game loaded', '');
+          return true;
+        } catch {
+          get().addNotification('Failed to load game', '', 'critical');
+          return false;
+        }
+      },
+
+      hasAutosave: () => MiniDB.loadAuto() !== null,
     }),
     { name: 'strategyless-store' }
   )

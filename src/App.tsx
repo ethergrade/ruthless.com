@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import { Header } from './app/components/layout/Header';
 import { Sidebar } from './app/components/layout/Sidebar';
@@ -8,7 +8,7 @@ import { MainMenu } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { formatNumber } from './utils/formatters';
-import type { Company, GameState, NewsItem, CompanyId, TileId, TurnAction, GameEvent, ActionType } from './types';
+import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType } from './types';
 import './styles/globals.css';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -38,6 +38,7 @@ function App() {
     selectTile,
     selectCompany,
     dismissNotification,
+    saveGame,
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -93,6 +94,7 @@ function App() {
         maxTurns={state?.maxTurns || 20}
         playerCompany={playerCompany}
         onEndTurn={handleEndTurn}
+        onSave={() => saveGame()}
         isProcessing={isProcessing}
       />
 
@@ -290,7 +292,7 @@ const CompanyModal: React.FC<CompanyModalProps> = ({ company, onClose }) => (
       <div className="company-sections">
         <div className="company-section">
           <h4>Departments</h4>
-          {company.departments.map((d: any) => (
+          {company.departments.map((d: Department) => (
             <div key={d.id} className="dept-item">
               <span>{d.type.replace('_', ' ')}</span>
               <span>Lv.{d.level}</span>
@@ -300,7 +302,7 @@ const CompanyModal: React.FC<CompanyModalProps> = ({ company, onClose }) => (
 
         <div className="company-section">
           <h4>Products</h4>
-          {company.products.map((p: any) => (
+          {company.products.map((p: Product) => (
             <div key={p.id} className="product-item">
               <span>{p.name} ({p.category})</span>
               <span>Quality: {p.quality}</span>
@@ -310,9 +312,9 @@ const CompanyModal: React.FC<CompanyModalProps> = ({ company, onClose }) => (
 
         <div className="company-section">
           <h4>Executives</h4>
-          {company.executives.map((e: any) => (
+          {company.executives.map((e: Executive) => (
             <div key={e.id} className="exec-item">
-              <span>{e.role.toUpperCase()}: {e.name}</span>
+              <span>{e.role.toUpperCase()}: {e.specialization}</span>
               <span>Lv.{e.level}</span>
             </div>
           ))}
@@ -350,7 +352,7 @@ const EventModal: React.FC<EventModalProps> = ({ event, onClose }) => (
       {event.options && event.options.length > 0 && (
         <div className="event-options">
           <h5>Response Options</h5>
-          {event.options.map((option: any) => (
+          {event.options.map((option: EventOption) => (
             <button key={option.id} className="option-btn">
               <span>{option.label}</span>
               <span>Cost: ${option.cost.toLocaleString()} | Risk: {Math.round(option.risk * 100)}%</span>
