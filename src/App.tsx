@@ -60,6 +60,11 @@ function App() {
     setShowMainMenu(true);
   };
 
+  const handleBid = (listingId: string, amount: number) => {
+    if (!state) return;
+    addAction({ type: 'auction_bid', companyId: state.playerCompanyId, budget: amount, priority: 1, targetId: listingId });
+  };
+
   const handleAddAction = (action: Omit<import('./types').TurnAction, 'id' | 'status'>) => {
     addAction(action);
     setShowActionModal(false);
@@ -127,6 +132,7 @@ function App() {
           actions={state?.actions.filter(a => a.companyId === state.playerCompanyId && a.status === 'planned') || []}
           marketBriefing={state?.marketBriefing || { demandShifts: [], competitorMoves: [], cyberAlerts: [], globalEvents: [], maOpportunities: [], clientRequests: [] }}
           auctionHouse={state ? Array.from(state.auctionHouse) : []}
+          onBid={handleBid}
 
           onShowActionModal={() => setShowActionModal(true)}
           onCompanySelect={handleCompanySelect}

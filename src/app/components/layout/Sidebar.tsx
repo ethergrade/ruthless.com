@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Company, TurnAction, MarketBriefing, DemandShift, CompetitorMove, CyberAlert, AuctionListing } from '../../../types';
 
 interface SidebarProps {
@@ -7,7 +7,8 @@ interface SidebarProps {
   actions: TurnAction[];
   marketBriefing: MarketBriefing;
   auctionHouse: AuctionListing[];
-  
+  onBid: (listingId: string, amount: number) => void;
+
   onShowActionModal: () => void;
   onCompanySelect: (id: string | null) => void;
   selectedCompanyId: string | null;
@@ -25,7 +26,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCompanySelect,
   selectedCompanyId,
   onQuickAction,
+  onBid,
 }) => {
+  const [bidding, setBidding] = useState<{ id: string; amount: number } | null>(null);
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
@@ -107,6 +110,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ) : (
             auctionHouse.map(a => {
               const bidder = a.highestBidderId ? companies.find(c => c.id === a.highestBidderId) : null;
+              const minBid = (a.currentBid > 0 ? a.currentBid : a.basePrice) + 1;
+              const isBidding = bidding?.id === a.id;
               return (
                 <div key={a.id} className="auction-item">
                   <span className="auction-name">{a.name}</span>
@@ -115,6 +120,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                   {bidder && <span className="auction-bidder" style={{ color: bidder.color }}>↑ {bidder.name}</span>}
                   <span className="auction-expires">ends T{a.expiresTurn}</span>
+                  {isBidding ? (
+                    <div className="auction-bidrow">
+                      <input
+                        type="number"
+                        className="auction-bidinput"
+                        value={bidding.amount}
+                        min={minBid}
+                        onChange={(e) => {
+                          const v = Math.max(minBid, parseInt(e.target.value) || minBid);
+                          setBidding({ id: a.id, amount: v });
+                        }}
+                      />
+                      <button className="btn btn-primary auction-bidbtn" onClick={() => { onBid(a.id, bidding.amount); setBidding(null); }}>
+                        CONFIRM
+                      </button>
+                      <button className="btn btn-ghost auction-bidbtn" onClick={() => setBidding(null)}>
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="btn btn-secondary auction-bidbtn" onClick={() => setBidding({ id: a.id, amount: minBid })}>
+                      BID
+                    </button>
+                  )}
                 </div>
               );
             })

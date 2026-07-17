@@ -48,6 +48,7 @@ describe('Fase 2 — layout components render without crashing', () => {
         actions: [] as import('../types').TurnAction[],
         marketBriefing: emptyBriefing,
         auctionHouse: [],
+        onBid: () => {},
         onShowActionModal: () => {},
         onCompanySelect: () => {},
         selectedCompanyId: null,

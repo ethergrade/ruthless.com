@@ -103,6 +103,7 @@ export type ActionType =
   | 'ceo_social'              // CEO social post: tone + authenticity
   | 'public_tender_offer'     // OPA: public tender offer for a rival building/company
   | 'auction_sell'            // list one of your assets on the open auction house (req 2)
+  | 'auction_bid'             // place a bid on an existing listing (buy side)
   | 'end_turn';
 
 export type CompanyArchetype =

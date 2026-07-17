@@ -197,6 +197,9 @@
 .auction-meta { grid-area: meta; color: #8fb0d8; text-align: right; font-variant-numeric: tabular-nums; }
 .auction-bidder { grid-area: bidder; font-size: 11px; }
 .auction-expires { grid-area: expires; color: #6b7aa0; font-size: 10px; text-align: right; }
+.auction-bidbtn { grid-column: 1 / -1; padding: 3px 8px; font-size: 11px; margin-top: 2px; }
+.auction-bidrow { grid-column: 1 / -1; display: flex; gap: 5px; margin-top: 3px; }
+.auction-bidinput { flex: 1; min-width: 0; background: #070b16; border: 1px solid #1d2740; color: #e6ecff; border-radius: 5px; padding: 3px 6px; font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* ---- header ghost/menu button ---- */
 .btn-ghost { background: transparent; border: 1px solid #2a3a5e; color: #9fb0d8; }

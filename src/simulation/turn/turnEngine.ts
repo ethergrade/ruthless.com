@@ -275,7 +275,7 @@ export class TurnEngine {
         security_hardening: 2, ai_automation: 3, launch_consulting_practice: 1,
         scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1,
         build_building: 8, industrial_espionage: 4, cyber_attack: 3, security_offline: 2,
-        security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0,
+        security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0, auction_bid: 0,
       },
       security_fortress: {
         build_department: 15, launch_product: 10, improve_product: 15,
@@ -283,7 +283,7 @@ export class TurnEngine {
         security_hardening: 25, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5,
         build_building: 5, industrial_espionage: 3, cyber_attack: 4, security_offline: 8,
-        security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0,
+        security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0, auction_bid: 0,
       },
       acquisition_machine: {
         build_department: 10, launch_product: 10, improve_product: 10,
@@ -291,7 +291,7 @@ export class TurnEngine {
         security_hardening: 5, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5,
         build_building: 6, industrial_espionage: 4, cyber_attack: 3, security_offline: 3,
-        security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0,
+        security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0, auction_bid: 0,
       },
       lean_specialist: {
         build_department: 10, launch_product: 15, improve_product: 20,
@@ -299,7 +299,7 @@ export class TurnEngine {
         security_hardening: 10, ai_automation: 10, launch_consulting_practice: 15,
         scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10,
         build_building: 4, industrial_espionage: 5, cyber_attack: 4, security_offline: 4,
-        security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0,
+        security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0, auction_bid: 0,
       },
     };
 
@@ -340,6 +340,7 @@ export class TurnEngine {
       public_tender_offer: 1500000,
       auction_sell: 0,
       end_turn: 0,
+      auction_bid: 0,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -427,6 +428,7 @@ export class TurnEngine {
       public_tender_offer: 1500000,
       auction_sell: 0,
       end_turn: 0,
+      auction_bid: 0,
     };
     return costs[actionType] || 100000;
   }
@@ -455,6 +457,7 @@ export class TurnEngine {
       ceo_social: ['sales_marketing', 'corporate_strategy'],
       public_tender_offer: ['acquisitions', 'finance_investor', 'legal_compliance'],
       auction_sell: ['finance_investor', 'corporate_strategy', 'acquisitions'],
+      auction_bid: ['corporate_strategy', 'finance_investor', 'acquisitions'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -541,6 +544,9 @@ export class TurnEngine {
         break;
       case 'auction_sell':
         this.runAuctionSell(company, action);
+        break;
+      case 'auction_bid':
+        this.runAuctionBid(company, action);
         break;
     }
 
@@ -841,6 +847,19 @@ export class TurnEngine {
     // mark asset as listed
     if (prod) prod.upForAuction = true;
     if (bld) bld.upForAuction = true;
+  }
+
+  /** Place the player's bid on an existing listing (buy side). */
+  private runAuctionBid(company: Company, action: TurnAction): void {
+    if (!action.targetId) return;
+    const listing = this.state.auctionHouse.find(l => l.id === action.targetId);
+    if (!listing) return;
+    const offer = action.budget;
+    const base = listing.currentBid > 0 ? listing.currentBid : listing.basePrice;
+    if (offer <= base) return;            // must beat the standing bid
+    if (offer > company.cash) return;       // can't bid more than you have
+    listing.currentBid = offer;
+    listing.highestBidderId = company.id;
   }
 
   /**
