@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type {
-  GameState, TurnAction, NewsItem,
-  CompanyId, TileId, ActionType
+  GameState, TurnAction, NewsItem, MarketBriefing,
+  CompanyId, TileId
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 
@@ -31,7 +31,8 @@ interface GameStore {
   dismissNotification: (index: number) => void;
   clearNotifications: () => void;
   addNewsItem: (item: NewsItem) => void;
-  setMarketBriefing: (briefing: any) => void;
+  setMarketBriefing: (briefing: MarketBriefing) => void;
+  loadGame: () => boolean;
 }
 
 const initialUI = {
@@ -136,6 +137,24 @@ export const useGameStore = create<GameStore>()(
         set((prev) => ({
           state: prev.state ? { ...prev.state, marketBriefing: briefing } : null,
         })),
+
+      loadGame: () => {
+        const saved = localStorage.getItem('strategyless_save');
+        if (saved) {
+          try {
+            const state = JSON.parse(saved);
+            const engine = new TurnEngine(state.seed);
+            engine['state'] = state;
+            set({ state, engine });
+            get().addNotification('Game loaded', '');
+            return true;
+          } catch {
+            get().addNotification('Failed to load game', '', 'critical');
+            return false;
+          }
+        }
+        return false;
+      },
     }),
     { name: 'strategyless-store' }
   )

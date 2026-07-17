@@ -1,6 +1,5 @@
 import React from 'react';
 import type { Company } from '../../../types';
-import { formatNumber } from '../../../utils/formatters';
 
 interface HeaderProps {
   turn: number;

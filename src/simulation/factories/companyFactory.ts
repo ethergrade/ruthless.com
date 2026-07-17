@@ -70,9 +70,9 @@ export const createCompany = (
   const startingCash = isPlayer ? 5000000 : rng.nextInt(3000000, 8000000);
   const startingDebt = isPlayer ? 0 : rng.nextInt(0, 2000000);
 
-  const departments = createStartingDepartments(rng, id, isPlayer);
-  const products = createStartingProducts(rng, id, companyArchetype);
-  const executives = createStartingExecutives(rng, id, isPlayer);
+  const departments = createStartingDepartments(rng, isPlayer);
+  const products = createStartingProducts(rng, companyArchetype);
+  const executives = createStartingExecutives(rng, isPlayer);
 
   const operatingCosts = departments.reduce((sum, d) => sum + d.recurringCost, 0);
   const revenue = products.reduce((sum, p) => sum + p.price * 100, 0);
@@ -103,7 +103,7 @@ export const createCompany = (
   };
 };
 
-const createStartingDepartments = (rng: ReturnType<typeof createRNG>, companyId: string, isPlayer: boolean): Department[] => {
+const createStartingDepartments = (rng: ReturnType<typeof createRNG>, isPlayer: boolean): Department[] => {
   const deptTypes: DepartmentType[] = isPlayer
     ? ['product_rd', 'sales_marketing', 'cybersecurity']
     : ['product_rd', 'sales_marketing', 'cybersecurity', 'finance_investor'];
@@ -137,7 +137,7 @@ const getDepartmentCost = (type: DepartmentType, level: number): number => {
   return baseCosts[type] * level;
 };
 
-const createStartingProducts = (rng: ReturnType<typeof createRNG>, companyId: string, archetype: CompanyArchetype): Product[] => {
+const createStartingProducts = (rng: ReturnType<typeof createRNG>, archetype: CompanyArchetype): Product[] => {
   const products: Product[] = [];
   const archetypeProducts: Record<CompanyArchetype, ProductCategory[]> = {
     hypergrowth_platform: ['saas', 'platform_api'],
@@ -158,12 +158,12 @@ const createStartingProducts = (rng: ReturnType<typeof createRNG>, companyId: st
     hybrid: ['enterprise_cluster', 'regulated_industry', 'high_growth'],
   };
 
-  categories.forEach((category, i) => {
+  categories.forEach(category => {
     const name = generateProductName(rng, category);
     const segments = segmentsByCategory[category] ?? ['open_market'];
     products.push({
       id: generateId.product(),
-      companyId,
+      companyId: '',
       name,
       category,
       maturity: rng.nextInt(30, 60),
@@ -201,14 +201,14 @@ const generateProductName = (rng: ReturnType<typeof createRNG>, category: Produc
   return `${prefix}${suffix}`;
 };
 
-const createStartingExecutives = (rng: ReturnType<typeof createRNG>, companyId: string, isPlayer: boolean): Executive[] => {
+const createStartingExecutives = (rng: ReturnType<typeof createRNG>, isPlayer: boolean): Executive[] => {
   const executives: Executive[] = [];
   const roles: ExecutiveRole[] = isPlayer
     ? ['ceo', 'cto', 'cmo']
     : ['ceo', 'cto', 'cfo', 'ciso'];
 
-  roles.forEach((role, i) => {
-    const name = rng.shuffle([...EXECUTIVE_NAMES]).pop()!;
+  roles.forEach(role => {
+      rng.shuffle([...EXECUTIVE_NAMES]).pop();
     const traitCount = isPlayer ? 2 : rng.nextInt(1, 3);
     const vulnCount = isPlayer ? 1 : rng.nextInt(0, 2);
     const traits = rng.shuffle([...TRAITS]).slice(0, traitCount);

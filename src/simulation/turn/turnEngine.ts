@@ -1,5 +1,5 @@
 import { createRNG } from '../utils/rng';
-import type {
+import type { MarketSegment,
   GameState,
   Company,
   MarketTile,
@@ -12,18 +12,14 @@ import type {
   DemandShift,
   CompetitorMove,
   CyberAlert,
-  MAOpportunity,
-  ClientRequest,
   CompanyId,
-  TileId,
   ProductId,
   ExecutiveId,
   ActionId,
   EventCategory,
-  VictoryType,
 } from '../../types';
 import { generateId } from '../utils/ids';
-import { createMarketMap, getAdjacentTiles } from '../factories/marketFactory';
+import { createMarketMap } from '../factories/marketFactory';
 import { createCompany } from '../factories/companyFactory';
 
 export interface TurnResult {
@@ -102,14 +98,13 @@ export class TurnEngine {
   }
 
   endTurn(): TurnResult {
-    const currentTurn = this.state.turn;
     const events: GameEvent[] = [];
     const newsItems: NewsItem[] = [];
 
     this.processPlayerActions(events, newsItems);
     this.processAIActions(events, newsItems);
-    this.resolveMarket(events, newsItems);
-    this.resolveFinancials(events, newsItems);
+    this.resolveMarket();
+    this.resolveFinancials();
     this.resolveRisks(events, newsItems);
     this.generateMarketBriefing();
 
@@ -137,7 +132,7 @@ export class TurnEngine {
       if (outcome.success) {
         this.applyActionEffects(action);
         newsItems.push(this.createNewsItem(
-          currentTurn,
+          this.state.turn,
           'product',
           `Action Executed: ${action.type}`,
           outcome.message,
@@ -146,7 +141,7 @@ export class TurnEngine {
         ));
       } else {
         newsItems.push(this.createNewsItem(
-          currentTurn,
+          this.state.turn,
           'financial',
           `Action Failed: ${action.type}`,
           outcome.message,
@@ -200,7 +195,7 @@ export class TurnEngine {
     return actions;
   }
 
-  private selectAIAction(archetype: string, company: Company): ActionType | null {
+  private selectAIAction(archetype: string, _company: Company): ActionType | null {
     const weights: Record<string, Record<ActionType, number>> = {
       hypergrowth_platform: {
         build_department: 20, launch_product: 25, improve_product: 15,
@@ -368,7 +363,7 @@ export class TurnEngine {
   private applyActionEffectsToCompany(
     action: TurnAction,
     company: Company,
-    effects: Record<string, number>
+    _effects: Record<string, number>
   ): void {
     company.cash -= action.budget;
 
@@ -417,10 +412,10 @@ export class TurnEngine {
     this.recalculateCompanyMetrics(company);
   }
 
-  private buildDepartment(company: Company, budget: number): void {
+  private buildDepartment(company: Company, _budget: number): void {
     const deptTypes = ['product_rd', 'ai_data', 'cybersecurity', 'consulting_services', 'sales_marketing', 'acquisitions'];
     const type = this.rng.shuffle(deptTypes).pop()!;
-    const level = Math.max(1, Math.floor(budget / 200000));
+    const level = Math.max(1, Math.floor(_budget / 200000));
 
     company.departments.push({
       id: generateId.department(),
@@ -434,7 +429,7 @@ export class TurnEngine {
     });
   }
 
-  private launchProduct(company: Company, budget: number): void {
+  private launchProduct(company: Company, _budget: number): void {
     const categories = ['saas', 'ai', 'cybersecurity', 'consulting', 'managed_service'];
     const category = this.rng.shuffle(categories).pop()!;
     const name = `Product_${company.products.length + 1}`;
@@ -458,23 +453,23 @@ export class TurnEngine {
     });
   }
 
-  private improveProduct(company: Company, budget: number): void {
+  private improveProduct(company: Company, _budget: number): void {
     if (company.products.length === 0) return;
     const product = this.rng.shuffle([...company.products]).pop()!;
-    const improvement = budget / 100000;
+    const improvement = _budget / 100000;
     product.quality = Math.min(100, product.quality + improvement * 5);
     product.marketFit = Math.min(100, product.marketFit + improvement * 3);
     product.technicalDebt = Math.max(0, product.technicalDebt - improvement * 2);
   }
 
-  private expandMarket(company: Company, budget: number): void {
+  private expandMarket(company: Company, _budget: number): void {
     const uncontrolledTiles = Array.from(this.state.marketTiles.values()).filter(
       t => t.controllerId !== company.id
     );
     if (uncontrolledTiles.length === 0) return;
 
     const target = this.rng.shuffle(uncontrolledTiles).pop()!;
-    const strength = Math.min(0.3, budget / 500000);
+    const strength = Math.min(0.3, _budget / 500000);
     target.controlStrength += strength;
 
     if (target.controllerId) {
@@ -485,12 +480,12 @@ export class TurnEngine {
     }
   }
 
-  private runMarketingCampaign(company: Company, budget: number): void {
-    company.brandTrust = Math.min(100, company.brandTrust + budget / 50000);
-    company.marketInfluence = Math.min(100, company.marketInfluence + budget / 100000);
+  private runMarketingCampaign(company: Company, _budget: number): void {
+    company.brandTrust = Math.min(100, company.brandTrust + _budget / 50000);
+    company.marketInfluence = Math.min(100, company.marketInfluence + _budget / 100000);
   }
 
-  private hireExecutive(company: Company, budget: number): void {
+  private hireExecutive(company: Company, _budget: number): void {
     const roles = ['cto', 'ciso', 'cfo', 'cmo', 'coo', 'chief_ai_officer'];
     const role = this.rng.shuffle(roles).pop()!;
 
@@ -510,26 +505,26 @@ export class TurnEngine {
     });
   }
 
-  private hardenSecurity(company: Company, budget: number): void {
-    company.securityPosture = Math.min(100, company.securityPosture + budget / 10000);
+  private hardenSecurity(company: Company, _budget: number): void {
+    company.securityPosture = Math.min(100, company.securityPosture + _budget / 10000);
   }
 
-  private automateAI(company: Company, budget: number): void {
-    company.aiCapability = Math.min(100, company.aiCapability + budget / 20000);
+  private automateAI(company: Company, _budget: number): void {
+    company.aiCapability = Math.min(100, company.aiCapability + _budget / 20000);
     company.operatingCosts *= 0.95;
   }
 
-  private launchConsultingPractice(company: Company, budget: number): void {
-    company.consultingCapacity = Math.min(100, company.consultingCapacity + budget / 10000);
+  private launchConsultingPractice(company: Company, _budget: number): void {
+    company.consultingCapacity = Math.min(100, company.consultingCapacity + _budget / 10000);
   }
 
-  private scoutAcquisition(company: Company): void {
+  private scoutAcquisition(_company: Company): void {
     // Add M&A opportunity to market briefing
   }
 
-  private acquireCompany(company: Company, budget: number): void {
-    if (budget < 1000000) return;
-    company.cash -= budget;
+  private acquireCompany(company: Company, _budget: number): void {
+    if (_budget < 1000000) return;
+    company.cash -= _budget;
     company.marketInfluence += 5;
   }
 
@@ -555,7 +550,7 @@ export class TurnEngine {
     company.marketInfluence = Math.min(100, company.controlledTiles.length * 2 + company.brandTrust * 0.5);
   }
 
-  private resolveMarket(events: GameEvent[], newsItems: NewsItem[]): void {
+  private resolveMarket(): void {
     this.state.marketTiles.forEach(tile => {
       if (tile.controllerId) {
         const controller = this.state.companies.get(tile.controllerId);
@@ -570,7 +565,7 @@ export class TurnEngine {
     });
   }
 
-  private resolveFinancials(events: GameEvent[], newsItems: NewsItem[]): void {
+  private resolveFinancials(): void {
     this.state.companies.forEach(company => {
       company.cash += company.cashFlow;
       company.cash -= company.debt * 0.05;
@@ -583,10 +578,10 @@ export class TurnEngine {
     });
   }
 
-  private resolveRisks(events: GameEvent[], newsItems: NewsItem[]): void {
+  private resolveRisks(_events: GameEvent[], _newsItems: NewsItem[]): void {
     this.state.companies.forEach(company => {
       if (company.securityPosture < 30 && this.rng.nextBoolean(0.1)) {
-        this.triggerCyberIncident(company, events, newsItems);
+        this.triggerCyberIncident(company, _events, _newsItems);
       }
     });
   }
@@ -606,7 +601,7 @@ export class TurnEngine {
       impact: { cash: -company.cash * impact, brandTrust: -20, securityPosture: -10 },
       affectedCompanies: [company.id],
       duration: 3,
-      severity: 'high',
+      severity: 'high' as const,
     };
     events.push(event);
 
@@ -620,7 +615,7 @@ export class TurnEngine {
     ));
   }
 
-  private triggerDefeat(companyId: CompanyId, type: string): void {
+  private triggerDefeat(companyId: CompanyId, _type: string): void {
     if (companyId === this.state.playerCompanyId) {
       this.state.isGameOver = true;
       this.state.victoryType = undefined;
@@ -645,8 +640,12 @@ export class TurnEngine {
     const demandShifts: DemandShift[] = [];
     const competitorMoves: CompetitorMove[] = [];
     const cyberAlerts: CyberAlert[] = [];
-    const maOpportunities: MAOpportunity[] = [];
-    const clientRequests: ClientRequest[] = [];
+
+    const SEGMENTS = [
+      'open_market', 'enterprise_cluster', 'public_sector', 'regulated_industry',
+      'innovation_hub', 'price_sensitive', 'high_growth', 'legacy_market',
+      'strategic_account', 'startup_zone',
+    ] as const;
 
     SEGMENTS.forEach(segment => {
       if (this.rng.nextBoolean(0.3)) {
@@ -670,14 +669,14 @@ export class TurnEngine {
 
     if (this.rng.nextBoolean(0.2)) {
       cyberAlerts.push({
-        severity: "high",
-        targetSegment: "open_market" as const,
+        severity: this.rng.shuffle(['low','medium','high','critical']).pop()! as 'low' | 'medium' | 'high' | 'critical',
+        targetSegment: this.rng.shuffle(['open_market','enterprise_cluster','public_sector','regulated_industry','innovation_hub','price_sensitive','high_growth','legacy_market','strategic_account','startup_zone']).pop()! as MarketSegment,
         description: 'Increased threat activity detected',
         estimatedImpact: this.rng.nextFloat(0.1, 0.4),
       });
     }
 
-    return { demandShifts, globalEvents: [], competitorMoves, cyberAlerts, maOpportunities, clientRequests };
+    return { demandShifts, globalEvents: [], competitorMoves, cyberAlerts, maOpportunities: [], clientRequests: [] };
   }
 
   private createNewsItem(
@@ -699,11 +698,3 @@ export class TurnEngine {
     };
   }
 }
-
-const SEGMENTS = [
-  'open_market', 'enterprise_cluster', 'public_sector', 'regulated_industry',
-  'innovation_hub', 'price_sensitive', 'high_growth', 'legacy_market',
-  'strategic_account', 'startup_zone',
-] as const;
-
-const currentTurn = 1;

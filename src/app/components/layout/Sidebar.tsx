@@ -1,13 +1,13 @@
 import React from 'react';
 import { useGameStore } from '../../../store/gameStore';
-import { formatNumber } from '../../../utils/formatters';
+import type { Company, TurnAction, MarketBriefing, DemandShift, CompetitorMove, CyberAlert } from '../../../types';
 
 interface SidebarProps {
-  playerCompany: any;
-  companies: any[];
-  actions: any[];
-  marketBriefing: any;
-  onAddAction: (type: string, budget: number) => void;
+  playerCompany: Company | undefined;
+  companies: Company[];
+  actions: TurnAction[];
+  marketBriefing: MarketBriefing;
+  
   onShowActionModal: () => void;
   onCompanySelect: (id: string | null) => void;
   selectedCompanyId: string | null;
@@ -18,7 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   companies,
   actions,
   marketBriefing,
-  onAddAction,
+  
   onShowActionModal,
   onCompanySelect,
   selectedCompanyId,
@@ -67,13 +67,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <h3>MARKET BRIEFING</h3>
         </div>
         <div className="briefing-items">
-          {marketBriefing.demandShifts?.slice(0, 3).map((shift: any, i: number) => (
+          {marketBriefing.demandShifts?.slice(0, 3).map((shift, i) => (
             <BriefingItem key={i} shift={shift} />
           ))}
-          {marketBriefing.competitorMoves?.slice(0, 2).map((move: any, i: number) => (
+          {marketBriefing.competitorMoves?.slice(0, 2).map((move, i) => (
             <BriefingItem key={i} move={move} />
           ))}
-          {marketBriefing.cyberAlerts?.slice(0, 1).map((alert: any, i: number) => (
+          {marketBriefing.cyberAlerts?.slice(0, 1).map((alert, i) => (
             <BriefingItem key={i} alert={alert} />
           ))}
         </div>
@@ -98,14 +98,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-const ActionItem: React.FC<{ action: any }> = ({ action }) => (
+const ActionItem: React.FC<{ action: TurnAction }> = ({ action }) => (
   <div className="action-item">
     <span className="action-type">{action.type.replace('_', ' ').toUpperCase()}</span>
-    <span className="action-budget">${formatNumber(action.budget)}</span>
+    <span className="action-budget">${action.budget.toLocaleString()}</span>
   </div>
 );
 
-const CompetitorItem: React.FC<{ company: any; isSelected: boolean; onClick: () => void }> = ({
+const CompetitorItem: React.FC<{ company: Company; isSelected: boolean; onClick: () => void }> = ({
   company,
   isSelected,
   onClick,
@@ -120,13 +120,13 @@ const CompetitorItem: React.FC<{ company: any; isSelected: boolean; onClick: () 
       <span className="competitor-archetype">{company.archetype?.replace('_', ' ')}</span>
     </div>
     <div className="competitor-stats">
-      <span>${formatNumber(company.cash)}</span>
+      <span>${company.cash.toLocaleString()}</span>
       <span>{company.marketInfluence.toFixed(1)}%</span>
     </div>
   </button>
 );
 
-const BriefingItem: React.FC<{ shift?: any; move?: any; alert?: any }> = ({ shift, move, alert }) => {
+const BriefingItem: React.FC<{ shift?: DemandShift; move?: CompetitorMove; alert?: CyberAlert }> = ({ shift, move, alert }) => {
   if (shift) {
     return (
       <div className={`briefing-item demand ${shift.change > 0 ? 'positive' : 'negative'}`}>

@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from './store/gameStore';
 import { Header } from './app/components/layout/Header';
 import { Sidebar } from './app/components/layout/Sidebar';
 import { BottomPanel } from './app/components/layout/BottomPanel';
 import { MarketMap } from './app/components/map/MarketMap';
+import { MainMenu } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { formatNumber } from './utils/formatters';
-import type { Company, NewsItem, CompanyId, TileId } from './types';
+import type { Company, GameState, NewsItem, CompanyId, TileId, TurnAction, GameEvent, ActionType } from './types';
 import './styles/globals.css';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -42,7 +43,8 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [showEventModal, setShowEventModal] = useState<{ event: any; open: boolean }>({ event: null, open: false });
+  const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
+  const [showMainMenu, setShowMainMenu] = useState(true);
 
   const playerCompany = state?.companies.get(state.playerCompanyId);
 
@@ -57,7 +59,7 @@ function App() {
   };
 
   const handleAddAction = (type: string, budget: number) => {
-    addAction({ type: type as any, companyId: state!.playerCompanyId, budget, priority: 1 });
+    addAction({ type: type as ActionType, companyId: state!.playerCompanyId, budget, priority: 1 });
     setShowActionModal(false);
   };
 
@@ -71,6 +73,18 @@ function App() {
     }
     selectCompany(companyId);
   };
+
+  const handleStartGame = () => {
+    setShowMainMenu(false);
+  };
+
+  if (showMainMenu) {
+    return (
+      <div className="app">
+        <MainMenu onStartGame={handleStartGame} onLoadGame={handleStartGame} />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -87,8 +101,8 @@ function App() {
           playerCompany={playerCompany}
           companies={state ? Array.from(state.companies.values()) : []}
           actions={state?.actions.filter(a => a.companyId === state.playerCompanyId && a.status === 'planned') || []}
-          marketBriefing={state?.marketBriefing || { demandShifts: [], competitorMoves: [], cyberAlerts: [] }}
-          onAddAction={handleAddAction}
+          marketBriefing={state?.marketBriefing || { demandShifts: [], competitorMoves: [], cyberAlerts: [], globalEvents: [], maOpportunities: [], clientRequests: [] }}
+          
           onShowActionModal={() => setShowActionModal(true)}
           onCompanySelect={handleCompanySelect}
           selectedCompanyId={selectedCompanyId}
@@ -207,7 +221,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ playerCompany, onClose, onAdd
                     disabled={getActionCost(action) > maxBudget && action !== 'raise_capital' && action !== 'reduce_costs'}
                   >
                     <span className="action-label">{ACTION_LABELS[action] || action}</span>
-                    <span className="action-cost">${formatNumber(getActionCost(action))}</span>
+                    <span className="action-cost">${getActionCost(action).toLocaleString()}</span>
                   </button>
                 ))}
               </div>
@@ -227,7 +241,7 @@ const ActionModal: React.FC<ActionModalProps> = ({ playerCompany, onClose, onAdd
                 max={maxBudget}
                 step={10000}
               />
-              <span>/ ${formatNumber(maxBudget)} max</span>
+              <span>/ ${maxBudget.toLocaleString()} max</span>
             </div>
             <div className="budget-slider">
               <input
@@ -268,7 +282,7 @@ const CompanyModal: React.FC<CompanyModalProps> = ({ company, onClose }) => (
           <div className="company-stats">
             <span>Cash: ${formatNumber(company.cash)}</span>
             <span>Valuation: ${formatNumber(company.valuation)}</span>
-            <span>Influence: {company.marketInfluence.toFixed(1)}%</span>
+            <span>Influence: ${formatNumber(company.marketInfluence)}%</span>
           </div>
         </div>
       </div>
@@ -309,7 +323,7 @@ const CompanyModal: React.FC<CompanyModalProps> = ({ company, onClose }) => (
 );
 
 interface EventModalProps {
-  event: any;
+  event: GameEvent;
   onClose: () => void;
 }
 
@@ -320,14 +334,14 @@ const EventModal: React.FC<EventModalProps> = ({ event, onClose }) => (
         {event.severity.toUpperCase()}
       </div>
       <p className="event-description">{event.description}</p>
-
+      
       <div className="event-impact">
         <h5>Impact</h5>
         {Object.entries(event.impact || {}).map(([key, value]) => (
           <div key={key} className="impact-row">
             <span>{key.replace('_', ' ')}</span>
             <span className={(value as number) >= 0 ? 'positive' : 'negative'}>
-              {(value as number) >= 0 ? '+' : ''}{(value as number)}
+              {(value as number) >= 0 ? '+' : ''}{value}
             </span>
           </div>
         ))}

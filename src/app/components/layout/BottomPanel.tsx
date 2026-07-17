@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem } from '../../../types';
-import { formatNumber } from '../../../utils/formatters';
+import type { Company, NewsItem, Department, Product } from '../../../types';
 
 interface BottomPanelProps {
-  state: any;
+  state: GameState | null;
   playerCompany: Company | undefined;
   newsFeed: NewsItem[];
   notifications: string[];
   onDismissNotification: (index: number) => void;
 }
+
+import type { GameState } from '../../../types';
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
   state,
@@ -100,12 +101,12 @@ const KPIPanel: React.FC<{ company: Company }> = ({ company }) => {
   );
 };
 
-const DepartmentsPanel: React.FC<{ departments: any[] }> = ({ departments }) => (
+const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments }) => (
   <div className="departments-grid">
     {departments.map((dept, i) => (
       <div key={i} className="dept-card">
         <div className="dept-header">
-          <span className="dept-name">{dept.type.replace('_', ' ').replace(/\b\w/g,  (c: string) => c.toUpperCase())}</span>
+          <span className="dept-name">{dept.type.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
           <span className="dept-level">Lv. {dept.level}</span>
         </div>
         <div className="dept-stats">
@@ -120,7 +121,7 @@ const DepartmentsPanel: React.FC<{ departments: any[] }> = ({ departments }) => 
   </div>
 );
 
-const ProductsPanel: React.FC<{ products: any[] }> = ({ products }) => (
+const ProductsPanel: React.FC<{ products: Product[] }> = ({ products }) => (
   <div className="products-grid">
     {products.length === 0 ? (
       <div className="empty-state">No products launched</div>
