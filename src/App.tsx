@@ -7,25 +7,12 @@ import { MarketMap } from './app/components/map/MarketMap';
 import { MainMenu } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
+import { ActionComposer } from './app/components/actions/ActionComposer';
 import { formatNumber } from './utils/formatters';
 import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
 import './styles/globals.css';
-
-const ACTION_LABELS: Record<string, string> = {
-  build_department: 'Build Department',
-  launch_product: 'Launch Product',
-  improve_product: 'Improve Product',
-  expand_market: 'Expand Market',
-  marketing_campaign: 'Marketing Campaign',
-  hire_executive: 'Hire Executive',
-  security_hardening: 'Security Hardening',
-  ai_automation: 'AI Automation',
-  launch_consulting_practice: 'Launch Consulting',
-  scout_acquisition: 'Scout Acquisition',
-  acquire_company: 'Acquire Company',
-  raise_capital: 'Raise Capital',
-  reduce_costs: 'Reduce Costs',
-};
+import './styles/layout.css';
+import './styles/composer.css';
 
 function App() {
   const {
@@ -37,12 +24,15 @@ function App() {
     addAction,
     selectTile,
     selectCompany,
+    setActivePanel,
     dismissNotification,
     saveGame,
+    estimateAction,
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
+  const [presetActionType, setPresetActionType] = useState<ActionType | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
@@ -59,9 +49,28 @@ function App() {
     }
   };
 
-  const handleAddAction = (type: string, budget: number) => {
-    addAction({ type: type as ActionType, companyId: state!.playerCompanyId, budget, priority: 1 });
+  const handleAddAction = (action: Omit<import('./types').TurnAction, 'id' | 'status'>) => {
+    addAction(action);
     setShowActionModal(false);
+    setPresetActionType(null);
+  };
+
+  /** Quick Actions open the composer pre-set to the relevant action group. */
+  const quickActionPreset: Record<string, string | null> = {
+    'market': 'expand_market',
+    'departments': 'build_department',
+    'products': 'launch_product',
+    'executives': 'hire_executive',
+    'security': 'security_hardening',
+    'ai': 'ai_automation',
+    'finance': 'raise_capital',
+    'news': null,
+  };
+  const handleQuickAction = (key: string) => {
+    if (key === 'news') { setActivePanel('news'); return; }
+    const preset = (quickActionPreset[key] ?? null) as ActionType | null;
+    setPresetActionType(preset);
+    setShowActionModal(true);
   };
 
   const handleTileSelect = (tileId: TileId | null) => {
@@ -104,10 +113,11 @@ function App() {
           companies={state ? Array.from(state.companies.values()) : []}
           actions={state?.actions.filter(a => a.companyId === state.playerCompanyId && a.status === 'planned') || []}
           marketBriefing={state?.marketBriefing || { demandShifts: [], competitorMoves: [], cyberAlerts: [], globalEvents: [], maOpportunities: [], clientRequests: [] }}
-          
+
           onShowActionModal={() => setShowActionModal(true)}
           onCompanySelect={handleCompanySelect}
           selectedCompanyId={selectedCompanyId}
+          onQuickAction={handleQuickAction}
         />
 
         <main className="map-container">
@@ -134,12 +144,18 @@ function App() {
         onDismissNotification={dismissNotification}
       />
 
-      {showActionModal && playerCompany && (
-        <ActionModal
-          playerCompany={playerCompany}
-          onClose={() => setShowActionModal(false)}
-          onAddAction={handleAddAction}
-        />
+      {showActionModal && playerCompany && state && (
+        <Modal title="Plan Executive Order" onClose={() => setShowActionModal(false)} size="xl">
+          <ActionComposer
+            playerCompany={playerCompany}
+            companies={Array.from(state.companies.values())}
+            tiles={Array.from(state.marketTiles.values())}
+            presetType={presetActionType}
+            onClose={() => setShowActionModal(false)}
+            onAdd={handleAddAction}
+            estimate={estimateAction}
+          />
+        </Modal>
       )}
 
       {showCompanyModal && selectedCompanyId && state && (
@@ -163,118 +179,6 @@ function App() {
     </div>
   );
 }
-
-interface ActionModalProps {
-  playerCompany: Company;
-  onClose: () => void;
-  onAddAction: (type: string, budget: number) => void;
-}
-
-const ActionModal: React.FC<ActionModalProps> = ({ playerCompany, onClose, onAddAction }) => {
-  const [selectedAction, setSelectedAction] = useState<string | null>(null);
-  const [budget, setBudget] = useState(0);
-
-  const availableCash = playerCompany?.cash || 0;
-  const maxBudget = Math.floor(availableCash * 0.5);
-
-  const actionGroups = [
-    { label: 'Corporate', actions: ['build_department', 'hire_executive', 'raise_capital', 'reduce_costs'] as string[] },
-    { label: 'Product & R&D', actions: ['launch_product', 'improve_product', 'ai_automation'] as string[] },
-    { label: 'Market & Sales', actions: ['expand_market', 'marketing_campaign', 'launch_consulting_practice'] as string[] },
-    { label: 'Security & M&A', actions: ['security_hardening', 'scout_acquisition', 'acquire_company'] as string[] },
-  ];
-
-  const getActionCost = (type: string): number => {
-    const costs: Record<string, number> = {
-      build_department: 500000,
-      launch_product: 300000,
-      improve_product: 100000,
-      expand_market: 200000,
-      marketing_campaign: 150000,
-      hire_executive: 400000,
-      security_hardening: 200000,
-      ai_automation: 250000,
-      launch_consulting_practice: 150000,
-      scout_acquisition: 50000,
-      acquire_company: 2000000,
-      raise_capital: 0,
-      reduce_costs: 0,
-      end_turn: 0,
-    };
-    return costs[type] || 100000;
-  };
-
-  const handleSubmit = () => {
-    if (selectedAction && budget > 0) {
-      onAddAction(selectedAction, budget);
-    }
-    onClose();
-  };
-
-  return (
-    <Modal title="Plan Executive Order" onClose={onClose} size="lg">
-      <div className="action-modal">
-        <div className="action-groups">
-          {actionGroups.map(group => (
-            <div key={group.label} className="action-group">
-              <h4>{group.label}</h4>
-              <div className="action-buttons">
-                {group.actions.map(action => (
-                  <button
-                    key={action}
-                    className={`action-btn ${selectedAction === action ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedAction(action);
-                      setBudget(getActionCost(action));
-                    }}
-                    disabled={getActionCost(action) > maxBudget && action !== 'raise_capital' && action !== 'reduce_costs'}
-                  >
-                    <span className="action-label">{ACTION_LABELS[action] || action}</span>
-                    <span className="action-cost">${getActionCost(action).toLocaleString()}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {selectedAction && (
-          <div className="budget-selector">
-            <label>Budget Allocation</label>
-            <div className="budget-input">
-              <input
-                type="number"
-                value={budget}
-                onChange={e => setBudget(Math.max(0, Math.min(maxBudget, parseInt(e.target.value) || 0)))}
-                min={0}
-                max={maxBudget}
-                step={10000}
-              />
-              <span>/ ${maxBudget.toLocaleString()} max</span>
-            </div>
-            <div className="budget-slider">
-              <input
-                type="range"
-                value={budget}
-                onChange={e => setBudget(parseInt(e.target.value))}
-                min={0}
-                max={maxBudget}
-                step={10000}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="modal-actions">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!selectedAction || budget <= 0}>
-            Add Order
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-};
 
 interface CompanyModalProps {
   company: Company;

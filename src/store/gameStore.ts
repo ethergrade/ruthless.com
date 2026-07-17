@@ -37,6 +37,7 @@ interface GameStore {
   saveGame: (slot?: string) => boolean;
   loadSlot: (slot: string) => boolean;
   hasAutosave: () => boolean;
+  estimateAction: (action: Omit<TurnAction, 'id' | 'status'>) => number;
 }
 
 const initialUI = {
@@ -184,6 +185,12 @@ export const useGameStore = create<GameStore>()(
       },
 
       hasAutosave: () => MiniDB.loadAuto() !== null,
+
+      estimateAction: (action) => {
+        const { engine } = get();
+        if (!engine) return 0;
+        return engine.estimateSuccess({ ...action, id: 'preview', status: 'planned' });
+      },
     }),
     { name: 'strategyless-store' }
   )

@@ -1,5 +1,4 @@
 import React from 'react';
-import { useGameStore } from '../../../store/gameStore';
 import type { Company, TurnAction, MarketBriefing, DemandShift, CompetitorMove, CyberAlert } from '../../../types';
 
 interface SidebarProps {
@@ -11,6 +10,7 @@ interface SidebarProps {
   onShowActionModal: () => void;
   onCompanySelect: (id: string | null) => void;
   selectedCompanyId: string | null;
+  onQuickAction: (key: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -18,13 +18,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   companies,
   actions,
   marketBriefing,
-  
+
   onShowActionModal,
   onCompanySelect,
   selectedCompanyId,
+  onQuickAction,
 }) => {
-  const { setActivePanel } = useGameStore();
-
   return (
     <aside className="sidebar">
       <div className="sidebar-section">
@@ -84,14 +83,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <h3>QUICK ACTIONS</h3>
         </div>
         <div className="quick-actions">
-          <QuickAction icon="📊" label="Market Intel" onClick={() => setActivePanel('market')} />
-          <QuickAction icon="🏢" label="Departments" onClick={() => setActivePanel('departments')} />
-          <QuickAction icon="📦" label="Products" onClick={() => setActivePanel('products')} />
-          <QuickAction icon="👥" label="Executives" onClick={() => setActivePanel('executives')} />
-          <QuickAction icon="🔒" label="Security" onClick={() => setActivePanel('security')} />
-          <QuickAction icon="🤖" label="AI & Data" onClick={() => setActivePanel('ai')} />
-          <QuickAction icon="💰" label="Finance" onClick={() => setActivePanel('finance')} />
-          <QuickAction icon="📰" label="News" onClick={() => setActivePanel('news')} />
+          <QuickAction icon="📊" label="Market Intel" onClick={() => onQuickAction('market')} />
+          <QuickAction icon="🏢" label="Departments" onClick={() => onQuickAction('departments')} />
+          <QuickAction icon="📦" label="Products" onClick={() => onQuickAction('products')} />
+          <QuickAction icon="👥" label="Executives" onClick={() => onQuickAction('executives')} />
+          <QuickAction icon="🔒" label="Security" onClick={() => onQuickAction('security')} />
+          <QuickAction icon="🤖" label="AI & Data" onClick={() => onQuickAction('ai')} />
+          <QuickAction icon="💰" label="Finance" onClick={() => onQuickAction('finance')} />
+          <QuickAction icon="📰" label="News" onClick={() => onQuickAction('news')} />
         </div>
       </div>
     </aside>

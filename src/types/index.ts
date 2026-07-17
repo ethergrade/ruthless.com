@@ -39,6 +39,46 @@ export type DepartmentType =
   | 'people_culture'
   | 'finance_investor';
 
+/** Ruthless-com inspired department classes (mirrors the original 9 dept types). */
+export type RuthlessDept =
+  | 'product'
+  | 'rd'
+  | 'marketing'
+  | 'hr'
+  | 'admin'
+  | 'acquisitions'
+  | 'legal'
+  | 'security'
+  | 'computer_core';
+
+/** Asset kinds that can be listed on the open market auction house (req 2). */
+export type AuctionAssetKind = 'technology' | 'patent' | 'product' | 'building' | 'department';
+
+/** A live auction listing: assets up for sale across all corporations. */
+export interface AuctionListing {
+  id: string;
+  sellerId: CompanyId;
+  kind: AuctionAssetKind;
+  assetId: string;            // productId / buildingId / departmentId
+  name: string;
+  basePrice: number;
+  currentBid: number;
+  highestBidderId: CompanyId | null;
+  expiresTurn: number;        // turn when the auction closes
+}
+
+/** Tone of voice for CEO social / marketing campaigns. */
+export type VoiceTone =
+  | 'aggressive'
+  | 'visionary'
+  | 'technical'
+  | 'provocative'
+  | 'corporate'
+  | 'rebellious';
+
+/** Whether a marketing/social push is truthful or "fake it till you make it". */
+export type CampaignAuthenticity = 'verified' | 'aspirational' | 'fabricated';
+
 export type ActionType =
   | 'build_department'
   | 'launch_product'
@@ -53,6 +93,16 @@ export type ActionType =
   | 'acquire_company'
   | 'raise_capital'
   | 'reduce_costs'
+  // --- ruthless.com-inspired new actions ---
+  | 'build_building'          // construct a new Building on a tile
+  | 'industrial_espionage'    // steal an idea / cash / evidence from a rival
+  | 'cyber_attack'            // hack a rival: data run / virus / breach
+  | 'security_offline'        // physical security: guards, lockdown, sabotage defense
+  | 'security_online'         // cyber defense: firewall, sweep, change passwords
+  | 'legal_action'            // lawsuit / patent / dispute
+  | 'ceo_social'              // CEO social post: tone + authenticity
+  | 'public_tender_offer'     // OPA: public tender offer for a rival building/company
+  | 'auction_sell'            // list one of your assets on the open auction house (req 2)
   | 'end_turn';
 
 export type CompanyArchetype =
@@ -84,6 +134,36 @@ export interface Company {
   archetype?: CompanyArchetype;
   controlledTiles: TileId[];
   isPlayer: boolean;
+  // --- new: ruthless.com-inspired state ---
+  /** CEO social brand: tone of voice + authenticity pledge. */
+  voiceTone?: VoiceTone;
+  campaignAuthenticity?: CampaignAuthenticity;
+  /** Buildings owned (a Building = a structure sitting on a tile). */
+  buildings: Building[];
+  /** Computer points pool (hacking offense/defense). */
+  computerPoints: number;
+  /** Legal points pool (lawsuits / patents). */
+  legalPoints: number;
+  /** Scandal level 0..100 (drives stock/trust hits). */
+  scandal: number;
+  /** True for AI corps that are "start-ups" available for acquisition. */
+  isStartup?: boolean;
+}
+
+export interface Building {
+  id: string;
+  tileId: TileId;
+  /** Departments housed in this building (subset of company.departments). */
+  departmentIds: DepartmentId[];
+  productIds: ProductId[];
+  /** Defense ratings (0..100). */
+  firewall: number;
+  physicalSecurity: number;
+  /** Hush-money drain from criminal acts (cash/turn). */
+  hushMoney: number;
+  isHQ: boolean;
+  /** True when this building is listed for auction (req 2). */
+  upForAuction?: boolean;
 }
 
 export interface MarketTile {
@@ -105,6 +185,12 @@ export interface MarketTile {
   techMaturity: number;
   acquisitionCost: number;
   competitivePressure: number;
+  /** Building id sitting on this tile, if any. */
+  buildingId?: string;
+  /** Base Quality of the product controlling this tile (ruthless.com model). */
+  baseQuality: number;
+  /** True when the tile's building is listed for auction (req 2). */
+  upForAuction?: boolean;
 }
 
 export interface Product {
@@ -123,6 +209,22 @@ export interface Product {
   trust: number;
   targetSegments: MarketSegment[];
   tileIds: TileId[];
+  /** Player-editable KPIs (startup refactor). */
+  editableKpis?: ProductKpis;
+  /** True if name/segment were chosen by the player at creation. */
+  customNamed?: boolean;
+  /** True when listed for auction (req 2). */
+  upForAuction?: boolean;
+}
+
+/** Player-tunable product KPIs shown in the product editor. */
+export interface ProductKpis {
+  quality: number;        // 0..100
+  security: number;       // 0..100
+  scalability: number;    // 0..100
+  marketFit: number;      // 0..100
+  price: number;          // monthly price per client
+  technicalDebt: number;  // 0..100 (higher = worse)
 }
 
 export interface Department {
@@ -135,6 +237,17 @@ export interface Department {
   risk: number;
   recurringCost: number;
   executiveId?: ExecutiveId;
+  /** Player-editable department KPIs. */
+  editableKpis?: DepartmentKpis;
+  /** Building/tile this department operates from (req 6: different depts in different buildings). */
+  buildingId?: string;
+}
+
+export interface DepartmentKpis {
+  efficiency: number;   // 0..100
+  morale: number;       // 0..100
+  capacity: number;     // 0..100
+  risk: number;         // 0..100 (higher = worse)
 }
 
 export interface Executive {
@@ -196,6 +309,24 @@ export interface TurnAction {
   status: 'planned' | 'resolved' | 'failed';
   outcome?: ActionOutcome;
   priority: number;
+  // --- new action options ---
+  /** Target company id (espionage / cyber / legal / OPA). */
+  targetCompanyId?: CompanyId;
+  /** Target department class for espionage/cyber/security. */
+  targetDept?: RuthlessDept;
+  /** CEO social / marketing tone. */
+  tone?: VoiceTone;
+  /** Marketing/social authenticity. */
+  authenticity?: CampaignAuthenticity;
+  /** Tile id to build a building on. */
+  targetTileId?: TileId;
+  /** Generated/editable product name + category (product creation). */
+  productName?: string;
+  productCategory?: ProductCategory;
+  /** OPA: tender price offered. */
+  offerPrice?: number;
+  /** Success-estimate preview (req 4): 0..1, filled by store before planning. */
+  estimatedSuccess?: number;
 }
 
 export interface ActionOutcome {
@@ -248,6 +379,7 @@ export interface GameState {
   events: GameEvent[];
   newsFeed: NewsItem[];
   marketBriefing: MarketBriefing;
+  auctionHouse: AuctionListing[];   // req 2: assets up for auction
   isGameOver: boolean;
   victoryType?: VictoryType;
   seed: number;

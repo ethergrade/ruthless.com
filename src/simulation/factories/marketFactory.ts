@@ -63,6 +63,8 @@ const createTile = (
     techMaturity,
     acquisitionCost,
     competitivePressure,
+    buildingId: undefined,
+    baseQuality: 0,
   };
 };
 

@@ -22,6 +22,7 @@ import type { MarketSegment,
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
 import { createCompany } from '../factories/companyFactory';
+import { generateCompanyName } from '../../data/generators';
 
 export interface TurnResult {
   newState: GameState;
@@ -69,8 +70,17 @@ export class TurnEngine {
     const companies = new Map<CompanyId, Company>();
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
 
+    // Give each corporation a starting HQ Building on its first controlled tile.
+    [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
+
+    // Spawn neutral "start-up" corporations sitting on random tiles that the
+    // player (or AI) can acquire via payment / public tender offer.
+    const startups = this.spawnStartups(marketTiles, 4);
+
     const products = new Map<ProductId, Product>();
-    [...playerCompany.products, ...aiCompanies.flatMap(c => c.products)].forEach(p => products.set(p.id, p));
+    [...playerCompany.products, ...aiCompanies.flatMap(c => c.products), ...startups.flatMap(c => c.products)]
+      .forEach(p => products.set(p.id, p));
+    [...aiCompanies, ...startups].forEach(c => companies.set(c.id, c));
 
     return {
       turn: 1,
@@ -86,9 +96,58 @@ export class TurnEngine {
         demandShifts: [], globalEvents: [], competitorMoves: [],
         cyberAlerts: [], maOpportunities: [], clientRequests: [],
       },
+      auctionHouse: [],
       isGameOver: false,
       seed: this.rng.getSeed(),
     };
+  }
+
+  /** Place an HQ building for a company on its first controlled tile. */
+  private seedCompanyBuilding(company: Company, tiles: Map<string, MarketTile>): void {
+    const tileId = company.controlledTiles[0];
+    if (!tileId) return;
+    const tile = tiles.get(tileId);
+    if (!tile) return;
+    const id = generateId.building();
+    company.buildings.push({
+      id,
+      tileId,
+      departmentIds: company.departments.slice(0, 2).map(d => d.id),
+      productIds: company.products.slice(0, 1).map(p => p.id),
+      firewall: company.archetype === 'security_fortress' ? 40 : 20,
+      physicalSecurity: 30,
+      hushMoney: 0,
+      isHQ: true,
+    });
+    tile.buildingId = id;
+  }
+
+  /** Create neutral start-up corps on random unclaimed tiles. */
+  private spawnStartups(tiles: Map<string, MarketTile>, count: number): Company[] {
+    const free = Array.from(tiles.values()).filter(t => !t.controllerId);
+    this.rng.shuffle(free);
+    const startups: Company[] = [];
+    for (let i = 0; i < count && free.length > 0; i++) {
+      const tile = free.pop()!;
+      const c = createCompany(this.rng, undefined, undefined, false, 3 + i);
+      c.isStartup = true;
+      c.name = generateCompanyName(this.rng.getSeed() + i * 13 + 1);
+      c.cash = this.rng.nextInt(300000, 900000);
+      c.marketInfluence = this.rng.nextInt(1, 4);
+      tile.controllerId = c.id;
+      tile.controlStrength = this.rng.nextFloat(0.5, 0.8);
+      c.controlledTiles = [tile.id];
+      const id = generateId.building();
+      c.buildings.push({
+        id, tileId: tile.id,
+        departmentIds: c.departments.slice(0, 1).map(d => d.id),
+        productIds: c.products.slice(0, 1).map(p => p.id),
+        firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
+      });
+      tile.buildingId = id;
+      startups.push(c);
+    }
+    return startups;
   }
 
   private assignStartingTerritories(
@@ -212,25 +271,33 @@ export class TurnEngine {
         build_department: 20, launch_product: 25, improve_product: 15,
         expand_market: 20, marketing_campaign: 10, hire_executive: 5,
         security_hardening: 2, ai_automation: 3, launch_consulting_practice: 1,
-        scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1, end_turn: 0,
+        scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1,
+        build_building: 8, industrial_espionage: 4, cyber_attack: 3, security_offline: 2,
+        security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0,
       },
       security_fortress: {
         build_department: 15, launch_product: 10, improve_product: 15,
         expand_market: 5, marketing_campaign: 5, hire_executive: 10,
         security_hardening: 25, ai_automation: 5, launch_consulting_practice: 5,
-        scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5, end_turn: 0,
+        scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5,
+        build_building: 5, industrial_espionage: 3, cyber_attack: 4, security_offline: 8,
+        security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0,
       },
       acquisition_machine: {
         build_department: 10, launch_product: 10, improve_product: 10,
         expand_market: 10, marketing_campaign: 5, hire_executive: 10,
         security_hardening: 5, ai_automation: 5, launch_consulting_practice: 5,
-        scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5, end_turn: 0,
+        scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5,
+        build_building: 6, industrial_espionage: 4, cyber_attack: 3, security_offline: 3,
+        security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0,
       },
       lean_specialist: {
         build_department: 10, launch_product: 15, improve_product: 20,
         expand_market: 10, marketing_campaign: 10, hire_executive: 10,
         security_hardening: 10, ai_automation: 10, launch_consulting_practice: 15,
-        scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10, end_turn: 0,
+        scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10,
+        build_building: 4, industrial_espionage: 5, cyber_attack: 4, security_offline: 4,
+        security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0,
       },
     };
 
@@ -261,6 +328,15 @@ export class TurnEngine {
       acquire_company: 2000000,
       raise_capital: 0,
       reduce_costs: 0,
+      build_building: 750000,
+      industrial_espionage: 200000,
+      cyber_attack: 250000,
+      security_offline: 200000,
+      security_online: 150000,
+      legal_action: 250000,
+      ceo_social: 100000,
+      public_tender_offer: 1500000,
+      auction_sell: 0,
       end_turn: 0,
     };
 
@@ -339,6 +415,15 @@ export class TurnEngine {
       acquire_company: 2000000,
       raise_capital: 0,
       reduce_costs: 0,
+      build_building: 750000,
+      industrial_espionage: 200000,
+      cyber_attack: 250000,
+      security_offline: 200000,
+      security_online: 150000,
+      legal_action: 250000,
+      ceo_social: 100000,
+      public_tender_offer: 1500000,
+      auction_sell: 0,
       end_turn: 0,
     };
     return costs[actionType] || 100000;
@@ -359,6 +444,15 @@ export class TurnEngine {
       acquire_company: ['acquisitions', 'finance_investor', 'legal_compliance'],
       raise_capital: ['finance_investor', 'corporate_strategy'],
       reduce_costs: ['finance_investor', 'people_culture'],
+      build_building: ['corporate_strategy', 'finance_investor'],
+      industrial_espionage: ['cybersecurity', 'product_rd', 'ai_data'],
+      cyber_attack: ['cybersecurity', 'ai_data'],
+      security_offline: ['cybersecurity', 'people_culture'],
+      security_online: ['cybersecurity', 'ai_data'],
+      legal_action: ['legal_compliance', 'corporate_strategy'],
+      ceo_social: ['sales_marketing', 'corporate_strategy'],
+      public_tender_offer: ['acquisitions', 'finance_investor', 'legal_compliance'],
+      auction_sell: ['finance_investor', 'corporate_strategy', 'acquisitions'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -417,6 +511,34 @@ export class TurnEngine {
         break;
       case 'reduce_costs':
         this.reduceCosts(company);
+        break;
+      // --- ruthless.com-inspired new actions ---
+      case 'build_building':
+        this.buildNewBuilding(company, action);
+        break;
+      case 'industrial_espionage':
+        this.runIndustrialEspionage(company, action);
+        break;
+      case 'cyber_attack':
+        this.runCyberAttack(company, action);
+        break;
+      case 'security_offline':
+        this.runSecurityOffline(company, action);
+        break;
+      case 'security_online':
+        this.runSecurityOnline(company, action);
+        break;
+      case 'legal_action':
+        this.runLegalAction(company, action);
+        break;
+      case 'ceo_social':
+        this.runCeoSocial(company, action);
+        break;
+      case 'public_tender_offer':
+        this.runPublicTenderOffer(company, action);
+        break;
+      case 'auction_sell':
+        this.runAuctionSell(company, action);
         break;
     }
 
@@ -551,6 +673,228 @@ export class TurnEngine {
       d.morale = Math.max(0.3, d.morale - 0.1);
       d.efficiency = Math.max(0.5, d.efficiency - 0.05);
     });
+  }
+
+  // ===================================================================
+  // ruthless.com-inspired new actions
+  // ===================================================================
+
+  /** Build a new Building on a tile (cost ~750k; attaches to nearest owned building). */
+  private buildNewBuilding(company: Company, action: TurnAction): void {
+    const tileId = action.targetTileId;
+    if (!tileId) return;
+    const tile = this.state.marketTiles.get(tileId);
+    if (!tile) return;
+    const id = generateId.building();
+    const isHQ = company.buildings.length === 0;
+    company.buildings.push({
+      id,
+      tileId,
+      departmentIds: company.departments.slice(0, 1).map(d => d.id),
+      productIds: company.products.slice(0, 1).map(p => p.id),
+      firewall: isHQ ? 30 : 10,
+      physicalSecurity: isHQ ? 40 : 15,
+      hushMoney: 0,
+      isHQ,
+    });
+    tile.buildingId = id;
+    tile.controllerId = company.id;
+    tile.controlStrength = Math.max(tile.controlStrength, 0.5);
+    if (!company.controlledTiles.includes(tileId)) company.controlledTiles.push(tileId);
+  }
+
+  /** Industrial espionage: steal an idea / cash / evidence from a rival. */
+  private runIndustrialEspionage(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target) return;
+    const success = this.rng.nextBoolean(0.6 - (target.securityPosture / 400));
+    if (!success) { company.scandal = Math.min(100, company.scandal + 8); return; }
+    switch (action.targetDept) {
+      case 'rd':
+      case 'product': {
+        // steal an idea -> boost innovation + spawn a product insight
+        company.innovation = Math.min(100, company.innovation + 6);
+        const p = target.products[0];
+        if (p) company.products.push({ ...p, id: generateId.product(), companyId: company.id, name: `${p.name} Clone`, tileIds: [] });
+        break;
+      }
+      case 'marketing':
+      case 'hr': {
+        company.cash += Math.round(action.budget * 0.5);
+        target.cash -= Math.round(action.budget * 0.3);
+        break;
+      }
+      default:
+        company.cash += Math.round(action.budget * 0.3);
+    }
+  }
+
+  /** Cyber attack: hack a rival (data run / virus / breach) using computer points. */
+  private runCyberAttack(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target) return;
+    const spend = Math.min(company.computerPoints, Math.max(100, Math.round(action.budget / 1000)));
+    company.computerPoints -= spend;
+    const breach = spend > target.buildings.reduce((s, b) => s + b.firewall, 0);
+    if (breach) {
+      target.securityPosture = Math.max(0, target.securityPosture - 6);
+      target.brandTrust = Math.max(0, target.brandTrust - 3);
+      company.innovation = Math.min(100, company.innovation + 2);
+    } else {
+      company.scandal = Math.min(100, company.scandal + 5);
+    }
+  }
+
+  /** Offline (physical) security: guards / lockdown / sabotage defense. */
+  private runSecurityOffline(company: Company, action: TurnAction): void {
+    company.securityPosture = Math.min(100, company.securityPosture + action.budget / 8000);
+    company.buildings.forEach(b => { b.physicalSecurity = Math.min(100, b.physicalSecurity + 4); });
+  }
+
+  /** Online (cyber) defense: firewall, virus sweep, change passwords. */
+  private runSecurityOnline(company: Company, action: TurnAction): void {
+    company.computerPoints += Math.round(action.budget / 2000);
+    company.buildings.forEach(b => { b.firewall = Math.min(100, b.firewall + 8); });
+    company.securityPosture = Math.min(100, company.securityPosture + action.budget / 12000);
+  }
+
+  /** Legal action: lawsuit / patent / dispute against a rival. */
+  private runLegalAction(company: Company, action: TurnAction): void {
+    company.legalPoints += Math.round(action.budget / 1000);
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (target) {
+      const win = this.rng.nextBoolean(0.5 + (company.legalPoints - target.marketInfluence) / 500);
+      if (win) {
+        target.marketInfluence = Math.max(0, target.marketInfluence - 4);
+        company.marketInfluence += 2;
+      } else {
+        target.legalPoints += 200;
+      }
+    }
+  }
+
+  /** CEO social post: tone + authenticity pledge. Aggressive/rebellious + fabricated
+   *  hits harder but raises scandal risk. */
+  private runCeoSocial(company: Company, action: TurnAction): void {
+    company.voiceTone = action.tone ?? company.voiceTone ?? 'aggressive';
+    company.campaignAuthenticity = action.authenticity ?? company.campaignAuthenticity ?? 'aspirational';
+    const toneMul = (company.voiceTone === 'aggressive' || company.voiceTone === 'rebellious') ? 1.3 : 1.0;
+    const authMul = company.campaignAuthenticity === 'verified' ? 0.8
+      : company.campaignAuthenticity === 'fabricated' ? 1.4 : 1.1;
+    const lift = (action.budget / 50000) * toneMul * authMul;
+    company.brandTrust = Math.min(100, company.brandTrust + lift * 0.5);
+    company.marketInfluence = Math.min(100, company.marketInfluence + lift * 0.4);
+    if (company.campaignAuthenticity === 'fabricated') {
+      company.scandal = Math.min(100, company.scandal + lift * 0.3);
+    }
+  }
+
+  /** Public tender offer (OPA): acquire a rival building/company via payment. */
+  private runPublicTenderOffer(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target) return;
+    const offer = action.offerPrice ?? action.budget;
+    if (offer <= 0 || offer > company.cash) return;
+    // Auto-accept if offer >= 2x building worth (ruthless.com rule); else probabilistic.
+    const worth = Math.max(500000, target.valuation * 0.15);
+    const accept = offer >= worth * 2 || this.rng.nextBoolean(offer / (worth * 1.5));
+    if (accept) {
+      company.cash -= offer;
+      target.cash += offer;
+      company.marketInfluence += 4;
+      target.marketInfluence = Math.max(0, target.marketInfluence - 3);
+      // fold target buildings into the bidder
+      target.buildings.forEach(b => {
+        b.tileId && company.controlledTiles.includes(b.tileId);
+        if (!company.buildings.find(x => x.tileId === b.tileId)) company.buildings.push(b);
+      });
+    } else {
+      company.scandal = Math.min(100, company.scandal + 2);
+    }
+  }
+
+  /** List one of the company's assets (technology/patent/product/building/dept) on the auction house. */
+  private runAuctionSell(company: Company, action: TurnAction): void {
+    const assetId = action.targetId;
+    if (!assetId) return;
+    let kind: 'technology' | 'patent' | 'product' | 'building' | 'department' = 'product';
+    let name = 'Asset';
+    let base = 0;
+    const prod = company.products.find(p => p.id === assetId);
+    const bld = company.buildings.find(b => b.id === assetId);
+    const dept = company.departments.find(d => d.id === assetId);
+    if (prod) { kind = 'product'; name = prod.name; base = Math.round(prod.price * 6 + prod.quality * 5000); }
+    else if (bld) { kind = 'building'; name = `Building @${bld.tileId}`; base = 750000; }
+    else if (dept) { kind = 'department'; name = `${dept.type} L${dept.level}`; base = dept.level * 100000; }
+    else { kind = 'technology'; name = 'Tech/Patent'; base = 300000; }
+    this.state.auctionHouse.push({
+      id: generateId.action(),
+      sellerId: company.id,
+      kind, assetId, name,
+      basePrice: base,
+      currentBid: 0,
+      highestBidderId: null,
+      expiresTurn: this.state.turn + 2,
+    });
+    // mark asset as listed
+    if (prod) prod.upForAuction = true;
+    if (bld) bld.upForAuction = true;
+  }
+
+  /**
+   * Public success-estimate (req 4): returns 0..1 probability that a planned action
+   * succeeds, grounded in the player's strategy profile + the competitive field.
+   * Used by the UI to preview odds before committing an order.
+   */
+  estimateSuccess(action: TurnAction): number {
+    const company = this.state.companies.get(action.companyId);
+    if (!company) return 0;
+    let chance = 0.7;
+
+    const relevantDept = company.departments.find(d => this.isDepartmentRelevant(d.type, action.type));
+    if (relevantDept) {
+      chance += (relevantDept.level - 1) * 0.05;
+      chance += (relevantDept.efficiency - 0.5) * 0.2;
+    }
+
+    // strategy profile: how does the player tend to play? measure via budget allocation tilt.
+    const tilt = this.strategyTilt(company.id);
+    chance += tilt.combat * 0.05;   // leaning into offense boosts offensive actions
+    chance += tilt.defense * 0.05;  // leaning into defense boosts defensive actions
+    chance += tilt.growth * 0.05;   // leaning into growth boosts market/expansion
+
+    // competitive field: stronger rivals / higher rival security lowers success.
+    const rivals = Array.from(this.state.companies.values()).filter(c => c.id !== company.id);
+    const avgRivalStrength = rivals.length
+      ? rivals.reduce((s, c) => s + c.marketInfluence + c.securityPosture, 0) / rivals.length / 2
+      : 0;
+    const isOffensive = ['industrial_espionage', 'cyber_attack', 'legal_action', 'public_tender_offer', 'acquire_company'].includes(action.type);
+    if (isOffensive) chance -= avgRivalStrength / 400;
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (target) {
+      if (action.type === 'cyber_attack') chance -= target.securityPosture / 300;
+      if (action.type === 'industrial_espionage') chance -= target.securityPosture / 400;
+      if (action.type === 'legal_action') chance += (company.legalPoints - target.marketInfluence) / 600;
+      if (action.type === 'public_tender_offer') chance += (action.offerPrice ?? 0) / (target.valuation * 3);
+    }
+
+    // scandal erodes credibility -> social/legal actions suffer.
+    if (action.type === 'ceo_social' || action.type === 'marketing_campaign') chance -= company.scandal / 300;
+
+    const budgetRatio = action.budget / this.getActionBaseCost(action.type);
+    chance += Math.min(0.2, (budgetRatio - 1) * 0.1);
+
+    return Math.max(0.05, Math.min(0.97, Math.round(chance * 100) / 100));
+  }
+
+  /** Summarises how a company has been playing: offensive / defensive / growth tilt. */
+  private strategyTilt(companyId: CompanyId): { combat: number; defense: number; growth: number } {
+    const acts = this.state.actions.filter(a => a.companyId === companyId);
+    if (acts.length === 0) return { combat: 0, defense: 0, growth: 0 };
+    const combat = acts.filter(a => ['industrial_espionage', 'cyber_attack', 'legal_action', 'acquire_company', 'public_tender_offer'].includes(a.type)).length / acts.length;
+    const defense = acts.filter(a => ['security_hardening', 'security_offline', 'security_online'].includes(a.type)).length / acts.length;
+    const growth = acts.filter(a => ['expand_market', 'launch_product', 'improve_product', 'ai_automation', 'build_department'].includes(a.type)).length / acts.length;
+    return { combat, defense, growth };
   }
 
   private recalculateCompanyMetrics(company: Company): void {

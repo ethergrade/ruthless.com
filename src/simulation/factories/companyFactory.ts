@@ -100,6 +100,12 @@ export const createCompany = (
     archetype: companyArchetype,
     controlledTiles: [],
     isPlayer,
+    voiceTone: isPlayer ? 'aggressive' : undefined,
+    campaignAuthenticity: isPlayer ? 'aspirational' : undefined,
+    buildings: [],
+    computerPoints: 0,
+    legalPoints: 0,
+    scandal: 0,
   };
 };
 

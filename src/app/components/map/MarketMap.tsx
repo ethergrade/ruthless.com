@@ -254,8 +254,8 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       scene.input.keyboard!.addCapture('SPACE');
       const keyQ = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
       const keyE = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-      keyQ.on('down', () => { setCamRot(camState.rot - Phaser.Math.DegToRad(15)); syncCamState(); });
-      keyE.on('down', () => { setCamRot(camState.rot + Phaser.Math.DegToRad(15)); syncCamState(); });
+      keyQ.on('down', () => { setCamRot(camState.rot - Phaser.Math.DegToRad(90)); syncCamState(); });
+      keyE.on('down', () => { setCamRot(camState.rot + Phaser.Math.DegToRad(90)); syncCamState(); });
 
       let panning = false, lastPX = 0, lastPY = 0, hoverId: string | null = null;
       scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -336,7 +336,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       <div className="map-controls-hint">
         <span><b>DRAG</b> (o Spazio+tasto) = pan</span>
         <span><b>WHEEL</b> = zoom</span>
-        <span><b>Q / E</b> = ruota</span>
+        <span><b>Q / E</b> = ruota 90°</span>
       </div>
     </div>
   );

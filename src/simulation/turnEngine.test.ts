@@ -22,7 +22,7 @@ describe('TurnEngine construction', () => {
   it('produces a valid initial state', () => {
     const engine = new TurnEngine(123);
     const s = engine.getState();
-    expect(s.companies.size).toBe(4);
+    expect(s.companies.size).toBe(8);
     expect(s.marketTiles.size).toBe(64);
     expect(s.turn).toBe(1);
     expect(s.playerCompanyId).toBeTruthy();

@@ -43,11 +43,12 @@ describe('Fase 2 — layout components render without crashing', () => {
       createElement(Sidebar, {
         playerCompany: companies[0],
         companies,
-        actions: [],
+        actions: [] as import('../types').TurnAction[],
         marketBriefing: emptyBriefing,
         onShowActionModal: () => {},
         onCompanySelect: () => {},
         selectedCompanyId: null,
+        onQuickAction: () => {},
       })
     );
     expect(html).toContain('EXECUTIVE ORDERS');
