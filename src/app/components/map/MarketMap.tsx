@@ -1,251 +1,343 @@
 import React, { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
-import type { GameState } from '../../../types';
+import type { GameState, MarketTile } from '../../../types';
 
-const TILE_WIDTH = 64;
-const TILE_HEIGHT = 32;
-const MAP_OFFSET_X = 400;
-const MAP_OFFSET_Y = 100;
+const TILE_W = 96;
+const TILE_H = 48;
 
-interface SceneData {
-  tileSprites: Map<string, Phaser.GameObjects.Image>;
-  buildings: Map<string, Phaser.GameObjects.Graphics>;
-  companyColors: Map<string, number>;
+interface Props {
+  state: GameState | null;
+  selectedTileId: string | null;
+  onTileSelect: (tileId: string | null) => void;
 }
 
-const sceneDataRef = { current: null as SceneData | null };
+/* ---- color helpers ------------------------------------------------------- */
+function shade(color: number, amt: number): number {
+  const c = Phaser.Display.Color.IntegerToColor(color);
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v + amt)));
+  return Phaser.Display.Color.GetColor(f(c.red), f(c.green), f(c.blue));
+}
+function diamondPoints(cx: number, cy: number): Phaser.Geom.Point[] {
+  return [
+    new Phaser.Geom.Point(cx, cy - TILE_H / 2),
+    new Phaser.Geom.Point(cx + TILE_W / 2, cy),
+    new Phaser.Geom.Point(cx, cy + TILE_H / 2),
+    new Phaser.Geom.Point(cx - TILE_W / 2, cy),
+  ];
+}
+function isoBox(
+  g: Phaser.GameObjects.Graphics,
+  cx: number, cyTop: number, w: number, height: number,
+  baseColor: number, windows: boolean,
+): void {
+  const hw = w / 2, hh = w / 4;
+  const top = [
+    new Phaser.Geom.Point(cx, cyTop - hh), new Phaser.Geom.Point(cx + hw, cyTop),
+    new Phaser.Geom.Point(cx, cyTop + hh), new Phaser.Geom.Point(cx - hw, cyTop),
+  ];
+  const right = [
+    new Phaser.Geom.Point(cx + hw, cyTop), new Phaser.Geom.Point(cx, cyTop + hh),
+    new Phaser.Geom.Point(cx, cyTop + hh + height), new Phaser.Geom.Point(cx + hw, cyTop + height),
+  ];
+  const left = [
+    new Phaser.Geom.Point(cx - hw, cyTop), new Phaser.Geom.Point(cx, cyTop + hh),
+    new Phaser.Geom.Point(cx, cyTop + hh + height), new Phaser.Geom.Point(cx - hw, cyTop + height),
+  ];
+  g.fillStyle(shade(baseColor, -55), 1); g.fillPoints(left, true);
+  g.fillStyle(shade(baseColor, -25), 1); g.fillPoints(right, true);
+  g.fillStyle(shade(baseColor, 35), 1); g.fillPoints(top, true);
+  if (windows) {
+    g.fillStyle(shade(baseColor, 120), 0.9);
+    const step = Math.max(4, height / 3);
+    for (let y = cyTop + hh + step * 0.6; y < cyTop + hh + height - 2; y += step) {
+      g.fillRect(cx - hw * 0.5, y, 3, 3);
+      g.fillRect(cx + hw * 0.25, y + step * 0.4, 3, 3);
+    }
+  }
+}
 
-export const MarketMap: React.FC<{ 
-  state: GameState | null; 
-  selectedTileId: string | null; 
-  onTileSelect: (tileId: string | null) => void; 
-}> = ({ state, selectedTileId, onTileSelect }) => {
+export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const selectedTileIdRef = useRef(selectedTileId);
+  const onTileSelectRef = useRef(onTileSelect);
+  const camStateRef = useRef<{ zoom: number; rotation: number; scrollX: number; scrollY: number } | null>(null);
 
+  useEffect(() => { selectedTileIdRef.current = selectedTileId; }, [selectedTileId]);
+  useEffect(() => { onTileSelectRef.current = onTileSelect; }, [onTileSelect]);
+
+  // Rebuild the Phaser scene only when a new game state object is created.
+  // (selection / callbacks flow through refs so they never reset the camera.)
   useEffect(() => {
     if (!containerRef.current || !state) return;
 
     const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.WEBGL,
+      type: Phaser.AUTO,
       parent: containerRef.current,
-      width: containerRef.current.clientWidth || 800,
-      height: containerRef.current.clientHeight || 600,
-      backgroundColor: '#0a0a12',
-      scene: {
-        preload,
-        create,
-        update,
-      },
-      render: {
-        antialias: true,
-        pixelArt: false,
-      },
+      backgroundColor: '#05060d',
+      scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
+      scene: { preload, create, update },
+      render: { antialias: true },
     };
 
-    gameRef.current = new Phaser.Game(config);
-
-    return () => {
-      if (gameRef.current) {
-        gameRef.current.destroy(true);
-        gameRef.current = null;
+    function preload(this: Phaser.Scene) {
+      const tex = this.textures.createCanvas('glow', 64, 64);
+      if (tex) {
+        const ctx = tex.getContext();
+        const grd = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grd; ctx.fillRect(0, 0, 64, 64);
+        tex.refresh();
       }
-    };
-  }, [state, selectedTileId]);
+    }
 
-  function preload(this: Phaser.Scene) {
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    function create(this: Phaser.Scene) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- we need a stable alias for nested closures
+      const scene = this;
+      const W = scene.scale.width || containerRef.current!.clientWidth;
+      const H = scene.scale.height || containerRef.current!.clientHeight;
 
-    g.fillStyle(0x1a1a2e);
-    g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.lineStyle(1, 0x2a2a4a);
-    g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_base', TILE_WIDTH, TILE_HEIGHT);
+      const tiles = Array.from(state!.marketTiles.values());
+      const centers = new Map<string, { x: number; y: number }>();
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      tiles.forEach((t) => {
+        const ix = (t.x - t.y) * (TILE_W / 2);
+        const iy = (t.x + t.y) * (TILE_H / 2);
+        centers.set(t.id, { x: ix, y: iy });
+        minX = Math.min(minX, ix); maxX = Math.max(maxX, ix);
+        minY = Math.min(minY, iy); maxY = Math.max(maxY, iy);
+      });
+      const offX = W / 2 - (minX + maxX) / 2;
+      const offY = H / 2 - (minY + maxY) / 2 - TILE_H * 0.5;
+      const boardW = maxX - minX + TILE_W;
+      const boardH = maxY - minY + TILE_H * 3;
+      const boardCenter = { x: offX + (minX + maxX) / 2, y: offY + (minY + maxY) / 2 };
 
-    g.clear();
-    g.fillStyle(0x00d4aa, 0.3);
-    g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.lineStyle(2, 0x00d4aa);
-    g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_player', TILE_WIDTH, TILE_HEIGHT);
+      const companyColors = new Map<string, number>();
+      state!.companies.forEach((c) =>
+        companyColors.set(c.id, Phaser.Display.Color.HexStringToColor(c.color).color));
 
-    g.clear();
-    g.fillStyle(0xff6b35, 0.3);
-    g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.lineStyle(2, 0xff6b35);
-    g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_enemy', TILE_WIDTH, TILE_HEIGHT);
+      /* ---- backdrops: static screen frame + world floor grid ----------- */
+      const bg = scene.add.graphics().setDepth(0).setScrollFactor(0);
+      const floor = scene.add.graphics().setDepth(0);
+      const drawBackdrops = (w: number, h: number) => {
+        bg.clear();
+        bg.fillStyle(0x07080f, 1).fillRect(0, 0, w, h);
+        bg.lineStyle(1, 0x12203a, 0.35);
+        for (let gx = 0; gx <= w; gx += 48) bg.lineBetween(gx, 0, gx, h);
+        for (let gy = 0; gy <= h; gy += 48) bg.lineBetween(0, gy, w, gy);
+        bg.fillStyle(0x05060d, 0.5);
+        bg.fillRect(0, 0, w, h * 0.1); bg.fillRect(0, h * 0.9, w, h * 0.1);
+        bg.fillRect(0, 0, w * 0.06, h); bg.fillRect(w * 0.94, 0, w * 0.06, h);
+        floor.clear();
+        const pad = 700;
+        floor.lineStyle(1, 0x14233f, 0.45);
+        for (let gx = offX - pad; gx <= offX + maxX + pad; gx += 64) floor.lineBetween(gx, offY - pad, gx, offY + maxY + pad);
+        for (let gy = offY - pad; gy <= offY + maxY + pad; gy += 64) floor.lineBetween(offX - pad, gy, offX + maxX + pad, gy);
+      };
+      drawBackdrops(W, H);
+      scene.scale.on('resize', (gs: Phaser.Structs.Size) => drawBackdrops(gs.width, gs.height));
 
-    g.clear();
-    g.fillStyle(0x007bff, 0.3);
-    g.fillRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.lineStyle(2, 0x007bff);
-    g.strokeRect(0, 0, TILE_WIDTH, TILE_HEIGHT);
-    g.generateTexture('tile_contested', TILE_WIDTH, TILE_HEIGHT);
+      const scan = scene.add.graphics().setDepth(0).setScrollFactor(0).setBlendMode(Phaser.BlendModes.ADD);
+      (scene as unknown as { _scan: Phaser.GameObjects.Graphics })._scan = scan;
 
-    g.clear();
-    g.fillStyle(0x1a1a2e, 0.8);
-    g.fillRoundedRect(0, 0, 200, 100, 8);
-    g.lineStyle(1, 0x00d4aa, 0.5);
-    g.strokeRoundedRect(0, 0, 200, 100, 8);
-    g.generateTexture('tooltip_bg', 200, 100);
+      /* ---- tiles + buildings + network lines --------------------------- */
+      const tileLayer = scene.add.graphics().setDepth(1);
+      const linesLayer = scene.add.graphics().setDepth(1.5).setBlendMode(Phaser.BlendModes.ADD);
+      const glowLayer = scene.add.graphics().setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
+      const sorted = [...tiles].sort((a, b) => a.x + a.y - (b.x + b.y));
 
-    g.destroy();
-  }
-
-  function create(this: Phaser.Scene) {
-    const { marketTiles, companies } = state!;
-    const companyColors = new Map<string, number>();
-      companies.forEach((c) => {
-      companyColors.set(c.id, Phaser.Display.Color.HexStringToColor(c.color).color);
-    });
-
-    const tileSprites = new Map<string, Phaser.GameObjects.Image>();
-    const buildings = new Map<string, Phaser.GameObjects.Graphics>();
-
-    marketTiles.forEach((tile, id) => {
-      const isoX = (tile.x - tile.y) * (TILE_WIDTH / 2) + MAP_OFFSET_X;
-      const isoY = (tile.x + tile.y) * (TILE_HEIGHT / 2) + MAP_OFFSET_Y;
-
-      let texture = 'tile_base';
-      if (tile.controllerId) {
-        if (tile.challengerId && tile.challengerId !== tile.controllerId) {
-          texture = 'tile_contested';
-        } else if (tile.controllerId === state!.playerCompanyId) {
-          texture = 'tile_player';
-        } else {
-          texture = 'tile_enemy';
+      const byCompany = new Map<string, MarketTile[]>();
+      tiles.forEach((t) => {
+        if (t.controllerId) {
+          if (!byCompany.has(t.controllerId)) byCompany.set(t.controllerId, []);
+          byCompany.get(t.controllerId)!.push(t);
         }
-      }
-
-      const tileSprite = this.add.image(isoX, isoY, texture).setDepth(1).setInteractive();
-      tileSprite.setData('tileId', id);
-      tileSprites.set(id, tileSprite);
-
-      tileSprite.on('pointerover', () => {
-        tileSprite.setTint(0xffffff);
-        this.input.setDefaultCursor('pointer');
+      });
+      byCompany.forEach((list, cid) => {
+        const col = companyColors.get(cid) || 0x00d4aa;
+        linesLayer.lineStyle(1.5, col, 0.18);
+        const cxavg = list.reduce((s, t) => s + centers.get(t.id)!.x, 0) / list.length;
+        const cyavg = list.reduce((s, t) => s + centers.get(t.id)!.y, 0) / list.length;
+        list.forEach((t) => {
+          const c = centers.get(t.id)!;
+          linesLayer.lineBetween(offX + c.x, offY + c.y, offX + cxavg, offY + cyavg);
+        });
       });
 
-      tileSprite.on('pointerout', () => {
-        tileSprite.clearTint();
-        this.input.setDefaultCursor('default');
-      });
-
-      tileSprite.on('pointerdown', () => {
-        onTileSelect(id);
-      });
-
-      if (tile.controllerId) {
-        const color = companyColors.get(tile.controllerId) || 0xffffff;
-        const building = this.add.graphics();
-        building.setDepth(2);
-        building.fillStyle(color, 0.8);
-        const height = 20 + tile.controlStrength * 30;
-        building.fillRect(isoX - 12, isoY - height - 8, 24, height);
-        building.fillStyle(0x000000, 0.5);
-        building.fillRect(isoX - 10, isoY - height - 6, 20, height - 4);
-        buildings.set(id, building);
-      }
-
-      if (tile.productId) {
-        this.add.circle(isoX + 20, isoY - 20, 6, 0x00d4aa, 1).setDepth(3);
-      }
-    });
-
-    const tooltip = this.add.container(0, 0).setDepth(100).setVisible(false);
-    const tooltipBg = this.add.image(0, 0, 'tooltip_bg').setOrigin(0);
-    const tooltipText = this.add.text(12, 12, '', {
-      fontFamily: 'JetBrains Mono, monospace',
-      fontSize: '11px',
-      color: '#e8e8f0',
-      lineSpacing: 4,
-    });
-    tooltip.add([tooltipBg, tooltipText]);
-
-    this.input.on('gameobjectover', (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
-      const tileId = gameObject.getData('tileId');
-      if (tileId) {
-        const tile = marketTiles.get(tileId);
-        if (tile) {
-          const controller = tile.controllerId ? companies.get(tile.controllerId) : null;
-          const challenger = tile.challengerId ? companies.get(tile.challengerId) : null;
-
-          let text = `${tileId.replace('tile_', '').toUpperCase()}\n`;
-          text += `Segment: ${tile.segment.replace('_', ' ')}\n`;
-          text += `Value: $${tile.value.toLocaleString()}\n`;
-          text += `Growth: ${(tile.growth * 100).toFixed(1)}%\n`;
-          text += `Risk: ${(tile.risk * 100).toFixed(0)}%\n`;
-          text += `Control: ${(tile.controlStrength * 100).toFixed(0)}%\n`;
-
-          if (controller) {
-            text += `\nOwner: ${controller.name}`;
+      sorted.forEach((t) => {
+        const c = centers.get(t.id)!;
+        const sx = offX + c.x, sy = offY + c.y;
+        const owned = !!t.controllerId;
+        const contested = owned && t.challengerId && t.challengerId !== t.controllerId;
+        const fill = owned
+          ? contested ? 0x241433
+            : (t.controllerId === state!.playerCompanyId ? 0x0c2a24 : 0x1a1320)
+          : 0x0d0f1a;
+        const edge = owned
+          ? contested ? 0xe83e8c : companyColors.get(t.controllerId!) || 0x00d4aa
+          : 0x1d2740;
+        tileLayer.fillStyle(fill, 1).fillPoints(diamondPoints(sx, sy), true);
+        tileLayer.lineStyle(1.5, edge, owned ? 0.9 : 0.5).strokePoints(diamondPoints(sx, sy), true);
+        if (owned) {
+          const col = companyColors.get(t.controllerId!) || 0x00d4aa;
+          const h = 22 + t.controlStrength * 34;
+          const segs = 2 + Math.min(2, Math.floor(t.controlStrength * 3));
+          let topY = sy - TILE_H / 2, w = 46;
+          for (let s = 0; s < segs; s++) {
+            const segH = h / segs;
+            isoBox(tileLayer, sx, topY, w, segH, col, true);
+            topY -= segH; w *= 0.72;
           }
-          if (challenger) {
-            text += `\nChallenger: ${challenger.name}`;
-          }
-
-          tooltipText.setText(text);
-          tooltipBg.setDisplaySize(tooltipText.width + 24, tooltipText.height + 24);
-
-          const x = (gameObject as Phaser.GameObjects.Image).x + 40;
-          const y = (gameObject as Phaser.GameObjects.Image).y - tooltipText.height - 24;
-          tooltip.setPosition(x, y).setVisible(true);
+          glowLayer.fillStyle(col, 0.22).fillCircle(sx, sy - h * 0.6, 26);
+        } else if (t.productId) {
+          tileLayer.fillStyle(0x00d4aa, 1).fillCircle(sx, sy - 6, 4);
         }
-      }
-    });
+      });
+      scene.tweens.add({ targets: glowLayer, alpha: { from: 0.6, to: 1 }, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 
-    this.input.on('gameobjectout', () => {
-      tooltip.setVisible(false);
-    });
+      /* ---- tooltip (counter-rotated, screen space) --------------------- */
+      const tooltip = scene.add.container(0, 0).setDepth(100).setScrollFactor(0).setVisible(false);
+      const tipBg = scene.add.graphics();
+      const tipText = scene.add.text(0, 0, '', {
+        fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: '#e8e8f0', lineSpacing: 4,
+      });
+      tooltip.add([tipBg, tipText]);
 
-    sceneDataRef.current = { tileSprites, buildings, companyColors };
-  }
+      const overlay = scene.add.graphics().setDepth(5);
+      const screenToTile = (wx: number, wy: number): MarketTile | null => {
+        const ix = (wx - offX) / (TILE_W / 2);
+        const iy = (wy - offY) / (TILE_H / 2);
+        const gx = Math.round((ix + iy) / 2);
+        const gy = Math.round((iy - ix) / 2);
+        return tiles.find((t) => t.x === gx && t.y === gy) || null;
+      };
+      const drawOverlay = (hoverId?: string | null) => {
+        overlay.clear();
+        const ring = (id: string, color: number) => {
+          const c = centers.get(id); if (!c) return;
+          overlay.lineStyle(2.5, color, 0.9).strokePoints(diamondPoints(offX + c.x, offY + c.y), true);
+        };
+        if (hoverId && hoverId !== selectedTileIdRef.current) ring(hoverId, 0xffffff);
+        if (selectedTileIdRef.current) ring(selectedTileIdRef.current, 0xffc107);
+      };
+      (scene as unknown as { _drawOverlay: (id?: string | null) => void })._drawOverlay = drawOverlay;
+      drawOverlay();
 
-  function update(this: Phaser.Scene) {
-    const mapData = sceneDataRef.current;
-    if (!mapData) return;
+      /* ---- camera: fit / restore + controls ---------------------------- */
+      const cam = scene.cameras.main;
+      scene.input.mouse?.disableContextMenu();
+      const camState = { zoom: 1, rot: 0, scrollX: 0, scrollY: 0 };
+      const setCamZoom = (z: number) => { cam.setZoom(z); camState.zoom = z; };
+      const setCamRot = (r: number) => { cam.setRotation(r); camState.rot = r; };
+      const setCamScroll = (x: number, y: number) => { cam.setScroll(x, y); camState.scrollX = x; camState.scrollY = y; };
+      const syncCamState = () => {
+        const sceneAny = scene as unknown as { _camRot?: number; _camZoom?: number };
+        sceneAny._camRot = camState.rot;
+        sceneAny._camZoom = camState.zoom;
+        camStateRef.current = { zoom: camState.zoom, rotation: camState.rot, scrollX: camState.scrollX, scrollY: camState.scrollY };
+      };
 
-    const { marketTiles } = state!;
-    const { tileSprites, buildings, companyColors } = mapData;
-
-    marketTiles.forEach((tile, id) => {
-      const sprite = tileSprites.get(id);
-      if (!sprite) return;
-
-      let texture = 'tile_base';
-      if (tile.controllerId) {
-        if (tile.challengerId && tile.challengerId !== tile.controllerId) {
-          texture = 'tile_contested';
-        } else if (tile.controllerId === state!.playerCompanyId) {
-          texture = 'tile_player';
-        } else {
-          texture = 'tile_enemy';
-        }
-      }
-
-      sprite.setTexture(texture);
-
-      if (id === selectedTileId) {
-        sprite.setTint(0xffc107);
+      const saved = camStateRef.current;
+      if (saved) {
+        setCamZoom(saved.zoom); setCamRot(saved.rotation);
+        setCamScroll(saved.scrollX, saved.scrollY);
       } else {
-        sprite.clearTint();
+        const margin = 120;
+        const fit = Math.min(W / (boardW + margin * 2), H / (boardH + margin * 2));
+        setCamZoom(Phaser.Math.Clamp(fit * 0.95, 0.35, 1.4));
+        cam.centerOn(boardCenter.x, boardCenter.y);
       }
 
-      const building = buildings.get(id);
-      if (building) {
-        building.clear();
-        const color = companyColors.get(tile.controllerId!) || 0xffffff;
-        const isoX = (tile.x - tile.y) * (TILE_WIDTH / 2) + MAP_OFFSET_X;
-        const isoY = (tile.x + tile.y) * (TILE_HEIGHT / 2) + MAP_OFFSET_Y;
-        const height = 20 + tile.controlStrength * 30;
-        building.fillStyle(color, 0.8);
-        building.fillRect(isoX - 12, isoY - height - 8, 24, height);
-        building.fillStyle(0x000000, 0.5);
-        building.fillRect(isoX - 10, isoY - height - 6, 20, height - 4);
-      }
-    });
-  }
+      const spaceKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+      scene.input.keyboard!.addCapture('SPACE');
+      const keyQ = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+      const keyE = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+      keyQ.on('down', () => { setCamRot(camState.rot - Phaser.Math.DegToRad(15)); syncCamState(); });
+      keyE.on('down', () => { setCamRot(camState.rot + Phaser.Math.DegToRad(15)); syncCamState(); });
 
-  return <div ref={containerRef} className="market-map-container" />;
-}
+      let panning = false, lastPX = 0, lastPY = 0, hoverId: string | null = null;
+      scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+        const isPan = p.middleButtonDown() || p.rightButtonDown() || (spaceKey.isDown && p.leftButtonDown());
+        if (isPan) { panning = true; lastPX = p.x; lastPY = p.y; scene.input.setDefaultCursor('grabbing'); return; }
+        const t = screenToTile(p.worldX, p.worldY);
+        onTileSelectRef.current(t ? t.id : null);
+      });
+      scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+        if (panning) {
+          cam.scrollX -= (p.x - lastPX) / cam.zoom;
+          cam.scrollY -= (p.y - lastPY) / cam.zoom;
+          lastPX = p.x; lastPY = p.y; syncCamState(); return;
+        }
+        const t = screenToTile(p.worldX, p.worldY);
+        const id = t?.id || null;
+        if (id !== hoverId) {
+          hoverId = id; drawOverlay(id);
+          scene.input.setDefaultCursor(id ? 'pointer' : 'default');
+          if (t) {
+            const ctrl = t.controllerId ? state!.companies.get(t.controllerId) : null;
+            const ch = t.challengerId ? state!.companies.get(t.challengerId) : null;
+            let txt = `${t.id.replace('tile_', '').toUpperCase()}\nSegment: ${t.segment.replace('_', ' ')}\n`;
+            txt += `Value: $${t.value.toLocaleString()}\nGrowth: ${(t.growth * 100).toFixed(1)}%\nRisk: ${(t.risk * 100).toFixed(0)}%\nControl: ${(t.controlStrength * 100).toFixed(0)}%`;
+            if (ctrl) txt += `\nOwner: ${ctrl.name}`;
+            if (ch) txt += `\nChallenger: ${ch.name}`;
+            tipText.setText(txt);
+            tipBg.clear().fillStyle(0x141420, 0.95).fillRoundedRect(0, 0, tipText.width + 20, tipText.height + 18, 6)
+              .lineStyle(1, 0x00d4aa, 0.6).strokeRoundedRect(0, 0, tipText.width + 20, tipText.height + 18, 6);
+            tooltip.setPosition(p.x + 16, p.y + 16).setVisible(true);
+          } else tooltip.setVisible(false);
+        }
+      });
+      const stopPan = () => { panning = false; scene.input.setDefaultCursor('default'); };
+      scene.input.on('pointerup', stopPan);
+      scene.input.on('pointerout', () => { stopPan(); hoverId = null; drawOverlay(); tooltip.setVisible(false); });
+      scene.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+        const wp = cam.getWorldPoint(p.x, p.y);
+        const nz = Phaser.Math.Clamp(cam.zoom * (dy > 0 ? 0.9 : 1.1), 0.3, 2.5);
+        cam.setZoom(nz);
+        const wp2 = cam.getWorldPoint(p.x, p.y);
+        cam.scrollX += wp.x - wp2.x; cam.scrollY += wp.y - wp2.y;
+        syncCamState();
+      });
+
+      (scene as unknown as { _camState: () => void })._camState = syncCamState;
+    }
+
+    function update(this: Phaser.Scene, time: number) {
+      const scan = (this as unknown as { _scan?: Phaser.GameObjects.Graphics })._scan;
+      if (scan) {
+        const H = this.scale.height, W = this.scale.width;
+        const y = (time * 0.04) % (H + 80) - 40;
+        scan.clear(); scan.fillStyle(0x00d4aa, 0.05).fillRect(0, y, W, 60);
+      }
+      // keep tooltip upright/crisp under camera rotation & zoom
+      const tip = this.children.list.find((c) => c instanceof Phaser.GameObjects.Container && (c as Phaser.GameObjects.Container).depth === 100) as Phaser.GameObjects.Container | undefined;
+      const camRot = (this as unknown as { _camRot?: number })._camRot ?? 0;
+      const camZoom = (this as unknown as { _camZoom?: number })._camZoom ?? 1;
+      if (tip) { tip.setRotation(-camRot); tip.setScale(1 / camZoom); }
+      // resync selection ring if selectedTileId changed via props
+      const sel = selectedTileIdRef.current;
+      const last = (this as unknown as { _lastSel?: string | null })._lastSel;
+      if (sel !== last) {
+        (this as unknown as { _lastSel?: string | null })._lastSel = sel;
+        (this as unknown as { _drawOverlay?: (id?: string | null) => void })._drawOverlay?.(undefined);
+      }
+    }
+
+      const game = new Phaser.Game(config);
+      gameRef.current = game;
+      return () => { game.destroy(true); gameRef.current = null; };
+  }, [state]);
+
+  return (
+    <div className="market-map-wrap">
+      <div ref={containerRef} className="market-map-container" />
+      <div className="map-controls-hint">
+        <span><b>DRAG</b> (o Spazio+tasto) = pan</span>
+        <span><b>WHEEL</b> = zoom</span>
+        <span><b>Q / E</b> = ruota</span>
+      </div>
+    </div>
+  );
+};

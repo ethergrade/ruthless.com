@@ -8,7 +8,7 @@ import { MainMenu } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { formatNumber } from './utils/formatters';
-import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType } from './types';
+import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
 import './styles/globals.css';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -115,6 +115,13 @@ function App() {
             state={state}
             selectedTileId={selectedTileId}
             onTileSelect={handleTileSelect}
+          />
+          <SelectedTilePanel
+            tile={state && selectedTileId ? state.marketTiles.get(selectedTileId) || null : null}
+            controller={state && selectedTileId ? (state.marketTiles.get(selectedTileId)?.controllerId
+              ? state.companies.get(state.marketTiles.get(selectedTileId)!.controllerId!) || null
+              : null) : null}
+            onClose={() => selectTile(null)}
           />
         </main>
       </div>
@@ -365,3 +372,39 @@ const EventModal: React.FC<EventModalProps> = ({ event, onClose }) => (
 );
 
 export default App;
+
+interface SelectedTilePanelProps {
+  tile: MarketTile | null;
+  controller: Company | null;
+  onClose: () => void;
+}
+
+const SelectedTilePanel: React.FC<SelectedTilePanelProps> = ({ tile, controller, onClose }) => {
+  if (!tile) return null;
+  const stat = (label: string, value: string) => (
+    <div className="tile-stat">
+      <span className="tile-stat-label">{label}</span>
+      <span className="tile-stat-value">{value}</span>
+    </div>
+  );
+  return (
+    <div className="selected-tile-panel">
+      <div className="selected-tile-head">
+        <span className="selected-tile-id">{tile.id.replace('tile_', '').toUpperCase()}</span>
+        <button className="selected-tile-close" onClick={onClose}>×</button>
+      </div>
+      <div className="selected-tile-segment">{tile.segment.replace('_', ' ')}</div>
+      {stat('Value', `$${formatNumber(tile.value)}`)}
+      {stat('Growth', `${(tile.growth * 100).toFixed(1)}%`)}
+      {stat('Risk', `${(tile.risk * 100).toFixed(0)}%`)}
+      {stat('Control', `${(tile.controlStrength * 100).toFixed(0)}%`)}
+      {stat('Regulation', `${(tile.regulation * 100).toFixed(0)}%`)}
+      {controller && (
+        <div className="selected-tile-owner" style={{ borderColor: controller.color }}>
+          <span className="company-color-indicator" style={{ background: controller.color }} />
+          {controller.name}
+        </div>
+      )}
+    </div>
+  );
+};
