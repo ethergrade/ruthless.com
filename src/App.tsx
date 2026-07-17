@@ -27,6 +27,7 @@ function App() {
     setActivePanel,
     dismissNotification,
     saveGame,
+    loadGame,
     estimateAction,
   } = useGameStore();
 
@@ -47,6 +48,16 @@ function App() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleSave = () => saveGame();
+  const handleLoad = () => {
+    if (loadGame()) setActivePanel(null);
+  };
+  const handleMainMenu = () => {
+    // persist progress, then return to the main menu without losing the game
+    if (state) saveGame();
+    setShowMainMenu(true);
   };
 
   const handleAddAction = (action: Omit<import('./types').TurnAction, 'id' | 'status'>) => {
@@ -103,7 +114,9 @@ function App() {
         maxTurns={state?.maxTurns || 20}
         playerCompany={playerCompany}
         onEndTurn={handleEndTurn}
-        onSave={() => saveGame()}
+        onSave={handleSave}
+        onLoad={handleLoad}
+        onMainMenu={handleMainMenu}
         isProcessing={isProcessing}
       />
 
@@ -113,6 +126,7 @@ function App() {
           companies={state ? Array.from(state.companies.values()) : []}
           actions={state?.actions.filter(a => a.companyId === state.playerCompanyId && a.status === 'planned') || []}
           marketBriefing={state?.marketBriefing || { demandShifts: [], competitorMoves: [], cyberAlerts: [], globalEvents: [], maOpportunities: [], clientRequests: [] }}
+          auctionHouse={state ? Array.from(state.auctionHouse) : []}
 
           onShowActionModal={() => setShowActionModal(true)}
           onCompanySelect={handleCompanySelect}

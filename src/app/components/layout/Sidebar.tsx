@@ -1,11 +1,12 @@
 import React from 'react';
-import type { Company, TurnAction, MarketBriefing, DemandShift, CompetitorMove, CyberAlert } from '../../../types';
+import type { Company, TurnAction, MarketBriefing, DemandShift, CompetitorMove, CyberAlert, AuctionListing } from '../../../types';
 
 interface SidebarProps {
   playerCompany: Company | undefined;
   companies: Company[];
   actions: TurnAction[];
   marketBriefing: MarketBriefing;
+  auctionHouse: AuctionListing[];
   
   onShowActionModal: () => void;
   onCompanySelect: (id: string | null) => void;
@@ -18,6 +19,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   companies,
   actions,
   marketBriefing,
+  auctionHouse,
 
   onShowActionModal,
   onCompanySelect,
@@ -91,6 +93,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <QuickAction icon="🤖" label="AI & Data" onClick={() => onQuickAction('ai')} />
           <QuickAction icon="💰" label="Finance" onClick={() => onQuickAction('finance')} />
           <QuickAction icon="📰" label="News" onClick={() => onQuickAction('news')} />
+        </div>
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-section-header">
+          <h3>AUCTION HOUSE</h3>
+          <span className="order-count">{auctionHouse.length}</span>
+        </div>
+        <div className="auction-list">
+          {auctionHouse.length === 0 ? (
+            <p className="empty-state">No assets listed</p>
+          ) : (
+            auctionHouse.map(a => {
+              const bidder = a.highestBidderId ? companies.find(c => c.id === a.highestBidderId) : null;
+              return (
+                <div key={a.id} className="auction-item">
+                  <span className="auction-name">{a.name}</span>
+                  <span className="auction-meta">
+                    {a.kind} · {a.currentBid > 0 ? `$${a.currentBid.toLocaleString()}` : `$${a.basePrice.toLocaleString()}`}
+                  </span>
+                  {bidder && <span className="auction-bidder" style={{ color: bidder.color }}>↑ {bidder.name}</span>}
+                  <span className="auction-expires">ends T{a.expiresTurn}</span>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </aside>

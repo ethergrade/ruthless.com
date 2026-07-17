@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../../../store/gameStore';
+import { MiniDB } from '../../../data/db';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import type { CompanyArchetype } from '../../../types';
@@ -91,7 +92,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 
       {showLoadGame && (
         <LoadGameModal
-          _onLoad={handleLoad}
+          onLoaded={handleLoad}
           onCancel={() => setShowLoadGame(false)}
         />
       )}
@@ -197,30 +198,36 @@ const NewGameModal: React.FC<{
   );
 };
 
-const LoadGameModal: React.FC<{ _onLoad: () => void; onCancel: () => void }> = ({ _onLoad, onCancel }) => {
-  const saves = [
-    { id: 1, name: 'Auto-save', turn: 12, date: '2026-07-17', company: 'NexusTech', cash: 12500000 },
-    { id: 2, name: 'Mid-game', turn: 8, date: '2026-07-16', company: 'ApexDigital', cash: 8200000 },
-  ];
+const LoadGameModal: React.FC<{ onLoaded: () => void; onCancel: () => void }> = ({ onLoaded, onCancel }) => {
+  const saves = MiniDB.list();
+
+  const doLoad = (slot: string) => {
+    const { loadSlot } = useGameStore.getState();
+    if (loadSlot(slot)) onLoaded();
+  };
 
   return (
     <Modal title="LOAD GAME" onClose={onCancel} size="md">
       <div className="load-game-modal">
-        <div className="saves-list">
-          {saves.map(save => (
-            <button key={save.id} className="save-item">
-              <div className="save-info">
-                <span className="save-name">{save.name}</span>
-                <span className="save-company">{save.company}</span>
-              </div>
-              <div className="save-details">
-                <span>Turn {save.turn}</span>
-                <span>${formatNumber(save.cash)}</span>
-                <span>{save.date}</span>
-              </div>
-            </button>
-          ))}
-        </div>
+        {saves.length === 0 ? (
+          <p className="empty-state">No saved games found.</p>
+        ) : (
+          <div className="saves-list">
+            {saves.map(save => (
+              <button key={save.slot} className="save-item" onClick={() => doLoad(save.slot)}>
+                <div className="save-info">
+                  <span className="save-name">{save.slot === 'auto' ? 'Auto-save' : save.slot}</span>
+                  <span className="save-company">{save.company}</span>
+                </div>
+                <div className="save-details">
+                  <span>Turn {save.turn}</span>
+                  <span>${formatNumber(save.cash)}</span>
+                  <span>{new Date(save.savedAt).toLocaleDateString()}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
         </div>

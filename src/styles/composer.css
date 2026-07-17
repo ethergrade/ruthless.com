@@ -176,6 +176,29 @@
 .btn-primary {
   background: var(--accent, #00d4aa); color: #04121a; font-weight: 700; border: none;
   box-shadow: 0 0 14px rgba(0,212,170,.35);
-}
+.btn-primary { background: var(--accent, #00d4aa); color: #04121a; font-weight: 700; border: none; box-shadow: 0 0 14px rgba(0,212,170,.35); }
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+
+/* ---- Auction House (sidebar section) ---- */
+.auction-list { display: flex; flex-direction: column; gap: 6px; }
+.auction-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name meta" "bidder expires";
+  gap: 1px 8px;
+  padding: 7px 9px;
+  background: #0e1422;
+  border: 1px solid #1d2740;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.auction-name { grid-area: name; color: #e6ecff; font-weight: 600; }
+.auction-meta { grid-area: meta; color: #8fb0d8; text-align: right; font-variant-numeric: tabular-nums; }
+.auction-bidder { grid-area: bidder; font-size: 11px; }
+.auction-expires { grid-area: expires; color: #6b7aa0; font-size: 10px; text-align: right; }
+
+/* ---- header ghost/menu button ---- */
+.btn-ghost { background: transparent; border: 1px solid #2a3a5e; color: #9fb0d8; }
+.btn-ghost:hover { background: #15203a; color: #e6ecff; }
+.header-menu-btn { letter-spacing: 1px; }

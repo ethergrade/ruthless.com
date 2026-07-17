@@ -27,6 +27,8 @@ describe('Fase 2 — layout components render without crashing', () => {
         playerCompany: player,
         onEndTurn: () => {},
         onSave: () => {},
+        onLoad: () => {},
+        onMainMenu: () => {},
         isProcessing: false,
       })
     );
@@ -45,6 +47,7 @@ describe('Fase 2 — layout components render without crashing', () => {
         companies,
         actions: [] as import('../types').TurnAction[],
         marketBriefing: emptyBriefing,
+        auctionHouse: [],
         onShowActionModal: () => {},
         onCompanySelect: () => {},
         selectedCompanyId: null,

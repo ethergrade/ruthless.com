@@ -18,6 +18,7 @@ import type { MarketSegment,
   CompanyId,
   ProductId,
   EventCategory,
+  AuctionListing,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -177,6 +178,7 @@ export class TurnEngine {
     this.resolveMarket();
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
+    this.resolveAuctions(newsItems);
     this.state.marketBriefing = this.generateMarketBriefing();
 
     this.state.turn++;
@@ -839,6 +841,83 @@ export class TurnEngine {
     // mark asset as listed
     if (prod) prod.upForAuction = true;
     if (bld) bld.upForAuction = true;
+  }
+
+  /**
+   * Auction house resolution (req 2, AI side): rival corps bid on open listings
+   * each turn and the highest bidder wins when the auction expires. Generates
+   * news items so the player can follow the market.
+   */
+  private resolveAuctions(newsItems: NewsItem[]): void {
+    const house = this.state.auctionHouse;
+    if (house.length === 0) return;
+    const survivors: AuctionListing[] = [];
+
+    for (const listing of house) {
+      const seller = this.state.companies.get(listing.sellerId);
+      if (!seller) { survivors.push(listing); continue; }
+
+      // rival corps may place a higher bid this turn
+      const rivals = Array.from(this.state.companies.values())
+        .filter(c => c.id !== listing.sellerId && c.cash > (listing.currentBid || listing.basePrice));
+      const base = listing.currentBid > 0 ? listing.currentBid : listing.basePrice;
+      const interested = rivals.filter(_c => this.rng.nextBoolean(0.5));
+      for (const r of interested) {
+        const bump = Math.round(base * this.rng.nextFloat(0.05, 0.35));
+        const bid = base + bump;
+        if (bid <= r.cash && bid > (listing.currentBid || 0)) {
+          listing.currentBid = bid;
+          listing.highestBidderId = r.id;
+        }
+      }
+
+      if (this.state.turn >= listing.expiresTurn) {
+        // close the auction
+        if (listing.highestBidderId && listing.currentBid > 0) {
+          const winner = this.state.companies.get(listing.highestBidderId);
+          if (winner && winner.cash >= listing.currentBid) {
+            winner.cash -= listing.currentBid;
+            seller.cash += listing.currentBid;
+            this.transferAsset(listing, winner);
+            newsItems.push(this.createNewsItem(
+              this.state.turn, 'ma',
+              `Auction Won: ${listing.name}`,
+              `${winner.name} acquired ${listing.name} for $${listing.currentBid.toLocaleString()}.`,
+              winner.id, 'minor'
+            ));
+            continue; // listing consumed
+          }
+        }
+        // no valid winner -> relist expired, moved to survivors without bid held
+        survivors.push({ ...listing, currentBid: 0, highestBidderId: null });
+      } else {
+        survivors.push(listing);
+      }
+    }
+
+    this.state.auctionHouse = survivors;
+  }
+
+  /** Move a listed asset from its seller into the winning company. */
+  private transferAsset(listing: AuctionListing, winner: Company): void {
+    const seller = this.state.companies.get(listing.sellerId);
+    if (!seller) return;
+    if (listing.kind === 'product') {
+      const idx = seller.products.findIndex(p => p.id === listing.assetId);
+      if (idx >= 0) { const [p] = seller.products.splice(idx, 1); if (p) { p.upForAuction = false; winner.products.push(p); } }
+    } else if (listing.kind === 'building') {
+      const idx = seller.buildings.findIndex(b => b.id === listing.assetId);
+      if (idx >= 0) {
+        const [b] = seller.buildings.splice(idx, 1);
+        if (b) { b.upForAuction = false; winner.buildings.push(b); const t = this.state.marketTiles.get(b.tileId); if (t) { t.controllerId = winner.id; t.buildingId = b.id; } if (!winner.controlledTiles.includes(b.tileId)) winner.controlledTiles.push(b.tileId); }
+      }
+    } else if (listing.kind === 'department') {
+      const idx = seller.departments.findIndex(d => d.id === listing.assetId);
+      if (idx >= 0) { const [d] = seller.departments.splice(idx, 1); if (d) { d.buildingId = undefined; winner.departments.push(d); } }
+    } else {
+      // technology / patent: give a one-off innovation + cash already transferred
+      winner.innovation = Math.min(100, winner.innovation + 5);
+    }
   }
 
   /**

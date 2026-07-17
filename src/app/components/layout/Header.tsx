@@ -7,10 +7,12 @@ interface HeaderProps {
   playerCompany: Company | undefined;
   onEndTurn: () => void;
   onSave: () => void;
+  onLoad: () => void;
+  onMainMenu: () => void;
   isProcessing: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, onSave, isProcessing }) => {
+export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, onSave, onLoad, onMainMenu, isProcessing }) => {
   if (!playerCompany) return null;
 
   const alerts = [];
@@ -55,6 +57,22 @@ export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, o
             ))}
           </div>
         )}
+
+        <button
+          className="btn btn-ghost header-menu-btn"
+          onClick={onMainMenu}
+          disabled={isProcessing}
+        >
+          ☰ MENU
+        </button>
+
+        <button
+          className="btn btn-secondary end-turn-btn"
+          onClick={onLoad}
+          disabled={isProcessing}
+        >
+          LOAD
+        </button>
 
         <button
           className="btn btn-secondary end-turn-btn"
