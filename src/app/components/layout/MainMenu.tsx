@@ -125,7 +125,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
             <span className="btn-icon"><Icon name="gear" /></span>
             <span>GLOBAL SETTINGS</span>
           </button>
-          <button className="menu-btn ghost" onClick={() => window.open('https://github.com', '_blank')}>
+          <button className="menu-btn ghost" onClick={() => window.open('https://github.com/ethergrade/ruthless.com', '_blank')}>
             <span className="btn-icon"><Icon name="doc" /></span>
             <span>DOCUMENTATION</span>
           </button>
