@@ -1600,16 +1600,19 @@ export class TurnEngine {
     const productCost = company.products.reduce((sum, p) => sum + p.operatingCost, 0);
 
     let operatingCosts = Math.round(deptCost + productCost);
-    // Banker CEO: debt compounds 2x faster (higher recurring drag).
-    if (company.ceoTrait === 'banker') operatingCosts = Math.round(operatingCosts * 1.1);
+    // CEO perks (GDR build): cost_cutter trims recurring costs; high_leverage
+    // (Banker) adds extra drag.
+    const perks = company.ceos[0]?.perks ?? [];
+    if (perks.includes('cost_cutter')) operatingCosts = Math.round(operatingCosts * 0.9);
+    if (perks.includes('high_leverage')) operatingCosts = Math.round(operatingCosts * 1.1);
     company.operatingCosts = operatingCosts;
 
     company.revenue = Math.round(productRevenue + tileRevenue);
     company.cashFlow = company.revenue - company.operatingCosts;
     company.valuation = Math.max(1, company.revenue * 4 + company.cash - company.debt);
 
-    // Smart CEO: +10% capability gain (experience compounds).
-    if (company.ceoTrait === 'smart') {
+    // fast_learner (Smart) CEO: +10% capability gain (experience compounds).
+    if (perks.includes('fast_learner')) {
       company.innovation = Math.min(100, company.innovation * 1.1);
       company.aiCapability = Math.min(100, company.aiCapability * 1.1);
     }
@@ -1633,9 +1636,17 @@ export class TurnEngine {
   private resolveFinancials(): void {
     this.state.companies.forEach(company => {
       company.cash += company.cashFlow;
-      company.cash -= company.debt * 0.05;
+      const perks = company.ceos[0]?.perks ?? [];
+      // high_leverage (Banker): debt interest compounds 2x.
+      const interestRate = perks.includes('high_leverage') ? 0.10 : 0.05;
+      company.cash -= company.debt * interestRate;
       company.debt = Math.max(0, company.debt - company.cashFlow * 0.1);
       this.recalculateCompanyMetrics(company);
+
+      // extra_order (Initiative): a free executive order every 3 turns.
+      if (perks.includes('extra_order') && this.state.turn % 3 === 0) {
+        company.executiveOrderLimit += 1;
+      }
 
       // Bankruptcy: out of cash and unable to cover costs with valuation.
       if (company.cash < -500000 && company.debt > company.valuation) {

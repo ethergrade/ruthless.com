@@ -14,6 +14,10 @@ import type {
   ProductCategory,
   CEOTrait,
 } from '../../types';
+import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, type CompanyStats } from '../../data/archetypes';
+
+/** Clamp a 0..100 capability metric. */
+const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
 const COMPANY_NAMES = [
   'NexusTech', 'Apex Digital', 'Quantum Systems', 'Vertex Solutions',
@@ -69,17 +73,35 @@ export const createCompany = (
   const id = generateId.company();
   const color = isPlayer ? '#00d4aa' : (ARCHETYPE_COLORS[companyArchetype] ?? DEFAULT_COLORS[colorIndex % DEFAULT_COLORS.length]);
 
-  // CEO trait shapes the starting position (ruthless.com-inspired).
+  // CEO trait shapes the starting position (ruthless.com-inspired GDR build).
   const trait = ceoTrait ?? 'none';
-  const startingCash = isPlayer ? (trait === 'banker' ? 3000000 : 5000000) : rng.nextInt(3000000, 8000000);
-  // Banker starts deeper in debt (2x cumulative interest drag).
-  const startingDebt = isPlayer ? (trait === 'banker' ? 4000000 : 0) : rng.nextInt(0, 2000000);
+  const traitDef = CEO_TRAIT_DEFS[trait];
+  const base = ARCHETYPE_STATS[companyArchetype];
+  // Apply CEO trait stat modifiers on top of the archetype baseline.
+  const stats: CompanyStats = {
+    security: clamp(base.security + (traitDef.statMods.security ?? 0)),
+    ai: clamp(base.ai + (traitDef.statMods.ai ?? 0)),
+    consulting: clamp(base.consulting + (traitDef.statMods.consulting ?? 0)),
+    innovation: clamp(base.innovation + (traitDef.statMods.innovation ?? 0)),
+    trust: clamp(base.trust + (traitDef.statMods.trust ?? 0)),
+    productQuality: clamp(base.productQuality + (traitDef.statMods.productQuality ?? 0)),
+    productRd: clamp(base.productRd + (traitDef.statMods.productRd ?? 0)),
+    salesMarketing: clamp(base.salesMarketing + (traitDef.statMods.salesMarketing ?? 0)),
+  };
+
+  const startingCash = isPlayer
+    ? 5000000 + (traitDef.cashMod ?? 0)
+    : rng.nextInt(3000000, 8000000);
+  const startingDebt = isPlayer
+    ? (traitDef.debtMod ?? 0)
+    : rng.nextInt(0, 2000000);
 
   const departments = createStartingDepartments(rng, isPlayer);
   const products = createStartingProducts(rng, companyArchetype);
   const executives = createStartingExecutives(rng, isPlayer);
 
-  const operatingCosts = departments.reduce((sum, d) => sum + d.recurringCost, 0);
+  const costMult = traitDef.costMult ?? 1;
+  const operatingCosts = Math.round(departments.reduce((sum, d) => sum + d.recurringCost, 0) * costMult);
   const revenue = products.reduce((sum, p) => sum + p.price * 100, 0);
 
   return {
@@ -93,11 +115,14 @@ export const createCompany = (
     operatingCosts,
     cashFlow: revenue - operatingCosts,
     marketInfluence: isPlayer ? 5 : rng.nextInt(3, 15),
-    brandTrust: isPlayer ? 50 : rng.nextInt(30, 70),
-    securityPosture: isPlayer ? 40 : rng.nextInt(20, 60),
-    innovation: isPlayer ? 30 : rng.nextInt(10, 50),
-    aiCapability: isPlayer ? 20 : rng.nextInt(5, 40),
-    consultingCapacity: isPlayer ? 10 : rng.nextInt(5, 30),
+    brandTrust: isPlayer ? stats.trust : rng.nextInt(30, 70),
+    securityPosture: isPlayer ? stats.security : rng.nextInt(20, 60),
+    innovation: isPlayer ? stats.innovation : rng.nextInt(10, 50),
+    aiCapability: isPlayer ? stats.ai : rng.nextInt(5, 40),
+    consultingCapacity: isPlayer ? stats.consulting : rng.nextInt(5, 30),
+    productQuality: isPlayer ? stats.productQuality : stats.productQuality,
+    productRd: isPlayer ? stats.productRd : stats.productRd,
+    salesMarketing: isPlayer ? stats.salesMarketing : stats.salesMarketing,
     executiveOrderLimit: isPlayer ? 3 : rng.nextInt(2, 4),
     departments,
     products,
@@ -130,7 +155,7 @@ export const createCompany = (
       vulnerabilities: [],
       hqBuildingId: 'hq_' + id,
       xp: 0,
-      perks: trait === 'initiative' ? ['extra_order'] : [],
+      perks: [...traitDef.perks],
     }] : [],
     employeeMorale: isPlayer ? 75 : rng.nextInt(50, 80),
     employerBrand: isPlayer ? 60 : rng.nextInt(40, 70),

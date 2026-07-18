@@ -199,6 +199,10 @@ export interface Company {
   innovation: number;
   aiCapability: number;
   consultingCapacity: number;
+  /** T: GDR build metrics — product & go-to-market capabilities (0..100). */
+  productQuality: number;       // avg product quality / craftsmanship
+  productRd: number;            // Product R&D strength / pipeline
+  salesMarketing: number;       // Sales & Marketing reach
   executiveOrderLimit: number;
   departments: Department[];
   products: Product[];
@@ -255,12 +259,21 @@ export interface Technology {
 }
 
 /** T: per-HQ CEO roster (multi-HQ corps run one CEO per HQ, each grants +1 order). */
+export type ChiefPerk =
+  | 'extra_order'        // +1 executive order / 3 turns (Initiative)
+  | 'fast_learner'       // +10% capability gain / turn (Smart)
+  | 'high_leverage'      // debt compounds 2x — high risk/reward (Banker)
+  | 'talent_magnet'      // +workforce morale & employer brand (HR-minded)
+  | 'cost_cutter'        // -10% operating costs (lean operator)
+  | 'market_savant'      // +brandTrust/influence on market actions
+  | 'iron_will';        // -scandal impact, +crisis resilience
+
 export interface ChiefExecutive extends Executive {
   hqBuildingId: string;
   /** XP gained from successful actions, market moves, awareness & social posts. */
   xp: number;
-  /** Perks unlocked by XP: extra orders, bonus to action success. */
-  perks: string[];
+  /** Perks unlocked by XP or granted by the CEO trait at hire. */
+  perks: ChiefPerk[];
 }
 
 export interface Building {

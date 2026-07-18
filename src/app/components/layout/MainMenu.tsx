@@ -3,6 +3,7 @@ import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import type { ScenarioConfig, CampaignConfig } from '../../../types';
+import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
@@ -253,16 +254,38 @@ const NewGameModal: React.FC<{
             </div>
           </div>
 
-          {/* THIRD COLUMN: selected archetype preview */}
+          {/* THIRD COLUMN: selected archetype preview (GDR build planner) */}
           <div className="setup-col preview-col">
             <div className="archetype-preview" style={{ borderColor: archetype.color }}>
               <h3>{archetype.name}</h3>
               <p>{archetype.desc}</p>
+
+              <div className="preview-section-label">Initial Build Stats</div>
+              <div className="build-stats">
+                {(Object.keys(STAT_LABELS) as (keyof CompanyStats)[]).map(k => {
+                  const v = ARCHETYPE_STATS[selectedArchetype][k];
+                  const tone = v >= 60 ? 'high' : v >= 35 ? 'mid' : 'low';
+                  return (
+                    <div key={k} className="build-stat">
+                      <span className="bs-label">{STAT_LABELS[k]}</span>
+                      <span className={`bs-bar bs-${tone}`} style={{ width: `${v}%` }} />
+                      <span className="bs-val">{v}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="preview-section-label">CEO Perks — {CEO_TRAIT_DEFS[selectedCeo].name}</div>
               <div className="preview-stats">
-                {archetype.stats.map((s, i) => (
-                  <span key={i} className={`stat ${s.startsWith('+') ? 'positive' : 'negative'}`}>{s}</span>
+                {CEO_TRAIT_DEFS[selectedCeo].perks.length === 0 && (
+                  <span className="stat">Baseline — no perks</span>
+                )}
+                {CEO_TRAIT_DEFS[selectedCeo].perks.map((p, i) => (
+                  <span key={i} className="stat positive">{PERK_LABELS[p]}</span>
                 ))}
               </div>
+              <p className="ceo-blurb">{CEO_TRAIT_DEFS[selectedCeo].blurb}</p>
+
               <div className="preview-note">
                 <strong>Starting Resources:</strong>
                 <ul>
