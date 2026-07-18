@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGameStore } from './store/gameStore';
+import { useSettings } from './store/settings';
 import { Header } from './app/components/layout/Header';
 import { Sidebar } from './app/components/layout/Sidebar';
 import { BottomPanel } from './app/components/layout/BottomPanel';
@@ -10,6 +11,7 @@ import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { ActionComposer } from './app/components/actions/ActionComposer';
 import { formatNumber } from './utils/formatters';
+import { audio } from './audio/AudioEngine';
 import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
 import './styles/globals.css';
 import './styles/layout.css';
@@ -31,6 +33,7 @@ function App() {
     loadGame,
     estimateAction,
   } = useGameStore();
+  const { musicEnabled, setMusicEnabled } = useSettings();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
@@ -115,6 +118,7 @@ function App() {
       status: 'planned',
       productCategory: cat,
     } as import('./types').TurnAction);
+    if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
     setShowActionModal(true);
   };
 
@@ -168,6 +172,8 @@ function App() {
         onLoad={handleLoad}
         onMainMenu={handleMainMenu}
         isProcessing={isProcessing}
+        musicEnabled={musicEnabled}
+        onToggleMusic={() => setMusicEnabled(!musicEnabled)}
       />
 
       <div className="main-layout">

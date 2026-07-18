@@ -30,6 +30,8 @@ describe('Fase 2 — layout components render without crashing', () => {
         onLoad: () => {},
         onMainMenu: () => {},
         isProcessing: false,
+        musicEnabled: false,
+        onToggleMusic: () => {},
       })
     );
     expect(html).toContain(player.name);

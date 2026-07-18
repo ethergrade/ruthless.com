@@ -763,12 +763,15 @@
 .stat {
   font-family: var(--font-mono);
   font-size: 9px;
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 999px;
-  background: var(--bg-secondary);
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .stat.positive { color: var(--accent-green); }
 .stat.negative { color: var(--accent-red); }
+.stat.neutral { color: var(--text-secondary); }
 
 .archetype-preview {
   display: flex;
@@ -1088,6 +1091,8 @@
 .kpi-mini-label { font-size: 9px; letter-spacing: 0.08em; }
 .kpi-mini-value { font-size: 14px; }
 .end-turn-btn { min-width: 96px; }
+.audio-toggle { white-space: nowrap; font-size: 11px; opacity: 0.7; }
+.audio-toggle.on { opacity: 1; color: var(--accent-cyan); border-color: var(--accent-cyan); }
 
 /* Sidebar: tighter, glowing section headers */
 .sidebar { padding: 14px; gap: 14px; }
@@ -1260,6 +1265,21 @@
 .tech-chip { font-size: 9.5px; background: rgba(0,212,170,0.12); color: #36e0a0; padding: 1px 6px; border-radius: 4px; }
 .dept-card.dev { border-color: #00d4aa; }
 .dept-product { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* ---- Global Settings modal --------------------------------------------- */
+.settings-modal { display: flex; flex-direction: column; gap: 12px; }
+.seg-control { display: flex; gap: 6px; }
+.seg-btn {
+  flex: 1; padding: 7px 4px; border-radius: 6px;
+  background: var(--bg-secondary); color: var(--text-muted);
+  border: 1px solid transparent; font-size: 11px; cursor: pointer;
+}
+.seg-btn.active { background: rgba(0,212,170,0.18); color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.settings-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
+.settings-row label { min-width: 130px; color: var(--text-secondary); }
+.settings-hint { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+.settings-val { font-family: var(--font-mono); font-size: 11px; min-width: 38px; text-align: right; color: var(--text-secondary); }
+.settings-row input[type="range"] { flex: 1; }
 .ac-check { flex-direction: row; }
 .ac-check label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text-secondary); }
 

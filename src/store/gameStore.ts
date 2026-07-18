@@ -8,6 +8,8 @@ import type {
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
 import { generateId } from '../simulation/utils/ids';
+import { audio } from '../audio/AudioEngine';
+import { useSettings } from './settings';
 
 interface GameStore {
   state: GameState | null;
@@ -82,6 +84,7 @@ export const useGameStore = create<GameStore>()(
 
         const result = engine.endTurn();
         set({ state: result.newState });
+        if (useSettings.getState().sfxEnabled) audio.sfx('endTurn');
 
         // Persist progress automatically so the player never loses their game.
         MiniDB.autosave(result.newState);
@@ -90,6 +93,7 @@ export const useGameStore = create<GameStore>()(
           result.newsItems.forEach(item => {
             if (item.importance === 'critical' || item.importance === 'major') {
               get().addNotification(item.headline, item.body, item.importance);
+              if (useSettings.getState().sfxEnabled) audio.sfx('newsAlert');
             }
           });
         }
@@ -107,6 +111,7 @@ export const useGameStore = create<GameStore>()(
             actions: [...prev.state.actions, { ...action, id: generateId.action(), status: 'planned' as const }],
           };
           get().engine?.setState(next);
+          if (useSettings.getState().sfxEnabled) audio.sfx('orderPlaced');
           return { state: next };
         }),
 

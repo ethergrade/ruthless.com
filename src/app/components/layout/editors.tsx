@@ -5,6 +5,7 @@ import type {
   CompanyArchetype, CEOTrait,
 } from '../../../types';
 import { ARCHETYPES_SIMPLE, CEOS_SIMPLE, genId } from '../../../data/editorsData';
+import { useSettings } from '../../../store/settings';
 
 /**
  * SCENARIO EDITOR — tactical, self-contained board setup.
@@ -156,12 +157,13 @@ export const CampaignEditorModal: React.FC<{
         <div className="editor-actions">
           <button className="menu-btn ghost" onClick={onCancel}>CANCEL</button>
           <button className="menu-btn primary" onClick={() => {
+            const { difficultyOverride } = useSettings.getState();
             const ch: CampaignConfig['chapters'] = [];
             for (let i = 0; i < chapters; i++) {
               ch.push({
                 id: genId('ch'),
                 title: `Chapter ${i + 1}`,
-                aiDifficulty,
+                aiDifficulty: difficultyOverride !== 'none' ? difficultyOverride : aiDifficulty,
                 narrativeIntro: i === 0 ? intro : undefined,
                 scenario: {
                   id: genId('scn'),

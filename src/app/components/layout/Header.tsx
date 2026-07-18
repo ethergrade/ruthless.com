@@ -10,9 +10,11 @@ interface HeaderProps {
   onLoad: () => void;
   onMainMenu: () => void;
   isProcessing: boolean;
+  musicEnabled: boolean;
+  onToggleMusic: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, onSave, onLoad, onMainMenu, isProcessing }) => {
+export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, onEndTurn, onSave, onLoad, onMainMenu, isProcessing, musicEnabled, onToggleMusic }) => {
   if (!playerCompany) return null;
 
   const alerts = [];
@@ -41,6 +43,13 @@ export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, o
       </div>
 
       <div className="header-right">
+        <button
+          className={`btn btn-ghost audio-toggle ${musicEnabled ? 'on' : ''}`}
+          onClick={onToggleMusic}
+          title={musicEnabled ? 'Mute music' : 'Enable music'}
+        >
+          {musicEnabled ? '🔊 MUSIC' : '🔇 MUSIC'}
+        </button>
         <div className="kpi-row">
           <KPIMini label="CASH" value={playerCompany.cash} format="currency" trend={playerCompany.cashFlow} />
           <KPIMini label="FLOW" value={playerCompany.cashFlow} format="currency" />

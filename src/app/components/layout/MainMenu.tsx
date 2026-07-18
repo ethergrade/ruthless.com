@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
+import { SettingsModal } from './SettingsModal';
 import type { ScenarioConfig, CampaignConfig } from '../../../types';
 import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
@@ -36,6 +37,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [showLoadGame, setShowLoadGame] = useState(false);
   const [showScenario, setShowScenario] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [seed, setSeed] = useState('');
   const [selectedColor, setSelectedColor] = useState('#00d4aa');
   const [disasters, setDisasters] = useState(true);
@@ -119,6 +121,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
             <span className="btn-icon"><Icon name="book" /></span>
             <span>CAMPAIGN EDITOR</span>
           </button>
+          <button className="menu-btn ghost" onClick={() => setShowSettings(true)}>
+            <span className="btn-icon"><Icon name="gear" /></span>
+            <span>GLOBAL SETTINGS</span>
+          </button>
           <button className="menu-btn ghost" onClick={() => window.open('https://github.com', '_blank')}>
             <span className="btn-icon"><Icon name="doc" /></span>
             <span>DOCUMENTATION</span>
@@ -161,6 +167,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
       )}
       {showCampaign && (
         <CampaignEditorModal onStart={handleStartCampaign} onCancel={() => setShowCampaign(false)} />
+      )}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   );
