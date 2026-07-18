@@ -5,7 +5,7 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   closeOnOverlayClick?: boolean;
 }
 
@@ -33,6 +33,7 @@ export const Modal: React.FC<ModalProps> = ({
     md: 'modal-md',
     lg: 'modal-lg',
     xl: 'modal-xl',
+    xxl: 'modal-xxl',
   };
 
   const modalContent = (

@@ -185,10 +185,11 @@ const NewGameModal: React.FC<{
   const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
 
   return (
-    <Modal title="NEW GAME SETUP" onClose={onCancel} size="lg">
+    <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
       <div className="new-game-modal">
-        <div className="setup-grid">
-          <div className="setup-left">
+        <div className="setup-top">
+          {/* LEFT COLUMN: company name + archetype */}
+          <div className="setup-col">
             <div className="form-group">
               <label>Company Name</label>
               <input
@@ -223,7 +224,10 @@ const NewGameModal: React.FC<{
                 ))}
               </div>
             </div>
+          </div>
 
+          {/* RIGHT COLUMN: CEO trait + preview */}
+          <div className="setup-col">
             <div className="form-group">
               <label>Starting CEO Trait</label>
               <div className="archetype-selector">
@@ -247,44 +251,10 @@ const NewGameModal: React.FC<{
                 ))}
               </div>
             </div>
-
-            <div className="form-group">
-              <label>Random Seed (optional)</label>
-              <input
-                type="text"
-                value={seed}
-                onChange={e => setSeed(e.target.value)}
-                placeholder="Leave empty for random"
-                maxLength={10}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Company Color</label>
-              <div className="color-picker">
-                {COLORS.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`color-swatch ${selectedColor === c ? 'selected' : ''}`}
-                    style={{ background: c }}
-                    onClick={() => setSelectedColor(c)}
-                    aria-label={c}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>Cataclismi (SimCity-like)</label>
-              <label className="toggle-row">
-                <input type="checkbox" checked={disasters} onChange={e => setDisasters(e.target.checked)} />
-                <span>Abilita borse, nuove tecnologie e cataclismi di mercato</span>
-              </label>
-            </div>
           </div>
 
-          <div className="setup-right">
+          {/* THIRD COLUMN: selected archetype preview */}
+          <div className="setup-col preview-col">
             <div className="archetype-preview" style={{ borderColor: archetype.color }}>
               <h3>{archetype.name}</h3>
               <p>{archetype.desc}</p>
@@ -304,6 +274,44 @@ const NewGameModal: React.FC<{
                 </ul>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* FULL-WIDTH BOTTOM ROW: seed + color + disasters */}
+        <div className="setup-bottom">
+          <div className="form-group seed-field">
+            <label>Random Seed (optional)</label>
+            <input
+              type="text"
+              value={seed}
+              onChange={e => setSeed(e.target.value)}
+              placeholder="Leave empty for random"
+              maxLength={10}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Company Color</label>
+            <div className="color-picker">
+              {COLORS.map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`color-swatch ${selectedColor === c ? 'selected' : ''}`}
+                  style={{ background: c }}
+                  onClick={() => setSelectedColor(c)}
+                  aria-label={c}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group disasters-field">
+            <label>Cataclismi (SimCity-like)</label>
+            <label className="toggle-row">
+              <input type="checkbox" checked={disasters} onChange={e => setDisasters(e.target.checked)} />
+              <span>Abilita borse, nuove tecnologie e cataclismi di mercato</span>
+            </label>
           </div>
         </div>
 
