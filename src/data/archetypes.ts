@@ -136,3 +136,52 @@ export const PERK_LABELS: Record<ChiefPerk, string> = {
   iron_will: '-scandal impact, +crisis resilience',
   corporate_intelligence: 'Reads rival interiors without espionage / cyber',
 };
+
+/**
+ * T: each successful action trains the CEO's relevant S.P.E.C.I.A.L. pillar.
+ * The pillar a CEO grows depends on WHAT they did — combat sharpens Perception,
+ * PR sharpens Charisma, R&D sharpens Intelligence, etc. This makes the GDR
+ * attributes an organic byproduct of play, not just a New Game point-buy.
+ */
+export const ACTION_SPECIAL_PILLAR: Partial<Record<string, CEOSkill>> = {
+  cyber_attack: 'perception', industrial_espionage: 'perception', build_building: 'strength',
+  build_department: 'strength', defend_tile: 'strength', mass_layoff: 'strength',
+  launch_product: 'intelligence', pivot_product: 'intelligence', release_source: 'intelligence',
+  build_ai: 'intelligence', ai_automation: 'intelligence',
+  ceo_praise: 'charisma', ceo_discredit: 'charisma', run_pr_campaign: 'charisma',
+  social_media_push: 'charisma', public_tender_offer: 'charisma',
+  acquire_company: 'charisma', acquire_below_value: 'charisma',
+  raise_capital: 'intelligence', reduce_costs: 'intelligence',
+  legal_sue: 'intelligence', legal_patent: 'intelligence', legal_subpoena: 'intelligence',
+  hire_executive: 'charisma', hire_ceo: 'charisma', hire_coo: 'charisma', fire_ceo: 'charisma',
+  train_ceo: 'endurance', scout_acquisition: 'perception', expand_market: 'endurance',
+  research_push: 'intelligence', product_improve: 'intelligence',
+  // Luck is nudged by anything risky; handled separately in the engine.
+};
+
+/**
+ * T: perks unlocked by SPECIAL pillar thresholds (in addition to trait-granted
+ * perks). A CEO who builds a high-Charisma reputation earns market_savant; a
+ * lucky one earns iron_will, etc. This makes every perk earnable in-game.
+ */
+export const PERK_SPECIAL_THRESHOLD: Partial<Record<ChiefPerk, { skill: CEOSkill; min: number }>> = {
+  corporate_intelligence: { skill: 'intelligence', min: 7 },
+  market_savant: { skill: 'charisma', min: 7 },
+  iron_will: { skill: 'luck', min: 7 },
+  talent_magnet: { skill: 'endurance', min: 7 },
+  fast_learner: { skill: 'intelligence', min: 6 },
+  cost_cutter: { skill: 'strength', min: 6 },
+  high_leverage: { skill: 'strength', min: 5 },
+};
+
+/** T: grant any threshold perks the CEO now qualifies for (idempotent). */
+export function unlockPerksForCeo(ceo: { skills: Partial<Record<CEOSkill, number>>; perks: ChiefPerk[] }): ChiefPerk[] {
+  const fresh: ChiefPerk[] = [];
+  (Object.keys(PERK_SPECIAL_THRESHOLD) as ChiefPerk[]).forEach(pk => {
+    const t = PERK_SPECIAL_THRESHOLD[pk]!;
+    const v = ceo.skills[t.skill] ?? 0;
+    if (v >= t.min && !ceo.perks.includes(pk)) { ceo.perks.push(pk); fresh.push(pk); }
+  });
+  return fresh;
+}
+

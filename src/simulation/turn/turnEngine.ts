@@ -1,4 +1,5 @@
 import { createRNG } from '../utils/rng';
+import { ACTION_SPECIAL_PILLAR, unlockPerksForCeo, PERK_LABELS } from '../../data/archetypes';
 import type { MarketSegment,
   GameState,
   Company,
@@ -392,6 +393,13 @@ export class TurnEngine {
     }
 
     this.state.turn++;
+    // T: CEO special-action points regenerate each turn (Agility raises the cap),
+    // so special CEO moves (praise / discredit / train) are a renewable resource.
+    const p0 = this.state.companies.get(this.state.playerCompanyId);
+    if (p0 && p0.ceos[0]) {
+      const agility = p0.ceos[0].skills.agility ?? 5;
+      p0.ceos[0].specialPoints = 1 + Math.floor(agility / 4); // 1..3
+    }
     // CEO gains experience over time (drives Initiative bonus scaling).
     if (this.state.turn % 4 === 0) {
       const p = this.state.companies.get(this.state.playerCompanyId);
@@ -449,11 +457,28 @@ export class TurnEngine {
           this.state.playerCompanyId,
           'minor'
         ));
-        // T: CEO gains XP from successful actions (market moves, awareness, social).
+        // T: CEO grows from doing — successful actions train the relevant
+        // S.P.E.C.I.A.L. pillar, accrue XP, and can unlock threshold perks.
         const playerCompany = this.state.companies.get(this.state.playerCompanyId);
         const ceo = playerCompany?.ceos[0];
         if (ceo && playerCompany) {
           ceo.xp += 10;
+          const pillar = ACTION_SPECIAL_PILLAR[action.type];
+          if (pillar) {
+            ceo.skills[pillar] = Math.min(10, (ceo.skills[pillar] ?? 5) + 1);
+          }
+          // Risky / social actions also nudge Luck.
+          if (['cyber_attack', 'industrial_espionage', 'legal_sue', 'public_tender_offer', 'ceo_discredit'].includes(action.type)) {
+            ceo.skills.luck = Math.min(10, (ceo.skills.luck ?? 5) + 1);
+          }
+          const unlocked = unlockPerksForCeo(ceo);
+          if (unlocked.length) {
+            newsItems.push(this.createNewsItem(
+              this.state.turn, 'talent', 'CEO Perk Unlocked',
+              `Your CEO earned: ${unlocked.map(p => PERK_LABELS[p]).join(', ')}.`,
+              this.state.playerCompanyId, 'minor'
+            ));
+          }
           if (ceo.xp >= 100 && !ceo.perks.includes('extra_order')) { ceo.perks.push('extra_order'); playerCompany.executiveOrderLimit += 1; }
           playerCompany.ceoLevel = Math.max(playerCompany.ceoLevel, 1 + Math.floor(ceo.xp / 100));
         }
@@ -1657,7 +1682,15 @@ export class TurnEngine {
     // your market influence rises. This is the CEO "moving the market" globally.
     company.valuation = Math.max(1, company.valuation + lift * 15000);
     company.marketInfluence = Math.min(100, company.marketInfluence + 1);
+    // T: market_savant (Charisma) CEOs move the market harder with PR.
+    if (company.ceos[0]?.perks.includes('market_savant')) {
+      company.valuation = Math.max(1, company.valuation + lift * 10000);
+      company.marketInfluence = Math.min(100, company.marketInfluence + 1);
+      target.brandTrust = Math.min(100, target.brandTrust + lift);
+    }
     this.addNews(target.id, `${company.name}'s CEO publicly praises ${target.name} — markets read it as sector confidence.`);
+    // T: CEO PR moves consume a special point.
+    if (company.ceos[0]) company.ceos[0].specialPoints = Math.max(0, company.ceos[0].specialPoints - 1);
   }
 
   /** CEO PR: trash-talk / discredit a rival — dents their trust & valuation,
@@ -1672,15 +1705,25 @@ export class TurnEngine {
     // Global market read: aggressive PR is rewarded by speculators — your own
     // valuation edges up even as the rival's falls (you're seizing the narrative).
     company.valuation = Math.max(1, company.valuation + hit * 12000);
+    // T: market_savant (Charisma) CEOs land harder hits AND move their own quote more.
+    if (company.ceos[0]?.perks.includes('market_savant')) {
+      target.valuation = Math.max(0, target.valuation - hit * 20000);
+      company.valuation = Math.max(1, company.valuation + hit * 8000);
+    }
     // Self-risk scales down with the CEO's Luck (Fallout-style soft bias).
     const luck = company.ceos[0]?.luck ?? 5;
     const caught = this.rng.nextBoolean(Math.max(0.05, 0.35 - luck / 40));
     if (caught) {
-      company.scandal = Math.min(100, company.scandal + hit * 0.6);
+      let scandal = hit * 0.6;
+      // T: iron_will (Luck) CEOs shrug off PR blowback.
+      if (company.ceos[0]?.perks.includes('iron_will')) scandal *= 0.4;
+      company.scandal = Math.min(100, company.scandal + scandal);
       this.addNews(company.id, `${company.name}'s CEO smear of ${target.name} backfires — scandal rises.`);
     } else {
       this.addNews(target.id, `${company.name}'s CEO publicly discredits ${target.name} — their reputation takes a hit.`);
     }
+    // T: CEO PR moves consume a special point.
+    if (company.ceos[0]) company.ceos[0].specialPoints = Math.max(0, company.ceos[0].specialPoints - 1);
   }
 
   /** Train a CEO's S.P.E.C.I.A.L. attribute — spends the action budget as training
@@ -1695,6 +1738,8 @@ export class TurnEngine {
     ceo.skills[skill] = Math.min(10, (ceo.skills[skill] ?? 5) + gain);
     ceo.trainedSkills = ceo.trainedSkills ?? {};
     ceo.trainedSkills[skill] = (ceo.trainedSkills[skill] ?? 0) + gain;
+    // T: training is a special CEO move — consumes a special point.
+    ceo.specialPoints = Math.max(0, ceo.specialPoints - 1);
     company.cash -= Math.round(action.budget * 0.5); // training has an opportunity cost
   }
 
@@ -2161,6 +2206,11 @@ export class TurnEngine {
     const perks = company.ceos[0]?.perks ?? [];
     if (perks.includes('cost_cutter')) operatingCosts = Math.round(operatingCosts * 0.9);
     if (perks.includes('high_leverage')) operatingCosts = Math.round(operatingCosts * 1.1);
+    // T: talent_magnet (Endurance) lifts workforce morale & employer brand each turn.
+    if (perks.includes('talent_magnet')) {
+      company.employeeMorale = Math.min(100, company.employeeMorale + 2);
+      company.employerBrand = Math.min(100, company.employerBrand + 1);
+    }
     company.operatingCosts = operatingCosts;
 
     company.revenue = Math.round(productRevenue + tileRevenue);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId, ActionType } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
-import { CEO_SKILLS, SPECIAL_LABELS, PERK_LABELS, CEO_TRAIT_DEFS } from '../../../data/archetypes';
+import { CEO_SKILLS, SPECIAL_LABELS, PERK_LABELS, PERK_SPECIAL_THRESHOLD, CEO_TRAIT_DEFS } from '../../../data/archetypes';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
@@ -601,6 +601,18 @@ const CeoPanel: React.FC<{ company: Company; onEdit: (a: TurnAction) => void }> 
               {c.perks.map(p => (
                 <span key={p} className="perk-chip" title={PERK_LABELS[p]}>{p.replace('_', ' ')}</span>
               ))}
+              {/* T: lockable perks — show the path to earn them by growing S.P.E.C.I.A.L. */}
+              {(Object.keys(PERK_SPECIAL_THRESHOLD) as (keyof typeof PERK_SPECIAL_THRESHOLD)[])
+                .filter(pk => !c.perks.includes(pk))
+                .map(pk => {
+                  const t = PERK_SPECIAL_THRESHOLD[pk]!;
+                  const cur = c.skills[t.skill] ?? 0;
+                  return (
+                    <span key={pk} className="perk-chip locked" title={`${PERK_LABELS[pk]} — needs ${t.skill} ${t.min} (have ${cur})`}>
+                      {pk.replace('_', ' ')} 🔒{cur}/{t.min}
+                    </span>
+                  );
+                })}
             </div>
 
             <div className="ceo-actions">

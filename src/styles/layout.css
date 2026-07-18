@@ -838,6 +838,7 @@
 .ceo-traits { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .trait-chip { font-size: 10px; background: rgba(0,212,170,0.12); color: var(--accent-cyan); padding: 2px 8px; border-radius: 999px; }
 .perk-chip { font-size: 10px; background: rgba(155,89,182,0.15); color: #b07fd0; padding: 2px 8px; border-radius: 999px; }
+.perk-chip.locked { background: transparent; color: var(--text-muted); border: 1px dashed var(--border); }
 .ceo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ceo-btn { font-size: 11px; padding: 5px 10px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); border-radius: 6px; cursor: pointer; }
 .ceo-btn:hover { border-color: var(--accent-cyan); }
