@@ -181,7 +181,7 @@ const DepartmentsPanel: React.FC<{
             {isOpen && (
               <div className="building-depts">
                 {depts.length === 0
-                  ? <div className="empty-state small">Empty — no departments housed here.</div>
+                  ? <div className="empty-state small">No Departments yet!</div>
                   : <div className="departments-grid">{depts.map((d, i) => <DepartmentCard key={i} dept={d} />)}</div>}
               </div>
             )}
@@ -215,7 +215,7 @@ const DepartmentsPanel: React.FC<{
                     {!isRevealed
                       ? <div className="empty-state small locked">🔒 CLASSIFIED — {depts.length} department(s) hidden</div>
                       : depts.length === 0
-                        ? <div className="empty-state small">Empty — no departments housed here.</div>
+                        ? <div className="empty-state small">No Departments yet!</div>
                         : <div className="departments-grid">{depts.map((d, i) => <DepartmentCard key={i} dept={d} />)}</div>}
                   </div>
                 )}
