@@ -487,6 +487,16 @@ export interface GameState {
   trends: MarketTrend[];
   /** Early weak signals hinting at emerging trends (T5). */
   weakSignals: WeakSignal[];
+  /** T6: persistent alert log (news/events that warranted a toast) surfaced in the Orders tab. */
+  alerts: AlertItem[];
+}
+
+export interface AlertItem {
+  id: string;
+  turn: number;
+  title: string;
+  body: string;
+  importance: 'minor' | 'major' | 'critical';
 }
 
 export interface NewsItem {

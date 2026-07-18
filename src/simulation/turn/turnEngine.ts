@@ -122,6 +122,7 @@ export class TurnEngine {
       seed: this.rng.getSeed(),
       trends: this.generateMarketTrends(2),
       weakSignals: this.generateWeakSignals(2),
+      alerts: [],
     };
   }
 

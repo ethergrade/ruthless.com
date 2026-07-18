@@ -1145,3 +1145,18 @@
 .trend-exploit { margin-top: 8px; width: 100%; background: linear-gradient(135deg, #00d4aa, #0098c9); color: #04121b; border: none; border-radius: 6px; padding: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .trend-exploit:hover { filter: brightness(1.12); }
 
+/* ---- Alerts section (T6) ----------------------------------------------- */
+.alerts-section { margin-top: 6px; }
+.alerts-count { color: #ff8a5c; font-weight: 700; }
+.alert-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; padding: 6px 8px; border-left: 3px solid var(--border-primary); border-radius: 4px; margin-bottom: 5px; background: var(--bg-tertiary); font-size: 12.5px; }
+.alert-row.major { border-left-color: #ffc107; }
+.alert-row.critical { border-left-color: #ff4d4f; }
+.alert-turn { font-family: var(--font-mono); color: var(--text-muted); font-size: 11px; }
+.alert-importance { font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+.alert-title { font-weight: 600; color: var(--text-primary); }
+.alert-body { color: var(--text-secondary); flex-basis: 100%; }
+
+/* Toast auto-dismiss (T6) */
+.notification-toast.toast-fresh { animation: toast-in 0.25s ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+

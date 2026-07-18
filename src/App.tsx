@@ -192,9 +192,7 @@ function App() {
         state={state}
         playerCompany={playerCompany}
         newsFeed={state?.newsFeed || []}
-        notifications={ui.notifications}
         onEdit={handleEdit}
-        onDismissNotification={dismissNotification}
       />
 
       {showActionModal && playerCompany && state && (

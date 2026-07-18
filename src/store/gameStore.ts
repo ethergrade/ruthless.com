@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware';
 import type {
   GameState, TurnAction, NewsItem, MarketBriefing,
   CompanyId, TileId, CompanyArchetype,
-  CEOTrait, ScenarioConfig,
+  CEOTrait, ScenarioConfig, AlertItem,
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
@@ -127,13 +127,25 @@ export const useGameStore = create<GameStore>()(
       setActivePanel: (panel) => set((prev) => ({ ui: { ...prev.ui, activePanel: panel } })),
       setShowActionModal: (show, action) => set((prev) => ({ ui: { ...prev.ui, showActionModal: show, pendingAction: action || null } })),
 
-      addNotification: (title, body, _importance = 'minor') =>
-        set((prev) => ({
-          ui: {
-            ...prev.ui,
-            notifications: [...prev.ui.notifications.slice(-9), `${title}: ${body}`],
-          },
-        })),
+      addNotification: (title, body, importance = 'minor') =>
+        set((prev) => {
+          const toast = `${title}: ${body}`;
+          const alert: AlertItem = {
+            id: generateId.event(),
+            turn: prev.state?.turn ?? 0,
+            title, body,
+            importance,
+          };
+          return {
+            ui: {
+              ...prev.ui,
+              notifications: [...prev.ui.notifications.slice(-9), toast],
+            },
+            state: prev.state
+              ? { ...prev.state, alerts: [...prev.state.alerts, alert].slice(-50) }
+              : prev.state,
+          };
+        }),
 
       dismissNotification: (index) =>
         set((prev) => ({

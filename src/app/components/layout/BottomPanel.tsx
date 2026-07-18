@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem } from '../../../types';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
   state: GameState | null;
   playerCompany: Company | undefined;
   newsFeed: NewsItem[];
-  notifications: string[];
   defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends';
   onEdit: (action: TurnAction) => void;
-  onDismissNotification: (index: number) => void;
   height?: number;
 }
 
@@ -17,10 +15,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   state,
   playerCompany,
   newsFeed,
-  notifications,
   defaultTab = 'kpi',
   onEdit,
-  onDismissNotification,
   height = 220,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends'>(defaultTab);
@@ -59,21 +55,10 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
-        {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} onEdit={onEdit} />}
+        {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
         {activeTab === 'trends' && <TrendsPanel trends={state.trends} weakSignals={state.weakSignals} onExploit={(_c) => setActiveTab('orders')} />}
-      </div>
-
-      {notifications.length > 0 && (
-        <div className="notifications-bar">
-          {notifications.map((msg, i) => (
-            <div key={i} className="notification-item" onClick={() => onDismissNotification(i)}>
-              {msg}
-              <button className="dismiss-btn" onClick={e => { e.stopPropagation(); onDismissNotification(i); }}>×</button>
-            </div>
-          ))}
-        </div>
-      )}
+    </div>
     </div>
   );
 };
@@ -239,10 +224,29 @@ const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
 const OrdersPanel: React.FC<{
   actions: TurnAction[];
   history: TurnAction[];
+  alerts: AlertItem[];
   onEdit: (action: TurnAction) => void;
-}> = ({ actions, history, onEdit }) => {
-  const label = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-  if (actions.length === 0 && history.length === 0) return <div className="empty-state">No orders yet</div>;
+}> = ({ actions, history, alerts, onEdit }) => {
+  const label = (t: string) => t.replace(/_/g, ' ').replace(/\\b\\w/g, (c: string) => c.toUpperCase());
+  if (actions.length === 0 && history.length === 0) {
+    return (
+      <div className="orders-list">
+        <div className="empty-state">No orders yet</div>
+        <div className="orders-section alerts-section">
+          <div className="orders-section-head">Alerts <span className="alerts-count">{alerts.length}</span></div>
+          {alerts.length === 0 && <p className="trends-empty">No alerts yet — major/critical events will surface here.</p>}
+          {alerts.slice().reverse().map((al) => (
+            <div key={al.id} className={`alert-row ${al.importance}`}>
+              <span className="alert-turn">T{al.turn}</span>
+              <span className="alert-importance">{al.importance}</span>
+              <span className="alert-title">{al.title}</span>
+              {al.body && <span className="alert-body">{al.body}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   // Group history by resolved turn for a compact "previous turns" view.
   const byTurn = new Map<number, TurnAction[]>();
   history.forEach(a => {
@@ -282,6 +286,18 @@ const OrdersPanel: React.FC<{
           ))}
         </div>
       ))}
+      <div className="orders-section alerts-section">
+        <div className="orders-section-head">Alerts <span className="alerts-count">{alerts.length}</span></div>
+        {alerts.length === 0 && <p className="trends-empty">No alerts yet — major/critical events will surface here.</p>}
+        {alerts.slice().reverse().map((al) => (
+          <div key={al.id} className={`alert-row ${al.importance}`}>
+            <span className="alert-turn">T{al.turn}</span>
+            <span className="alert-importance">{al.importance}</span>
+            <span className="alert-title">{al.title}</span>
+            {al.body && <span className="alert-body">{al.body}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

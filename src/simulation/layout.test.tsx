@@ -71,9 +71,7 @@ describe('Fase 2 — layout components render without crashing', () => {
         state,
         playerCompany: player,
         newsFeed: [],
-        notifications: [],
         onEdit: () => {},
-        onDismissNotification: () => {},
       })
     );
     for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'News']) {
