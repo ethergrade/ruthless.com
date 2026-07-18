@@ -49,6 +49,8 @@ export class TurnEngine {
   private ceoTrait: CEOTrait = 'none';
   private scenarioOpts: ScenarioConfig | null = null;
   private ceoBuild?: CeoBuild;
+  /** Ideas actually created this turn, per company — backs the R&D capacity cap. */
+  private ideasCreatedThisTurn = new Map<string, number>();
 
   // T: point-buy stat overrides for the player's starting build.
   private statOverrides?: Partial<Record<string, number>>;
@@ -226,6 +228,7 @@ export class TurnEngine {
   endTurn(): TurnResult {
     const events: GameEvent[] = [];
     const newsItems: NewsItem[] = [];
+    this.ideasCreatedThisTurn.clear(); // reset per-turn R&D idea capacity
 
     this.processPlayerActions(events, newsItems);
     this.processAIActions(events, newsItems);
@@ -1350,10 +1353,12 @@ export class TurnEngine {
 
   /** T9 — R&D: invent a new idea/technology. Breakthroughs can spark a market trend. */
   private runCreateIdeas(company: Company, action: TurnAction): void {
-    // T: a company may invent at most as many ideas per turn as it has R&D departments.
+    // Capacity cap: a company may invent at most as many ideas this turn as it
+    // has R&D departments (product_rd or ai_data). Tracked explicitly so it can
+    // never be bypassed by queuing multiple create_ideas orders in one turn.
     const rdCount = company.departments.filter(d => d.type === 'product_rd' || d.type === 'ai_data').length;
-    const ideasThisTurn = company.ideas.filter(i => i.createdTurn === this.state.turn).length;
-    if (ideasThisTurn >= Math.max(1, rdCount)) return; // capacity cap — no extra ideas this turn
+    const created = this.ideasCreatedThisTurn.get(company.id) ?? 0;
+    if (created >= rdCount) return; // no R&D capacity left this turn
     const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
     const category = action.productCategory ?? this.rng.shuffle(cats).pop()!;
     const researchPush = Math.min(100, 30 + action.budget / 12000 + company.innovation / 4);
@@ -1368,6 +1373,7 @@ export class TurnEngine {
       createdTurn: this.state.turn,
     };
     company.ideas.push(idea);
+    this.ideasCreatedThisTurn.set(company.id, created + 1);
     this.state.inventions = [...this.state.inventions, idea];
     company.innovation = Math.min(100, company.innovation + 4);
     // A breakthrough can ignite a brand-new global trend for this category (R&D pull).
