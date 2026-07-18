@@ -11,6 +11,7 @@ interface BottomPanelProps {
   height?: number;
   defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo';
   selectedTileId?: string | null;
+  addAction?: (a: TurnAction) => void;
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -20,6 +21,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onEdit,
   height = 220,
   selectedTileId,
+  addAction,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo'>(defaultTab);
 
@@ -63,6 +65,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           buildings={playerCompany.buildings}
           playerCompanyId={playerCompany.id}
           selectedTileId={selectedTileId}
+          addAction={addAction}
         />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
@@ -135,8 +138,16 @@ const DepartmentsPanel: React.FC<{
   buildings: Building[];
   playerCompanyId: string;
   selectedTileId?: string | null;
-}> = ({ state, departments, buildings, playerCompanyId, selectedTileId }) => {
+  addAction?: (a: TurnAction) => void;
+}> = ({ state, departments, buildings, playerCompanyId, selectedTileId, addAction }) => {
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // T: a selected player tile auto-opens its building node (replaces the old
+  // floating BuildingDetailModal — selection drives this tab, not a popup over the map).
+  const selectedBuildingId = selectedTileId && state
+    ? state.companies.get(playerCompanyId)?.buildings.find(b => b.tileId === (selectedTileId as TileId))?.id
+    : undefined;
+  const effectiveOpenId = selectedBuildingId ?? openId;
 
   // Rival Territory: when the player clicks a rival-controlled tile, surface that
   // rival's buildings below the player's own tree (option A: no modal, just a
@@ -157,9 +168,9 @@ const DepartmentsPanel: React.FC<{
         const depts = b.departmentIds
           .map(id => departments.find(d => d.id === id))
           .filter((d): d is Department => Boolean(d));
-        const isOpen = openId === b.id;
+        const isOpen = effectiveOpenId === b.id;
         return (
-          <div key={b.id} className={`building-node ${b.isHQ ? 'hq' : ''}`}>
+          <div key={b.id} className={`building-node ${b.isHQ ? 'hq' : ''} ${selectedTileId === b.tileId ? 'selected' : ''}`}>
             <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
               <span className="bu-caret">{isOpen ? '▾' : '▸'}</span>
               <span className="bu-name">{b.name ?? (b.isHQ ? '⚑ HQ' : '⌂ Branch')}</span>
@@ -190,7 +201,7 @@ const DepartmentsPanel: React.FC<{
               .map(id => rivalCompany.departments.find(d => d.id === id))
               .filter((d): d is Department => Boolean(d));
             const isRevealed = canSeeRivalDepts && (revealed.includes(b.id) || ceoIntel);
-            const isOpen = openId === b.id;
+            const isOpen = effectiveOpenId === b.id;
             return (
               <div key={b.id} className="building-node rival">
                 <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
@@ -213,6 +224,40 @@ const DepartmentsPanel: React.FC<{
           })}
         </div>
       )}
+
+      {/* T: Startup tile selected — surfaces here (no floating modal). Buyable blind. */}
+      {selectedTile && (() => {
+        const startup = selectedTile.controllerId ? state?.companies.get(selectedTile.controllerId) : undefined;
+        if (!startup?.isStartup) return null;
+        const sb = startup.buildings.find(b => b.tileId === (selectedTileId as TileId));
+        const sd = (sb?.departmentIds ?? []).map(id => startup.departments.find(d => d.id === id)).filter((d): d is Department => Boolean(d));
+        const price = sb ? 2_000_000 : 1_200_000;
+        const playerCash = state?.companies.get(playerCompanyId)?.cash ?? 0;
+        const canAfford = playerCash >= price;
+        const buyStartup = () => {
+          if (!addAction || !canAfford) return;
+          addAction({ companyId: playerCompanyId, type: 'acquire_company', budget: price, priority: 1, targetCompanyId: startup!.id } as TurnAction);
+        };
+        return (
+          <div className="startup-section">
+            <div className="rt-header">
+              <span className="rt-lock">★</span>
+              <span className="rt-title">STARTUP — {startup.name}</span>
+              <span className="rt-hint">{sb ? `${sd.length} dept(s) housed` : 'empty shell — buy blind'}</span>
+            </div>
+            <div className="bd-meta">
+              <span className="bd-chip">Tile {selectedTileId}</span>
+              {sb && <><span className="bd-chip">Firewall {sb.firewall}</span><span className="bd-chip">Physical {sb.physicalSecurity}</span></>}
+              {selectedTile.startupPotential && <span className="bd-chip warn">Potential: {selectedTile.startupPotential}</span>}
+            </div>
+            {sb && sd.length > 0 && <div className="departments-grid">{sd.map((d, i) => <DepartmentCard key={i} dept={d} />)}</div>}
+            <button className="btn btn-primary startup-buy-btn" disabled={!canAfford} onClick={buyStartup} title={canAfford ? `Acquire for $${price.toLocaleString()}` : 'Not enough cash'}>
+              Acquire Startup — ${price.toLocaleString()}
+            </button>
+            {!canAfford && <p className="bd-warn">Not enough cash.</p>}
+          </div>
+        );
+      })()}
     </div>
   );
 };
