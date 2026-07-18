@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware';
 import type {
   GameState, TurnAction, NewsItem, MarketBriefing,
   CompanyId, TileId, CompanyArchetype,
-  CEOTrait,
+  CEOTrait, ScenarioConfig,
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
@@ -21,7 +21,7 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -58,8 +58,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait) => {
-        const engine = new TurnEngine(seed, ceoTrait);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined) {
           const player = state.companies.get(state.playerCompanyId);

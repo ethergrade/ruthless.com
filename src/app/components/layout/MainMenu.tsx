@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
+import { ScenarioEditorModal, CampaignEditorModal } from './editors';
+import type { ScenarioConfig, CampaignConfig } from '../../../types';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
@@ -31,6 +33,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [companyName, setCompanyName] = useState('MyCorp');
   const [showNewGame, setShowNewGame] = useState(false);
   const [showLoadGame, setShowLoadGame] = useState(false);
+  const [showScenario, setShowScenario] = useState(false);
+  const [showCampaign, setShowCampaign] = useState(false);
   const [seed, setSeed] = useState('');
   const [selectedColor, setSelectedColor] = useState('#00d4aa');
   const [disasters, setDisasters] = useState(true);
@@ -53,6 +57,31 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
     onStartGame();
   };
 
+  const handleStartScenario = (cfg: ScenarioConfig) => {
+    try {
+      initializeGame(cfg.seed, cfg.name, undefined, undefined, cfg.disasters, undefined, cfg);
+    } catch { /* never block */ }
+    setShowScenario(false);
+    onStartGame();
+  };
+
+  const handleStartCampaign = (cfg: CampaignConfig) => {
+    // Launch chapter 1 immediately with the persistent player corporation.
+    const ch1 = cfg.chapters[0];
+    try {
+      initializeGame(
+        ch1.scenario.seed,
+        cfg.playerCorp.name,
+        cfg.playerCorp.archetype,
+        cfg.playerCorp.color,
+        ch1.scenario.disasters,
+        cfg.playerCorp.ceoTrait,
+        ch1.scenario,
+      );
+    } catch { /* never block */ }
+    setShowCampaign(false);
+    onStartGame();
+  };
   const handleLoad = () => {
     const { loadGame } = useGameStore.getState();
     if (loadGame()) {
@@ -81,11 +110,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
             <span className="btn-icon"><Icon name="folder" /></span>
             <span>LOAD GAME</span>
           </button>
-          <button className="menu-btn secondary" onClick={() => setShowNewGame(true)}>
+          <button className="menu-btn secondary" onClick={() => setShowScenario(true)}>
             <span className="btn-icon"><Icon name="gamepad" /></span>
             <span>SCENARIO EDITOR</span>
           </button>
-          <button className="menu-btn secondary" onClick={() => setShowNewGame(true)}>
+          <button className="menu-btn secondary" onClick={() => setShowCampaign(true)}>
             <span className="btn-icon"><Icon name="book" /></span>
             <span>CAMPAIGN EDITOR</span>
           </button>
@@ -124,6 +153,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
           onLoaded={handleLoad}
           onCancel={() => setShowLoadGame(false)}
         />
+      )}
+
+      {showScenario && (
+        <ScenarioEditorModal onStart={handleStartScenario} onCancel={() => setShowScenario(false)} />
+      )}
+      {showCampaign && (
+        <CampaignEditorModal onStart={handleStartCampaign} onCancel={() => setShowCampaign(false)} />
       )}
     </div>
   );

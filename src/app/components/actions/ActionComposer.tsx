@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type {
   ActionType, Company, CompanyId, MarketTile, ProductCategory,
   VoiceTone, CampaignAuthenticity, RuthlessDept, TileId, ProductId, DepartmentType,
+  TurnAction,
 } from '../../../types';
 import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
@@ -121,6 +122,8 @@ export const ActionComposer: React.FC<Props> = ({
   }, [initialDraft]);
 
   const rivals = companies.filter(c => c.id !== playerCompany.id);
+  // Build actions only allow the player's own controlled tiles (req T3).
+  const ownedTiles = tiles.filter(t => t.controllerId === playerCompany.id);
   const needs = def.needs ?? [];
   const canSubmit = budget > 0 || def.baseCost === 0 ||
     (type === 'launch_product' && !!productName) ||
@@ -228,7 +231,9 @@ export const ActionComposer: React.FC<Props> = ({
             <label>Build On Tile (your controlled tile)</label>
             <select value={targetTileId} onChange={e => setTargetTileId(e.target.value)}>
               <option value="">— select tile —</option>
-              {tiles.map(t => (
+              {(type === 'build_department' || type === 'build_building'
+                ? ownedTiles
+                : tiles).map(t => (
                 <option key={t.id} value={t.id}>
                   {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}
                 </option>
@@ -350,6 +355,20 @@ export const ActionComposer: React.FC<Props> = ({
           <div className={`ac-estimate ${successPct >= 60 ? 'good' : successPct >= 35 ? 'mid' : 'low'}`}>
             <span className="ac-estimate-label">EST. SUCCESS</span>
             <span className="ac-estimate-val">{successPct}%</span>
+            <button
+              type="button"
+              className="ac-max-btn"
+              title="Set budget to the minimum needed for ~95% success"
+              onClick={() => {
+                if (!estimate) return;
+                let best = maxBudget;
+                for (let b = def.baseCost; b <= maxBudget; b += 50000) {
+                  const pct = estimate({ ...draft, budget: b } as Omit<TurnAction, 'id' | 'status'>);
+                  if (pct >= 95) { best = b; break; }
+                }
+                setBudget(best);
+              }}
+            >MAX SUCCESS ⚡</button>
             <div className="ac-estimate-bar"><div style={{ width: `${successPct}%` }} /></div>
           </div>
         )}

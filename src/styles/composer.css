@@ -138,7 +138,7 @@
 
 .ac-estimate {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto auto 1fr;
   align-items: center;
   gap: 10px;
   padding: 11px 14px;
@@ -146,6 +146,20 @@
   border: 1px solid #233152;
   background: #0b1120;
 }
+.ac-max-btn {
+  background: linear-gradient(135deg, #00d4aa, #0098c9);
+  color: #04121b;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ac-max-btn:hover { filter: brightness(1.12); }
+.ac-max-btn:active { transform: translateY(1px); }
 .ac-estimate-label { font-size: 11px; letter-spacing: 1.5px; color: #9fb0d8; }
 .ac-estimate-val { font-size: 20px; font-weight: 700; }
 .ac-estimate.good { border-color: #1f9d6b; }

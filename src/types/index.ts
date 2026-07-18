@@ -107,6 +107,51 @@ export type ActionType =
   | 'auction_bid'             // place a bid on an existing listing (buy side)
   | 'end_turn';
 
+/** Win condition for a Scenario (tactical single-board setup). */
+export type ScenarioWinCondition =
+  | { kind: 'tile_control'; target: number }      // control N tiles
+  | { kind: 'valuation'; target: number }          // reach $ valuation
+  | { kind: 'market_share'; target: number }       // % of total map share
+  | { kind: 'eliminate'; targetCompanyId?: string } // bankrupt a rival
+  | { kind: 'turn_limit'; turns: number };         // survive N turns
+
+/** Tactical, self-contained board setup (no continuity between plays). */
+export interface ScenarioConfig {
+  id: string;
+  name: string;
+  mapSize: 'small' | 'medium' | 'large';
+  seed?: number;
+  aiRivals: number;            // 1..4 rival corporations
+  disasters: boolean;
+  winConditions: ScenarioWinCondition[];
+  startCash: number;           // player starting cash
+  description?: string;
+}
+
+/** A single chapter inside a Campaign arc. */
+export interface CampaignChapter {
+  id: string;
+  title: string;
+  scenario: ScenarioConfig;
+  narrativeIntro?: string;     // story beat shown before the chapter
+  aiDifficulty: 'docile' | 'aggressive' | 'ruthless';
+}
+
+/** Narrative multi-chapter arc with a PERSISTENT player corporation. */
+export interface CampaignConfig {
+  id: string;
+  name: string;
+  chapters: CampaignChapter[];
+  // Persistent player corp carried across chapters.
+  playerCorp: {
+    name: string;
+    archetype: CompanyArchetype;
+    ceoTrait: CEOTrait;
+    color: string;
+  };
+  intro?: string;              // campaign-level story hook
+}
+
 export type CompanyArchetype =
   | 'hypergrowth_platform'
   | 'security_fortress'

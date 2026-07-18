@@ -20,6 +20,8 @@ import type { MarketSegment,
   EventCategory,
   AuctionListing,
   CEOTrait,
+  ScenarioConfig,
+  CompanyArchetype,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -37,10 +39,12 @@ export class TurnEngine {
   private rng: ReturnType<typeof createRNG>;
   private state: GameState;
   private ceoTrait: CEOTrait = 'none';
+  private scenarioOpts: ScenarioConfig | null = null;
 
-  constructor(seed?: number, ceoTrait?: CEOTrait) {
+  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
+    if (scenario) this.scenarioOpts = scenario;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -61,14 +65,22 @@ export class TurnEngine {
   }
 
   private initializeGameState(): GameState {
-    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait);
-    const aiCompanies = [
-      createCompany(this.rng, 'NexusTech', 'hypergrowth_platform', false, 0),
-      createCompany(this.rng, 'SentinelCyber', 'security_fortress', false, 1),
-      createCompany(this.rng, 'ApexDigital', 'acquisition_machine', false, 2),
+    const so = this.scenarioOpts;
+    const mapDims: Record<string, [number, number]> = { small: [6, 6], medium: [8, 8], large: [10, 10] };
+    const [mw, mh] = so ? (mapDims[so.mapSize] ?? [8, 8]) : [8, 8];
+    const rivalCount = so ? Math.max(1, Math.min(4, so.aiRivals)) : 3;
+    const rivalDefs: [string, CompanyArchetype][] = [
+      ['NexusTech', 'hypergrowth_platform'],
+      ['SentinelCyber', 'security_fortress'],
+      ['ApexDigital', 'acquisition_machine'],
+      ['Vertex Dynamics', 'lean_specialist'],
     ];
+    const aiCompanies = rivalDefs.slice(0, rivalCount).map(([name, arch], i) =>
+      createCompany(this.rng, name, arch, false, i));
 
-    const marketTiles = createMarketMap(this.rng, 8, 8);
+    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait);
+    if (so?.startCash) playerCompany.cash = so.startCash;
+    const marketTiles = createMarketMap(this.rng, mw, mh);
     this.assignStartingTerritories(marketTiles, [playerCompany, ...aiCompanies]);
 
     const companies = new Map<CompanyId, Company>();

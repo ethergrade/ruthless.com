@@ -1112,3 +1112,18 @@
 .orders-section { margin-bottom: 14px; }
 .orders-section-head { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); padding: 4px 0; border-bottom: 1px solid var(--border-primary); margin-bottom: 6px; }
 
+/* ---- Scenario / Campaign editors (T2) ---------------------------------- */
+.editor-modal { display: flex; flex-direction: column; gap: 13px; }
+.editor-sub { color: var(--text-muted); font-size: 12.5px; margin: -4px 0 2px; line-height: 1.4; }
+.editor-h4 { margin: 6px 0 -2px; color: var(--accent-cyan); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.editor-modal textarea { width: 100%; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 7px; padding: 8px 10px; font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
+.editor-modal .form-group.row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.seg-control { display: flex; gap: 6px; }
+.seg-control .seg { flex: 1; padding: 9px 0; border-radius: 7px; border: 1px solid var(--border-primary); background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; font-size: 13px; font-weight: 600; }
+.seg-control .seg.sel { border-color: var(--accent-cyan); background: rgba(0,212,170,0.12); color: var(--accent-cyan); }
+.check-row { display: flex; align-items: center; gap: 9px; color: var(--text-secondary); font-size: 13px; }
+.editor-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 6px; }
+.editor-actions .menu-btn { min-width: 150px; justify-content: center; }
+.scenario-editor .editor-sub { border-left: 2px solid var(--accent-cyan); padding-left: 10px; }
+.campaign-editor .editor-sub { border-left: 2px solid #ff6b35; padding-left: 10px; }
+
