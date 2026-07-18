@@ -131,7 +131,17 @@ export type ActionType =
   | 'hire_ceo'                // assign a CEO to a (new) HQ building — needs HR dept
   | 'hire_coo'                // assign a COO to an HQ — needs HR dept
   | 'mass_layoff'             // lay off staff: cuts costs but crushes morale/brand
-  | 'end_turn';
+  | 'end_turn'
+  // --- CEO GDR: market-moving PR, training & firing ---
+  | 'ceo_praise'             // CEO PR: publicly praise a rival (diplomatic market nudge)
+  | 'ceo_discredit'          // CEO PR: trash-talk / discredit a rival to move the market
+  | 'train_ceo'              // Train a CEO's S.P.E.C.I.A.L. attribute (spend budget/special pts)
+  | 'fire_ceo'               // Remove a seated CEO (frees the HQ, -1 order)
+  // --- Legal & Compliance (ruthless.com-inspired) ---
+  | 'legal_sue'              // File a lawsuit vs a rival (damages + valuation hit)
+  | 'legal_patent'           // Lock a patent/tech to block a rival category
+  | 'legal_subpoena'         // Subpoena a rival's data (intel + compliance pressure)
+  | 'acquire_below_value';   // Buy a rival cheap (below its valuation) — needs Finance
 
 /** Win condition for a Scenario (tactical single-board setup). */
 export type ScenarioWinCondition =
@@ -233,6 +243,8 @@ export interface Company {
   ideas: Idea[];
   /** T: CEO roster — one per HQ; each grants +1 executive order. */
   ceos: ChiefExecutive[];
+  /** T: the GDR build used for the starting CEO (kept for reference / re-roll). */
+  ceoBuild?: CeoBuild;
   /** T: workforce morale 0..100 (news/market events move it; layoffs crush it). */
   employeeMorale: number;
   /** T: employer brand / internal brand 0..100 (HR builds it). */
@@ -275,6 +287,16 @@ export interface ChiefExecutive extends Executive {
   xp: number;
   /** Perks unlocked by XP or granted by the CEO trait at hire. */
   perks: ChiefPerk[];
+  /** T — Fallout-style S.P.E.C.I.A.L. attributes (0..10). */
+  skills: Partial<Record<CEOSkill, number>>;
+  /** T — Luck pillar (mirrors skills.luck; separate for clarity). */
+  luck: number;
+  /** T — traits layered on this CEO (multi). */
+  ceoTraits: CEOTrait[];
+  /** T — special-action points available this turn (regenerated each turn). */
+  specialPoints: number;
+  /** T — cumulative points spent training (for display / caps). */
+  trainedSkills?: Partial<Record<CEOSkill, number>>;
 }
 
 export interface Building {
@@ -463,6 +485,33 @@ export type ExecutiveTrait =
   | 'security_first'
   | 'political_capital';
 
+/**
+ * T — Fallout-style S.P.E.C.I.A.L. attribute set for CEOs (0..10 each).
+ * Luck is the 7th pillar; it softly biases success rolls, crisis survival
+ * and scandal recovery. Charisma drives CEO social / negotiation; Perception
+ * drives espionage/cyber awareness; Endurance drives crisis resilience, etc.
+ */
+export type CEOSkill =
+  | 'strength'      // physical/operational grit
+  | 'perception'    // espionage / cyber awareness
+  | 'endurance'     // crisis resilience / scandal recovery
+  | 'charisma'      // CEO social, negotiation, talent magnet
+  | 'intelligence'  // strategy, R&D, fast learning
+  | 'agility'       // speed of execution / orders
+  | 'luck';         // soft random bonus across the board
+
+/** A GDR "character build" for the starting CEO (point-buy at new game). */
+export interface CeoBuild {
+  /** One or more trait ids (multi-select within the token budget). */
+  traits: CEOTrait[];
+  /** S.P.E.C.I.A.L. attributes (0..10). */
+  skills: Partial<Record<CEOSkill, number>>;
+  /** Luck is also tracked separately for clarity (mirrors skills.luck). */
+  luck: number;
+  /** Special action points regenerated per turn (gated by traits/perks). */
+  specialPoints: number;
+}
+
 export type ExecutiveVulnerability =
   | 'fragile_ego'
   | 'overconfident'
@@ -585,7 +634,17 @@ export interface GameState {
   auctionHouse: AuctionListing[];   // req 2: assets up for auction
   kpiHistory: Record<string, number[]>; // keyed by KPI key, last N turns, for sparklines
   actionHistory: TurnAction[]; // resolved/failed orders from previous turns (req: review & re-bid)
-  disastersEnabled: boolean;
+  /** T — granular world-simulation toggles (player chooses each at new game). */
+  simulation: {
+    /** Demand shifts, trends, weak signals & competitor moves. */
+    marketSimulation: boolean;
+    /** SimCity-like market shocks: crashes, surges, cataclisms. */
+    cataclysms: boolean;
+    /** New technologies / inventions surface over time. */
+    newTech: boolean;
+  };
+  /** @deprecated legacy flag — kept for save compatibility; derive from simulation. */
+  disastersEnabled?: boolean;
   isGameOver: boolean;
   victoryType?: VictoryType;
   seed: number;

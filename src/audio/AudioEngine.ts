@@ -1,15 +1,36 @@
 /**
- * T — Procedural audio engine (Web Audio API).
+ * Procedural audio engine (Web Audio API).
  * No external assets: every sound is synthesised at runtime so the game ships
- * with a full funk/hacker/light soundtrack + contextual SFX and zero binaries.
+ * with a full soundtrack + contextual SFX and zero binaries.
  *
- * BGM is a slow funk groove in A-minor pentatonic (bass slap + chord stabs +
- * offbeat hats + a "hacker" arpeggio through a delay). SFX are short enveloped
- * blips tuned to feel light, not abrasive.
+ * BGM is a 128-step (8-bar × 16-step) evolving sequencer in A-minor: a funk
+ * bassline, chord stabs, offbeat hats, a delayed "hacker" arpeggio and a
+ * wandering lead. Patterns vary bar-to-bar so the loop never feels static.
+ *
+ * IMPORTANT (autoplay / mute correctness): BGM is started ONLY by an explicit
+ * setMusicEnabled(true) call. Generic gestures / SFX go through ensure() which
+ * only (re)creates + resumes the AudioContext — it must NEVER auto-start BGM,
+ * otherwise muting would be undone by the next click.
  */
+
 type SfxName =
   | 'click' | 'orderPlaced' | 'success' | 'failure'
   | 'trendSurge' | 'newsAlert' | 'endTurn' | 'build' | 'hireCeo' | 'exploit';
+
+// A natural-minor-ish scale (Hz) used for the lead/arp, rooted on A2.
+const SCALE = [110, 123.47, 130.81, 146.83, 164.81, 174.61, 196, 220];
+// 8-bar chord roots (Am – F – C – G – Am – F – G – E) for a light funk loop.
+const BAR_ROOTS = [110, 87.31, 130.81, 98, 110, 87.31, 98, 82.41];
+const BAR_CHORD = [
+  [220, 261.63, 329.63], // Am
+  [174.61, 220, 261.63], // F
+  [261.63, 329.63, 392], // C
+  [196, 246.94, 293.66], // G
+  [220, 261.63, 329.63], // Am
+  [174.61, 220, 261.63], // F
+  [196, 246.94, 293.66], // G
+  [164.81, 207.65, 246.94], // E
+];
 
 class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -23,6 +44,8 @@ class AudioEngine {
   private bgmTimer: number | null = null;
   private step = 0;
   private nextNoteTime = 0;
+  // Per-bar variation seed so the lead/arp evolve without random chaos.
+  private barSeed = 0;
 
   /** Lazily create the context (must follow a user gesture). */
   private ensure(): AudioContext | null {
@@ -35,19 +58,15 @@ class AudioEngine {
       this.master.gain.value = 1;
       this.master.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = this._musicEnabled ? this._musicVolume * 0.45 : 0;
+      this.musicGain.gain.value = this._musicEnabled ? this._musicVolume * 0.4 : 0;
       this.musicGain.connect(this.master);
       this.sfxGain = this.ctx.createGain();
       this.sfxGain.gain.value = this._sfxEnabled ? this._sfxVolume : 0;
       this.sfxGain.connect(this.master);
     }
-    if (this.ctx.state === 'suspended') {
-      // resume() is async; once the context is running, (re)start BGM if it
-      // was requested while suspended (e.g. on the very first user gesture).
-      void this.ctx.resume().then(() => {
-        if (this._musicEnabled) this.startBgm();
-      });
-    }
+    // Resume if suspended (autoplay policy). NOTE: this must NOT start BGM —
+    // only setMusicEnabled(true) does that (see the mute bug fix below).
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     return this.ctx;
   }
 
@@ -58,8 +77,19 @@ class AudioEngine {
   }
   setMusicEnabled(v: boolean): void {
     this._musicEnabled = v;
-    if (this.musicGain) this.musicGain.gain.value = v ? this._musicVolume * 0.45 : 0;
-    if (v) this.startBgm(); else this.stopBgm();
+    if (this.musicGain) this.musicGain.gain.value = v ? this._musicVolume * 0.4 : 0;
+    if (v) {
+      const ctx = this.ensure();
+      // If the context is still suspended (pre-gesture), resume() is async;
+      // start once it is actually running.
+      if (ctx && ctx.state === 'suspended') {
+        void ctx.resume().then(() => this.startBgm());
+      } else {
+        this.startBgm();
+      }
+    } else {
+      this.stopBgm();
+    }
   }
   setSfxVolume(v: number): void {
     this._sfxVolume = Math.max(0, Math.min(1, v));
@@ -67,10 +97,10 @@ class AudioEngine {
   }
   setMusicVolume(v: number): void {
     this._musicVolume = Math.max(0, Math.min(1, v));
-    if (this.musicGain && this._musicEnabled) this.musicGain.gain.value = this._musicVolume * 0.45;
+    if (this.musicGain && this._musicEnabled) this.musicGain.gain.value = this._musicVolume * 0.4;
   }
 
-  /** Resume the AudioContext after a user gesture (autoplay policy). */
+  /** Resume the AudioContext after a user gesture (autoplay policy). Does NOT start BGM. */
   unlock(): void { this.ensure(); }
 
   // ---- low-level voice ----------------------------------------------------
@@ -155,7 +185,6 @@ class AudioEngine {
           setTimeout(() => this.blip({ freq: f, type: 'triangle', dur: 0.2, gain: 0.4 }), i * 80));
         break;
       case 'exploit':
-        // glitchy hacker sweep
         this.blip({ freq: 1200, type: 'square', dur: 0.06, gain: 0.25, slideTo: 200 });
         this.noise(0.08, 0.12, 3000);
         setTimeout(() => this.blip({ freq: 900, type: 'square', dur: 0.06, gain: 0.25, slideTo: 300 }), 60);
@@ -163,32 +192,27 @@ class AudioEngine {
     }
   }
 
-  // ---- BGM: slow funk groove (A-minor pentatonic) -------------------------
-  private readonly bass = [110, 0, 146.83, 0, 130.81, 0, 164.81, 0]; // A C E pattern
-  private readonly chords = [
-    [220, 261.63, 329.63], // Am
-    [196, 246.94, 293.66], // G
-    [174.61, 220, 261.63], // F
-    [196, 246.94, 293.66], // G
-  ];
-  private readonly arp = [440, 523.25, 659.25, 880, 659.25, 523.25];
+  // ---- BGM: 128-step evolving sequencer (8 bars × 16 steps) ----------------
+  private readonly STEPS = 128;
+  private readonly tempo = 96; // BPM — light, not frantic
 
   startBgm(): void {
     const ctx = this.ensure();
-    if (!ctx || this.bgmTimer !== null) return;
-    // Browsers create the context suspended until a user gesture; if so, the
-    // scheduler can't schedule against currentTime — bail and let unlock() retry.
-    if (ctx.state === 'suspended') return;
+    if (!ctx) return;
+    // Guard: never start unless explicitly enabled, and never double-start.
+    if (!this._musicEnabled || this.bgmTimer !== null) return;
+    if (ctx.state === 'suspended') return; // wait for resume to call us again
     this.step = 0;
+    this.barSeed = 0;
     this.nextNoteTime = ctx.currentTime + 0.1;
-    const tempo = 100; // BPM — light, not frantic
-    const stepDur = 60 / tempo / 2; // eighth notes
+    const stepDur = 60 / this.tempo / 4; // 16th notes
     const scheduler = () => {
       if (!this.ctx) return;
       while (this.nextNoteTime < this.ctx.currentTime + 0.15) {
         this.scheduleStep(this.step, this.nextNoteTime);
         this.nextNoteTime += stepDur;
-        this.step = (this.step + 1) % 16;
+        this.step = (this.step + 1) % this.STEPS;
+        if (this.step % 16 === 0) this.barSeed = (this.barSeed + 1) % 8; // evolve per bar
       }
     };
     this.bgmTimer = window.setInterval(scheduler, 25);
@@ -201,20 +225,38 @@ class AudioEngine {
   private scheduleStep(step: number, time: number): void {
     if (!this.ctx || !this.musicGain) return;
     const dest = this.musicGain;
-    // Bass slap on beats
-    const b = this.bass[step % 8];
-    if (b > 0) this.bassNote(b, time, dest);
-    // Chord stab every 4 steps
-    if (step % 4 === 0) {
-      const chord = this.chords[(Math.floor(step / 4)) % this.chords.length];
+    const bar = Math.floor(step / 16) % 8;
+    const s = step % 16;
+    const root = BAR_ROOTS[bar];
+    const chord = BAR_CHORD[bar];
+
+    // --- Bass: funk octave-hop pattern, varies each bar ---
+    const bassPattern = [0, -1, 6, -1, 3, -1, 8, -1, 0, -1, 6, -1, 10, -1, 3, -1];
+    if (bassPattern[s] >= 0) {
+      this.bassNote(root * Math.pow(2, bassPattern[s] / 12), time, dest);
+    }
+
+    // --- Chord stabs on the bar + the "and" of 2 and 4 ---
+    if (s === 0 || s === 6 || s === 10) {
       chord.forEach(f => this.stabNote(f, time, dest));
     }
-    // Offbeat hat
-    if (step % 2 === 1) this.hat(time, dest);
-    // Hacker arpeggio every 2 steps (light, delayed)
-    if (step % 2 === 0) {
-      const f = this.arp[(step / 2) % this.arp.length];
-      this.arpNote(f, time, dest);
+
+    // --- Drums: kick / snare / hats (hats every offbeat for the funk feel) ---
+    if (s === 0 || s === 8) this.kick(time, dest);
+    if (s === 4 || s === 12) this.snare(time, dest);
+    if (s % 2 === 1) this.hat(time, dest, bar === 7); // brighter hat on the fill bar
+
+    // --- Hacker arpeggio (delayed triangle) on every other 16th ---
+    if (s % 2 === 0) {
+      const arpScale = [root * 4, root * 4 * 1.2, root * 4 * 1.5, root * 8];
+      const idx = ((step / 2) + this.barSeed) % arpScale.length;
+      this.arpNote(arpScale[Math.floor(idx)], time, dest);
+    }
+
+    // --- Wandering lead: a short motif that drifts each bar (variation) ---
+    if (s === 2 || s === 7 || s === 11 || s === 14) {
+      const note = SCALE[(this.barSeed + s) % SCALE.length] * 2;
+      this.leadNote(note, time, dest);
     }
   }
 
@@ -223,40 +265,65 @@ class AudioEngine {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass'; filt.frequency.value = 600;
+    filt.type = 'lowpass'; filt.frequency.value = 500;
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(freq, time);
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.5, time + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.22);
+    g.gain.exponentialRampToValueAtTime(0.45, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.2);
     osc.connect(filt); filt.connect(g); g.connect(dest);
-    osc.start(time); osc.stop(time + 0.24);
+    osc.start(time); osc.stop(time + 0.22);
   }
   private stabNote(freq: number, time: number, dest: AudioNode): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass'; filt.frequency.value = 1400;
+    filt.type = 'lowpass'; filt.frequency.value = 1300;
     osc.type = 'triangle'; osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.18, time + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.14, time + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.28);
     osc.connect(filt); filt.connect(g); g.connect(dest);
-    osc.start(time); osc.stop(time + 0.32);
+    osc.start(time); osc.stop(time + 0.3);
   }
-  private hat(time: number, dest: AudioNode): void {
+  private hat(time: number, dest: AudioNode, bright: boolean): void {
     const ctx = this.ctx!;
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     const src = ctx.createBufferSource(); src.buffer = buf;
-    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = bright ? 9000 : 7000;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.08, time);
+    g.gain.setValueAtTime(bright ? 0.1 : 0.07, time);
     g.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
     src.connect(f); f.connect(g); g.connect(dest);
     src.start(time); src.stop(time + 0.05);
+  }
+  private kick(time: number, dest: AudioNode): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, time);
+    osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
+    g.gain.setValueAtTime(0.5, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
+    osc.connect(g); g.connect(dest);
+    osc.start(time); osc.stop(time + 0.18);
+  }
+  private snare(time: number, dest: AudioNode): void {
+    const ctx = this.ctx!;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.12, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.18, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+    src.connect(f); f.connect(g); g.connect(dest);
+    src.start(time); src.stop(time + 0.12);
   }
   private arpNote(freq: number, time: number, dest: AudioNode): void {
     const ctx = this.ctx!;
@@ -266,10 +333,22 @@ class AudioEngine {
     const fb = ctx.createGain(); fb.gain.value = 0.3;
     osc.type = 'triangle'; osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.1, time + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.08, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
     osc.connect(g); g.connect(dest); g.connect(delay); delay.connect(fb); fb.connect(dest);
-    osc.start(time); osc.stop(time + 0.2);
+    osc.start(time); osc.stop(time + 0.18);
+  }
+  private leadNote(freq: number, time: number, dest: AudioNode): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.frequency.value = 2200;
+    osc.type = 'square'; osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(0.06, time + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.22);
+    osc.connect(filt); filt.connect(g); g.connect(dest);
+    osc.start(time); osc.stop(time + 0.24);
   }
 }
 

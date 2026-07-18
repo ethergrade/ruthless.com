@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware';
 import type {
   GameState, TurnAction, NewsItem, MarketBriefing,
   CompanyId, TileId, CompanyArchetype,
-  CEOTrait, ScenarioConfig, AlertItem,
+  CEOTrait, ScenarioConfig, AlertItem, CeoBuild,
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
@@ -23,7 +23,7 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }) => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -60,16 +60,19 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild);
         const state = engine.getState();
-        if (companyName?.trim() || archetype || color || disasters !== undefined) {
+        if (companyName?.trim() || archetype || color || disasters !== undefined || sim) {
           const player = state.companies.get(state.playerCompanyId);
           if (player) {
             if (companyName?.trim()) player.name = companyName.trim();
             if (archetype) player.archetype = archetype;
             if (color) player.color = color;
-            state.disastersEnabled = !!disasters;
+            // T: granular simulation toggles (legacy `disasters` still maps to all-on).
+            state.simulation = sim ?? (disasters !== undefined
+              ? { marketSimulation: disasters, cataclysms: disasters, newTech: disasters }
+              : { marketSimulation: false, cataclysms: false, newTech: false });
             engine.setState(state);
           }
         }

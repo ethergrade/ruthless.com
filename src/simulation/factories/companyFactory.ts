@@ -13,6 +13,7 @@ import type {
   MarketSegment,
   ProductCategory,
   CEOTrait,
+  CeoBuild,
 } from '../../types';
 import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, type CompanyStats } from '../../data/archetypes';
 
@@ -42,13 +43,6 @@ const VULNERABILITIES: ExecutiveVulnerability[] = [
   'risk_averse', 'micromanager', 'delegation_issues', 'conflict_avoidant',
 ];
 
-const ARCHETYPE_COLORS: Record<CompanyArchetype, string> = {
-  hypergrowth_platform: '#00d4aa',
-  security_fortress: '#007bff',
-  acquisition_machine: '#ff6b35',
-  lean_specialist: '#ffc107',
-};
-
 const DEFAULT_COLORS = [
   '#00d4aa', '#ff6b35', '#007bff', '#ffc107',
   '#e83e8c', '#6f42c1', '#20c997', '#fd7e14',
@@ -63,6 +57,8 @@ export const createCompany = (
   ceoTrait?: CEOTrait,
   /** T: point-buy overrides (0..100) applied on top of archetype + CEO mods. */
   statOverrides?: Partial<CompanyStats>,
+  /** T: GDR SPECIAL build for the starting CEO (Fallout-style point-buy). */
+  ceoBuild?: CeoBuild,
 ): Company => {
   const companyName = name ?? rng.shuffle([...COMPANY_NAMES]).pop()!;
   const companyArchetype = archetype ?? rng.shuffle([
@@ -73,7 +69,11 @@ export const createCompany = (
   ] as CompanyArchetype[]).pop()!;
 
   const id = generateId.company();
-  const color = isPlayer ? '#00d4aa' : (ARCHETYPE_COLORS[companyArchetype] ?? DEFAULT_COLORS[colorIndex % DEFAULT_COLORS.length]);
+  // T: player is always cyan (#00d4aa); rivals draw from a palette of 8
+  // distinct colors so a rival is never confused with the player's shade.
+  const color = isPlayer
+    ? '#00d4aa'
+    : (DEFAULT_COLORS[(colorIndex + 1) % DEFAULT_COLORS.length]);
 
   // CEO trait shapes the starting position (ruthless.com-inspired GDR build).
   const trait = ceoTrait ?? 'none';
@@ -158,6 +158,12 @@ export const createCompany = (
       hqBuildingId: 'hq_' + id,
       xp: 0,
       perks: [...traitDef.perks],
+      // T — GDR SPECIAL build (Fallout-style).
+      skills: ceoBuild?.skills ?? { intelligence: 5, charisma: 5, endurance: 5, luck: 5, strength: 4, perception: 4, agility: 4 },
+      luck: ceoBuild?.luck ?? 5,
+      ceoTraits: ceoBuild?.traits?.length ? ceoBuild.traits : [trait],
+      specialPoints: ceoBuild?.specialPoints ?? 1,
+      trainedSkills: {},
     }] : [],
     employeeMorale: isPlayer ? 75 : rng.nextInt(50, 80),
     employerBrand: isPlayer ? 60 : rng.nextInt(40, 70),

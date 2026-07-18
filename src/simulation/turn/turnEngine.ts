@@ -23,6 +23,8 @@ import type { MarketSegment,
   CEOTrait,
   ScenarioConfig,
   CompanyArchetype,
+  CeoBuild,
+  CEOSkill,
   MarketTrend,
   WeakSignal,
   Idea,
@@ -46,15 +48,17 @@ export class TurnEngine {
   private state: GameState;
   private ceoTrait: CEOTrait = 'none';
   private scenarioOpts: ScenarioConfig | null = null;
+  private ceoBuild?: CeoBuild;
 
   // T: point-buy stat overrides for the player's starting build.
   private statOverrides?: Partial<Record<string, number>>;
 
-  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) {
+  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
     if (scenario) this.scenarioOpts = scenario;
     this.statOverrides = statOverrides;
+    this.ceoBuild = ceoBuild;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -88,8 +92,9 @@ export class TurnEngine {
     const aiCompanies = rivalDefs.slice(0, rivalCount).map(([name, arch], i) =>
       createCompany(this.rng, name, arch, false, i));
 
-    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides);
+    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides, this.ceoBuild);
     if (so?.startCash) playerCompany.cash = so.startCash;
+    playerCompany.ceoBuild = this.ceoBuild;
     const marketTiles = createMarketMap(this.rng, mw, mh);
     this.assignStartingTerritories(marketTiles, [playerCompany, ...aiCompanies]);
 
@@ -125,7 +130,7 @@ export class TurnEngine {
       auctionHouse: [],
       kpiHistory: {},
       actionHistory: [],
-      disastersEnabled: false,
+      simulation: { marketSimulation: false, cataclysms: false, newTech: false },
       isGameOver: false,
       seed: this.rng.getSeed(),
       trends: this.generateMarketTrends(2),
@@ -256,7 +261,7 @@ export class TurnEngine {
     this.state.newsFeed = [...this.state.newsFeed, ...newsItems].slice(-60);
 
     return {
-      newState: this.state,
+      newState: { ...this.state },
       events,
       newsItems,
       marketBriefing: this.state.marketBriefing,
@@ -453,6 +458,15 @@ export class TurnEngine {
       hire_coo: 400000,
       mass_layoff: 0,
       defend_tile: 150000,
+      // T — CEO GDR + Legal & Compliance
+      ceo_praise: 100000,
+      ceo_discredit: 150000,
+      train_ceo: 300000,
+      fire_ceo: 0,
+      legal_sue: 250000,
+      legal_patent: 200000,
+      legal_subpoena: 150000,
+      acquire_below_value: 500000,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -553,6 +567,15 @@ export class TurnEngine {
       hire_coo: 400000,
       mass_layoff: 0,
       defend_tile: 150000,
+      // T — CEO GDR + Legal & Compliance
+      ceo_praise: 100000,
+      ceo_discredit: 150000,
+      train_ceo: 300000,
+      fire_ceo: 0,
+      legal_sue: 250000,
+      legal_patent: 200000,
+      legal_subpoena: 150000,
+      acquire_below_value: 500000,
     };
     return costs[actionType] || 100000;
   }
@@ -591,6 +614,15 @@ export class TurnEngine {
       hire_ceo: ['people_culture', 'corporate_strategy'],
       hire_coo: ['people_culture', 'corporate_strategy'],
       mass_layoff: ['people_culture', 'finance_investor'],
+      // T — CEO GDR + Legal & Compliance gates
+      ceo_praise: ['sales_marketing', 'corporate_strategy'],
+      ceo_discredit: ['sales_marketing', 'corporate_strategy'],
+      train_ceo: ['people_culture', 'corporate_strategy'],
+      fire_ceo: ['people_culture', 'corporate_strategy'],
+      legal_sue: ['legal_compliance', 'corporate_strategy'],
+      legal_patent: ['legal_compliance'],
+      legal_subpoena: ['legal_compliance'],
+      acquire_below_value: ['finance_investor', 'corporate_strategy', 'acquisitions'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -708,6 +740,32 @@ export class TurnEngine {
       case 'auction_bid':
         this.runAuctionBid(company, action);
         break;
+      // --- CEO GDR: market-moving PR, training & firing ---
+      case 'ceo_praise':
+        this.runCeoPraise(company, action);
+        break;
+      case 'ceo_discredit':
+        this.runCeoDiscredit(company, action);
+        break;
+      case 'train_ceo':
+        this.runTrainChief(company, action);
+        break;
+      case 'fire_ceo':
+        this.runFireChief(company, action);
+        break;
+      // --- Legal & Compliance ---
+      case 'legal_sue':
+        this.runLegalSue(company, action);
+        break;
+      case 'legal_patent':
+        this.runLegalPatent(company, action);
+        break;
+      case 'legal_subpoena':
+        this.runLegalSubpoena(company, action);
+        break;
+      case 'acquire_below_value':
+        this.runAcquireBelowValue(company, action);
+        break;
     }
 
     // metrics are recomputed once per turn in endTurn() (see recalcAllCompanies)
@@ -782,8 +840,12 @@ export class TurnEngine {
   }
 
   private launchProduct(company: Company, action: TurnAction): void {
-    // All 22 categories are valid launch targets (T5: expanded catalogue).
-    const category: ProductCategory = action.productCategory ?? this.rng.shuffle([
+    // T: an R&D idea can seed the launch — it grants extra adopter momentum and
+    // is consumed (moved out of the R&D Ideas list into production).
+    const idea = action.ideaId
+      ? company.ideas.find(i => i.id === action.ideaId)
+      : undefined;
+    const category: ProductCategory = (action.productCategory ?? idea?.category) ?? this.rng.shuffle([
       'saas', 'ai', 'cybersecurity', 'consulting', 'managed_service', 'data_service',
       'platform_api', 'hybrid', 'fintech', 'cloud_infra', 'iot', 'blockchain',
       'healthtech', 'edtech', 'greentech', 'gaming', 'ecommerce', 'data_analytics',
@@ -794,31 +856,39 @@ export class TurnEngine {
     // T5: riding an active global trend for this category grants a launch bonus.
     const trend = this.state.trends.find(t => t.category === category && t.expiresTurn > this.state.turn);
     const trendBonus = trend ? trend.strength : 0;
+    // An idea-backed launch rides the R&D push: more early adopters + quality lift.
+    const ideaBonus = idea ? (idea.breakthrough ? 0.18 : 0.10) + idea.maturity / 400 : 0;
 
     company.products.push({
       id: generateId.product(),
       companyId: company.id,
       name,
       category,
-      maturity: 20 + Math.round(trendBonus * 15),
-      quality: 50 + Math.round(trendBonus * 25),
+      maturity: 20 + Math.round(trendBonus * 15) + Math.round(ideaBonus * 40),
+      quality: 50 + Math.round(trendBonus * 25) + (idea ? 8 : 0),
       security: category === 'cybersecurity' ? 80 : 40,
       scalability: category === 'saas' ? 80 : 50,
-      marketFit: 40 + Math.round(trendBonus * 30),
+      marketFit: 40 + Math.round(trendBonus * 30) + (idea ? 8 : 0),
       price: 10000,
       operatingCost: 5000,
       technicalDebt: 10,
-      trust: 50,
+      trust: 50 + (idea ? 6 : 0),
       targetSegments: trend ? [trend.sector] : ['enterprise_cluster', 'high_growth'],
       tileIds: [],
       // T: lifecycle bootstrapping — launches start at the early-adopter phase.
       lifecycleStage: 'early',
       version: 1,
-      adopters: 0.02 + trendBonus * 0.05, // a live trend seeds real early adopters
+      adopters: 0.02 + trendBonus * 0.05 + ideaBonus, // idea-backed launch seeds real adopters
       baseInstalled: 0,
       pivotCount: 0,
       ageTurns: 0,
     });
+
+    // Consume the idea: it has been brought into production.
+    if (idea) {
+      company.ideas = company.ideas.filter(i => i.id !== idea.id);
+      this.state.inventions = this.state.inventions.filter(i => i.id !== idea.id);
+    }
   }
 
   private improveProduct(company: Company, _budget: number, targetProductId?: string): void {
@@ -1199,6 +1269,10 @@ export class TurnEngine {
 
   /** T9 — R&D: invent a new idea/technology. Breakthroughs can spark a market trend. */
   private runCreateIdeas(company: Company, action: TurnAction): void {
+    // T: a company may invent at most as many ideas per turn as it has R&D departments.
+    const rdCount = company.departments.filter(d => d.type === 'product_rd' || d.type === 'ai_data').length;
+    const ideasThisTurn = company.ideas.filter(i => i.createdTurn === this.state.turn).length;
+    if (ideasThisTurn >= Math.max(1, rdCount)) return; // capacity cap — no extra ideas this turn
     const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
     const category = action.productCategory ?? this.rng.shuffle(cats).pop()!;
     const researchPush = Math.min(100, 30 + action.budget / 12000 + company.innovation / 4);
@@ -1339,6 +1413,147 @@ export class TurnEngine {
     });
   }
 
+  // ===================================================================
+  // T — CEO GDR: market-moving PR, training, firing
+  // ===================================================================
+
+  /** CEO PR: publicly praise a rival — diplomatic market nudge (boosts their
+   *  valuation/trust a touch and lifts overall market sentiment). Low risk. */
+  private runCeoPraise(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target || target.id === company.id) return;
+    const lift = Math.round(action.budget / 50000) + 3;
+    target.valuation = Math.max(0, target.valuation + lift * 40000);
+    target.brandTrust = Math.min(100, target.brandTrust + lift);
+    // Praising a competitor signals confidence — slightly lifts your own market influence.
+    company.marketInfluence = Math.min(100, company.marketInfluence + 1);
+    this.addNews(target.id, `${company.name}'s CEO publicly praises ${target.name} — markets read it as sector confidence.`);
+  }
+
+  /** CEO PR: trash-talk / discredit a rival — dents their trust & valuation,
+   *  but raises your scandal if caught (Luck/Perception soften the blow). */
+  private runCeoDiscredit(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target || target.id === company.id) return;
+    const hit = Math.round(action.budget / 40000) + 5;
+    target.brandTrust = Math.max(0, target.brandTrust - hit);
+    target.valuation = Math.max(0, target.valuation - hit * 60000);
+    target.marketInfluence = Math.max(0, target.marketInfluence - 2);
+    // Self-risk scales down with the CEO's Luck (Fallout-style soft bias).
+    const luck = company.ceos[0]?.luck ?? 5;
+    const caught = this.rng.nextBoolean(Math.max(0.05, 0.35 - luck / 40));
+    if (caught) {
+      company.scandal = Math.min(100, company.scandal + hit * 0.6);
+      this.addNews(company.id, `${company.name}'s CEO smear of ${target.name} backfires — scandal rises.`);
+    } else {
+      this.addNews(target.id, `${company.name}'s CEO publicly discredits ${target.name} — their reputation takes a hit.`);
+    }
+  }
+
+  /** Train a CEO's S.P.E.C.I.A.L. attribute — spends the action budget as training
+   *  investment and bumps the chosen skill (capped at 10). */
+  private runTrainChief(company: Company, action: TurnAction): void {
+    if (!action.executiveId) return;
+    const ceo = company.ceos.find(c => c.id === action.executiveId);
+    if (!ceo) return;
+    const skill = (action.tone as CEOSkill) || 'intelligence'; // reuse tone field to carry the skill key
+    if (!ceo.skills[skill] && ceo.skills[skill] !== 0) ceo.skills[skill] = 5;
+    const gain = Math.max(1, Math.round(action.budget / 200000));
+    ceo.skills[skill] = Math.min(10, (ceo.skills[skill] ?? 5) + gain);
+    ceo.trainedSkills = ceo.trainedSkills ?? {};
+    ceo.trainedSkills[skill] = (ceo.trainedSkills[skill] ?? 0) + gain;
+    company.cash -= Math.round(action.budget * 0.5); // training has an opportunity cost
+  }
+
+  /** Fire a seated CEO — frees the HQ, removes the +1 order grant, and (if it was
+   *  the last CEO) the company loses the executive-order bonus. */
+  private runFireChief(company: Company, action: TurnAction): void {
+    if (!action.executiveId) return;
+    const idx = company.ceos.findIndex(c => c.id === action.executiveId);
+    if (idx < 0) return;
+    const ceo = company.ceos[idx];
+    const hq = company.buildings.find(b => b.id === ceo.hqBuildingId);
+    if (hq) hq.ceoId = undefined;
+    company.ceos.splice(idx, 1);
+    company.executiveOrderLimit = Math.max(1, company.executiveOrderLimit - 1);
+    company.cash += ceo.cost * 0.5; // severance recovered partially
+  }
+
+  // ===================================================================
+  // T — Legal & Compliance (ruthless.com-inspired)
+  // ===================================================================
+
+  /** File a lawsuit against a rival: damages their valuation + trust, builds your
+   *  legal points. Success scales with Legal dept + legalPoints vs their influence. */
+  private runLegalSue(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target || target.id === company.id) return;
+    const hasLegal = company.departments.some(d => d.type === 'legal_compliance');
+    if (!hasLegal) return;
+    const success = this.rng.nextBoolean(0.55 + (company.legalPoints - target.marketInfluence) / 600);
+    company.legalPoints += Math.round(action.budget / 1000);
+    if (!success) { company.scandal = Math.min(100, company.scandal + 4); return; }
+    const dmg = Math.round(action.budget / 3);
+    target.valuation = Math.max(0, target.valuation - dmg);
+    target.brandTrust = Math.max(0, target.brandTrust - 6);
+    target.cash = Math.max(0, target.cash - dmg * 0.5);
+    this.addNews(target.id, `${company.name} sues ${target.name} — court awards damages, reputation hit.`);
+  }
+
+  /** Lock a patent/tech to block a rival category — denies them a trend bonus and
+   *  grants you a moat. Costs legal points. */
+  private runLegalPatent(company: Company, action: TurnAction): void {
+    const hasLegal = company.departments.some(d => d.type === 'legal_compliance');
+    if (!hasLegal) return;
+    company.legalPoints += Math.round(action.budget / 1500);
+    company.innovation = Math.min(100, company.innovation + 3);
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (target) target.innovation = Math.max(0, target.innovation - 3);
+    this.addNews(company.id, `${company.name} locks a patent — competitors blocked from the space.`);
+  }
+
+  /** Subpoena a rival's data: intel gain (reveals a building) + compliance pressure
+   *  (small valuation hit to them). */
+  private runLegalSubpoena(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target || target.id === company.id) return;
+    const hasLegal = company.departments.some(d => d.type === 'legal_compliance');
+    if (!hasLegal) return;
+    company.legalPoints += Math.round(action.budget / 1200);
+    const building = target.buildings[0];
+    if (building && !this.state.revealedBuildings.includes(building.id)) {
+      this.state.revealedBuildings.push(building.id);
+    }
+    target.valuation = Math.max(0, target.valuation - Math.round(action.budget / 5));
+    this.addNews(target.id, `${company.name} subpoenas ${target.name} — data exposed under compliance order.`);
+  }
+
+  /** Buy a rival cheap — below their valuation — needs Finance & sufficient cash.
+   *  Acquires the company outright when the offer clears their (discounted) price. */
+  private runAcquireBelowValue(company: Company, action: TurnAction): void {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target || target.id === company.id) return;
+    const hasFinance = company.departments.some(d => d.type === 'finance_investor' || d.type === 'corporate_strategy');
+    if (!hasFinance) return;
+    // "Below value": you pay less than their valuation (discount scales with budget).
+    const price = Math.max(1, Math.round(target.valuation * (0.6 + this.rng.nextFloat(0, 0.3))));
+    if (company.cash < price) return; // cannot afford even the discount
+    company.cash -= price;
+    // Absorb the rival: their cash, tech, products & tiles fold into yours.
+    company.valuation += target.valuation * 0.6;
+    company.cash += Math.round(target.cash * 0.4);
+    company.innovation = Math.min(100, company.innovation + target.innovation * 0.2);
+    company.products.push(...target.products.map(p => ({ ...p, companyId: company.id, id: generateId.product() })));
+    target.products = [];
+    target.controlledTiles.forEach(t => {
+      const tile = this.state.marketTiles.get(t);
+      if (tile) { tile.controllerId = company.id; if (!company.controlledTiles.includes(t)) company.controlledTiles.push(t); }
+    });
+    target.isPlayer = false;
+    this.state.companies.delete(target.id);
+    this.addNews(company.id, `${company.name} acquires ${target.name} below valuation for $${price.toLocaleString()} — bargain raid!`);
+  }
+
   /** Online (cyber) defense: firewall, virus sweep, change passwords. */
   private runSecurityOnline(company: Company, action: TurnAction): void {
     company.computerPoints += Math.round(action.budget / 2000);
@@ -1370,6 +1585,12 @@ export class TurnEngine {
       hqBuildingId: hq.id,
       xp: 0,
       perks: [],
+      // T — GDR SPECIAL defaults for a hired chief (player may train later).
+      skills: { intelligence: 5, charisma: 5, endurance: 5, luck: 5, strength: 4, perception: 4, agility: 4 },
+      luck: 5,
+      ceoTraits: [role === 'ceo' ? 'initiative' : 'none'],
+      specialPoints: 1,
+      trainedSkills: {},
     };
     company.ceos.push(chief);
     hq.ceoId = chief.id;
@@ -1867,33 +2088,35 @@ export class TurnEngine {
 
     const globalEvents: GameEvent[] = [];
 
-    // World market events — always active (req P3: news like "Bull Market Rally: ...").
-    // Stock market swing — affects everyone's valuation/influence.
-    if (this.rng.nextBoolean(0.35)) {
-      const up = this.rng.nextBoolean(0.5);
-      globalEvents.push({
-        id: generateId.event(),
-        turn: this.state.turn,
-        category: 'financial',
-        kind: up ? 'stock_surge' : 'stock_crash',
-        title: up ? 'Bull Market Rally' : 'Market Correction',
-        description: up
-          ? 'Investor confidence surges — valuations and market reach climb across the board.'
-          : 'A sharp sell-off hits the sector — influence and cash reserves contract.',
-        impact: { marketInfluence: up ? 8 : -10, cash: up ? 200000 : -150000 },
-        effects: {
-          marketInfluenceDelta: up ? 8 : -10,
-          cashDelta: up ? 200000 : -150000,
-          scope: 'all',
-        },
-        affectedCompanies: [],
-        duration: 1,
-        severity: up ? 'high' : 'critical',
-      });
+    // World market events — active only when Market Simulation is enabled.
+    if (this.state.simulation.marketSimulation) {
+      // Stock market swing — affects everyone's valuation/influence.
+      if (this.rng.nextBoolean(0.35)) {
+        const up = this.rng.nextBoolean(0.5);
+        globalEvents.push({
+          id: generateId.event(),
+          turn: this.state.turn,
+          category: 'financial',
+          kind: up ? 'stock_surge' : 'stock_crash',
+          title: up ? 'Bull Market Rally' : 'Market Correction',
+          description: up
+            ? 'Investor confidence surges — valuations and market reach climb across the board.'
+            : 'A sharp sell-off hits the sector — influence and cash reserves contract.',
+          impact: { marketInfluence: up ? 8 : -10, cash: up ? 200000 : -150000 },
+          effects: {
+            marketInfluenceDelta: up ? 8 : -10,
+            cashDelta: up ? 200000 : -150000,
+            scope: 'all',
+          },
+          affectedCompanies: [],
+          duration: 1,
+          severity: up ? 'high' : 'critical',
+        });
+      }
     }
 
     // Technology breakthrough — boosts AI/innovation for all (race to adopt).
-    if (this.rng.nextBoolean(0.25)) {
+    if (this.state.simulation.newTech && this.rng.nextBoolean(0.25)) {
       globalEvents.push({
         id: generateId.event(),
         turn: this.state.turn,
@@ -1909,8 +2132,8 @@ export class TurnEngine {
       });
     }
 
-    // SimCity-like disasters (cataclysms) — only when the player enables them.
-    if (this.state.disastersEnabled) {
+    // Cataclysms — only when the player enables them.
+    if (this.state.simulation.cataclysms) {
       // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
       if (this.rng.nextBoolean(0.12)) {
         const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
@@ -2044,6 +2267,14 @@ export class TurnEngine {
     // ~50% chance to spin up a new trend; ~60% for a weak signal each turn.
     if (this.rng.nextBoolean(0.5)) this.state.trends.push(...this.generateMarketTrends(1));
     if (this.rng.nextBoolean(0.6)) this.state.weakSignals.push(...this.generateWeakSignals(1));
+  }
+
+  /** Convenience: append a narrative news item directly to the live feed. */
+  private addNews(companyId: CompanyId | undefined, headline: string): void {
+    this.state.newsFeed = [
+      ...this.state.newsFeed,
+      this.createNewsItem(this.state.turn, 'reputation', headline, '', companyId, 'minor'),
+    ].slice(-60);
   }
 
   private createNewsItem(
