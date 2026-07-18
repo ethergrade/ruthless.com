@@ -101,6 +101,23 @@ function App() {
     setShowActionModal(true);
   };
 
+  /** EXPLOIT a live trend: open the Orders composer pre-filled to expand into
+   *  the trending category (surge bonus applied by the engine on resolve). */
+  const handleExploit = (category: string) => {
+    const cat = category as import('./types').ProductCategory;
+    setPresetActionType('expand_market');
+    setEditDraft({
+      id: `exploit_${cat}_${Date.now()}`,
+      companyId: state!.playerCompanyId,
+      type: 'expand_market',
+      budget: 200000,
+      priority: 1,
+      status: 'planned',
+      productCategory: cat,
+    } as import('./types').TurnAction);
+    setShowActionModal(true);
+  };
+
   const handleTileSelect = (tileId: TileId | null) => {
     selectTile(tileId);
   };
@@ -186,6 +203,7 @@ function App() {
         <RightSidebar
           state={state}
           newsFeed={state?.newsFeed || []}
+          onExploit={handleExploit}
         />
       </div>
 

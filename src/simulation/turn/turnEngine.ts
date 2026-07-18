@@ -612,7 +612,7 @@ export class TurnEngine {
         this.improveProduct(company, action.budget, action.targetProductId);
         break;
       case 'expand_market':
-        this.expandMarket(company, action.budget);
+        this.expandMarket(company, action);
         break;
       case 'marketing_campaign':
         this.runMarketingCampaign(company, action.budget, action.targetProductId);
@@ -822,14 +822,31 @@ export class TurnEngine {
     product.security = Math.min(100, product.security + improvement * 1.5);
   }
 
-  private expandMarket(company: Company, _budget: number): void {
-    const uncontrolledTiles = Array.from(this.state.marketTiles.values()).filter(
+  private expandMarket(company: Company, action: TurnAction): void {
+    // Exploit a live trend: if the action targets a category that is currently
+    // surging, aim at the trend's segment and get a stronger foothold + brand lift.
+    const trend = action.productCategory
+      ? this.state.trends.find(t => t.category === action.productCategory)
+      : undefined;
+
+    const uncontrolleds = Array.from(this.state.marketTiles.values()).filter(
       t => t.controllerId !== company.id
     );
-    if (uncontrolledTiles.length === 0) return;
+    if (uncontrolleds.length === 0) return;
 
-    const target = this.rng.shuffle(uncontrolledTiles).pop()!;
-    const strength = Math.min(0.3, _budget / 500000);
+    let target = this.rng.shuffle(uncontrolleds).pop()!;
+    let bonus = 1;
+    if (trend) {
+      const inSector = uncontrolleds.filter(t => t.segment === trend.sector);
+      if (inSector.length > 0) {
+        target = this.rng.shuffle(inSector).pop()!;
+        bonus = 1 + trend.strength; // surge multiplier
+        company.brandTrust = Math.min(100, company.brandTrust + trend.strength * 8);
+        company.marketInfluence = Math.min(100, company.marketInfluence + trend.strength * 6);
+      }
+    }
+
+    const strength = Math.min(0.5, (action.budget / 500000) * bonus);
     target.controlStrength += strength;
 
     if (target.controllerId) {

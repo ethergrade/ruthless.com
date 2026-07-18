@@ -128,6 +128,9 @@ export const ActionComposer: React.FC<Props> = ({
       setProductName(initialDraft.productName ?? '');
       setProductCategory((initialDraft.productCategory as ProductCategory) ?? 'saas');
     }
+    if (initialDraft.type === 'expand_market' && initialDraft.productCategory) {
+      setProductCategory(initialDraft.productCategory);
+    }
     if (initialDraft.departmentType) setDeptType(initialDraft.departmentType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft]);
@@ -156,7 +159,7 @@ export const ActionComposer: React.FC<Props> = ({
     targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
     departmentType: needs.includes('departmentType') ? deptType : undefined,
     productName: type === 'launch_product' ? productName : undefined,
-    productCategory: type === 'launch_product' ? productCategory : undefined,
+    productCategory: (type === 'launch_product' || type === 'expand_market') ? productCategory : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
     ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
@@ -267,6 +270,16 @@ export const ActionComposer: React.FC<Props> = ({
             <label>Department Type</label>
             <select value={deptType} onChange={e => setDeptType(e.target.value as DepartmentType)}>
               {DEPARTMENT_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* target category for market expansion (EXPLOIT a trend) */}
+        {type === 'expand_market' && (
+          <div className="ac-field">
+            <label>Target Category <span className="ac-hint">(exploits the trending demand)</span></label>
+            <select value={productCategory} onChange={e => setProductCategory(e.target.value as ProductCategory)}>
+              {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
             </select>
           </div>
         )}

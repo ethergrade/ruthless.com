@@ -5,16 +5,12 @@ import { NewsPanel, TrendsPanel } from './BottomPanel';
 interface RightSidebarProps {
   state: GameState | null;
   newsFeed: NewsItem[];
+  onExploit: (category: string) => void;
 }
 
 /** Right-column rail: global market TRENDS (top) + live NEWS feed (bottom). */
-export const RightSidebar: React.FC<RightSidebarProps> = ({ state, newsFeed }) => {
+export const RightSidebar: React.FC<RightSidebarProps> = ({ state, newsFeed, onExploit }) => {
   if (!state) return null;
-  const onExploit = () => {
-    // Surface the Orders tab so the player can act on the trend.
-    const ev = new CustomEvent('open-orders-tab');
-    window.dispatchEvent(ev);
-  };
   return (
     <aside className="right-sidebar">
       <section className="rs-section">
