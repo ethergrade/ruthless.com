@@ -20,6 +20,18 @@ import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, type CompanyStats } from '../../data/a
 /** Clamp a 0..100 capability metric. */
 const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
+/** HSL → hex, for generating unique rival shades beyond the fixed palette. */
+const hslToHex = (h: number, s: number, l: number): string => {
+  const sd = s / 100, ld = l / 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = sd * Math.min(ld, 1 - ld);
+  const f = (n: number) => {
+    const c = ld - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+
 const COMPANY_NAMES = [
   'NexusTech', 'Apex Digital', 'Quantum Systems', 'Vertex Solutions',
   'Meridian AI', 'Sentinel Cyber', 'Axiom Cloud', 'Catalyst Labs',
@@ -70,10 +82,14 @@ export const createCompany = (
 
   const id = generateId.company();
   // T: player is always cyan (#00d4aa); rivals draw from a palette of 8
-  // distinct colors so a rival is never confused with the player's shade.
+  // distinct colors. If more rivals/startups exist than palette slots, generate a
+  // unique HSL shade (uniform hue spread) so no two corporations share a color.
+  const paletteIdx = (colorIndex + 1) % DEFAULT_COLORS.length;
   const color = isPlayer
     ? '#00d4aa'
-    : (DEFAULT_COLORS[(colorIndex + 1) % DEFAULT_COLORS.length]);
+    : (colorIndex + 1 < DEFAULT_COLORS.length
+        ? DEFAULT_COLORS[paletteIdx]
+        : hslToHex((paletteIdx * 47) % 360, 70, 55));
 
   // CEO trait shapes the starting position (ruthless.com-inspired GDR build).
   const trait = ceoTrait ?? 'none';

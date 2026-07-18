@@ -71,8 +71,8 @@ export const CEO_TRAIT_DEFS: Record<CEOTrait, CEOTraitDef> = {
   smart: {
     id: 'smart',
     name: 'Jersild (Smart)',
-    blurb: 'Learns fast — capabilities compound +10% each turn.',
-    perks: ['fast_learner'],
+    blurb: 'Learns fast — capabilities compound +10% each turn. Reads rivals without spying.',
+    perks: ['fast_learner', 'corporate_intelligence'],
     statMods: { innovation: 10, ai: 10 },
     tags: ['Steady Edge'],
   },
@@ -115,4 +115,5 @@ export const PERK_LABELS: Record<ChiefPerk, string> = {
   cost_cutter: '-10% operating costs',
   market_savant: '+brandTrust / influence on market moves',
   iron_will: '-scandal impact, +crisis resilience',
+  corporate_intelligence: 'Reads rival interiors without espionage / cyber',
 };

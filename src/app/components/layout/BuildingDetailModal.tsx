@@ -9,7 +9,8 @@ import type { TileId } from '../../../types';
  * startup tile on the map.
  *  • Player buildings: show housed departments.
  *  • Rival buildings: CLASSIFIED until revealed via Espionage / Cyber breach
- *    (state.revealedBuildings).
+ *    (state.revealedBuildings) — OR if your CEO has the
+ *    corporate_intelligence perk (passive read, no offensive action needed).
  *  • Startups (even empty shells): always buyable — you DON'T need espionage to
  *    acquire one. Buying folds its tile + building into your company and moves
  *    your market share / valuation.
@@ -30,7 +31,11 @@ export const BuildingDetailModal: React.FC<{
   const tile = state.marketTiles.get(tileId);
   const isPlayer = ownerCompanyId === state.playerCompanyId;
   const isStartup = !!owner?.isStartup;
-  const revealed = isPlayer || (building ? state.revealedBuildings.includes(building.id) : false);
+  // Passive rival intel: a CEO with the corporate_intelligence perk reads
+  // rival interiors WITHOUT any offensive action (espionage / cyber breach).
+  const playerCeo = state.companies.get(state.playerCompanyId)?.ceos[0];
+  const ceoIntel = playerCeo?.perks.includes('corporate_intelligence') ?? false;
+  const revealed = isPlayer || ceoIntel || (building ? state.revealedBuildings.includes(building.id) : false);
 
   if (!owner || !tile) {
     return <Modal title="BUILDING" onClose={onClose} size="md"><div className="empty-state">Not found.</div></Modal>;

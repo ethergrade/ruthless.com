@@ -285,7 +285,8 @@ export type ChiefPerk =
   | 'talent_magnet'      // +workforce morale & employer brand (HR-minded)
   | 'cost_cutter'        // -10% operating costs (lean operator)
   | 'market_savant'      // +brandTrust/influence on market actions
-  | 'iron_will';        // -scandal impact, +crisis resilience
+  | 'iron_will'         // -scandal impact, +crisis resilience
+  | 'corporate_intelligence'; // CEO reads rival interiors WITHOUT offensive action
 
 export interface ChiefExecutive extends Executive {
   hqBuildingId: string;
