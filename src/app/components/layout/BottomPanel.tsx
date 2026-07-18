@@ -10,6 +10,7 @@ interface BottomPanelProps {
   defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders';
   onEdit: (action: TurnAction) => void;
   onDismissNotification: (index: number) => void;
+  height?: number;
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -20,6 +21,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   defaultTab = 'kpi',
   onEdit,
   onDismissNotification,
+  height = 220,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders'>(defaultTab);
 
@@ -27,7 +29,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
 
   return (
-    <div className="bottom-panel">
+    <div className="bottom-panel" style={{ height }}>
       <div className="bottom-tabs">
         <button className={`tab ${activeTab === 'kpi' ? 'active' : ''}`} onClick={() => setActiveTab('kpi')}>
           KPI

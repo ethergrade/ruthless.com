@@ -35,6 +35,7 @@ function App() {
   const [showActionModal, setShowActionModal] = useState(false);
   const [presetActionType, setPresetActionType] = useState<ActionType | null>(null);
   const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
+  const [bottomH, setBottomH] = useState(240);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
@@ -114,6 +115,22 @@ function App() {
     setShowMainMenu(false);
   };
 
+  // Drag the bottom panel to resize the canvas vs. panel split (req P4).
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const move = (ev: PointerEvent) => {
+      const vh = window.innerHeight;
+      const next = Math.max(140, Math.min(vh * 0.65, vh - ev.clientY));
+      setBottomH(next);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   if (showMainMenu) {
     return (
       <div className="app">
@@ -166,9 +183,12 @@ function App() {
         </main>
       </div>
 
+      <div className="panel-resizer" onPointerDown={startResize} role="separator" aria-label="Resize panel" />
+
       <BottomPanel
         key={state?.turn ?? 0}
         defaultTab="orders"
+        height={bottomH}
         state={state}
         playerCompany={playerCompany}
         newsFeed={state?.newsFeed || []}

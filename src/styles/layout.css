@@ -369,13 +369,22 @@
 
 /* ---- Bottom panel ------------------------------------------------------- */
 .bottom-panel {
-  flex: 0 0 200px;
-  height: 200px;
+  flex: 0 0 auto;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
 }
+
+/* Drag handle to resize the canvas / bottom-panel split (req P4) */
+.panel-resizer {
+  flex: 0 0 6px;
+  height: 6px;
+  cursor: row-resize;
+  background: var(--border-primary);
+  transition: background 0.12s ease;
+}
+.panel-resizer:hover { background: var(--accent-cyan); }
 
 .bottom-tabs {
   display: flex;
