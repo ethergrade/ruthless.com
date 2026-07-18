@@ -463,7 +463,7 @@ export class TurnEngine {
 
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
