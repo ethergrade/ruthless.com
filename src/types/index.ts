@@ -98,6 +98,7 @@ export type ActionType =
   | 'industrial_espionage'    // steal an idea / cash / evidence from a rival
   | 'cyber_attack'            // hack a rival: data run / virus / breach
   | 'security_offline'        // physical security: guards, lockdown, sabotage defense
+  | 'sabotage_building'       // arson / physical sabotage: set a rival building on fire
   | 'security_online'         // cyber defense: firewall, sweep, change passwords
   | 'legal_action'            // lawsuit / patent / dispute
   | 'ceo_social'              // CEO social post: tone + authenticity
@@ -133,6 +134,10 @@ export interface Company {
   products: Product[];
   executives: Executive[];
   archetype?: CompanyArchetype;
+  /** Initial CEO trait (ruthless.com-inspired): shapes starting bonuses. */
+  ceoTrait?: CEOTrait;
+  /** CEO experience level (grows over time; drives Initiative extra-order chance). */
+  ceoLevel: number;
   controlledTiles: TileId[];
   isPlayer: boolean;
   // --- new: ruthless.com-inspired state ---
@@ -283,6 +288,12 @@ export type ExecutiveRole =
   | 'chief_product_officer'
   | 'head_consulting'
   | 'general_counsel';
+
+export type CEOTrait =
+  | 'banker'     // debt accumulates 2x (higher recurring costs)
+  | 'smart'      // +10% experience / capability gain
+  | 'initiative' // +10% chance/turn of a free extra executive order
+  | 'none';
 
 export type ExecutiveTrait =
   | 'systems_thinker'

@@ -12,6 +12,7 @@ import type {
   ExecutiveVulnerability,
   MarketSegment,
   ProductCategory,
+  CEOTrait,
 } from '../../types';
 
 const COMPANY_NAMES = [
@@ -54,7 +55,8 @@ export const createCompany = (
   name?: string,
   archetype?: CompanyArchetype,
   isPlayer = false,
-  colorIndex = 0
+  colorIndex = 0,
+  ceoTrait?: CEOTrait,
 ): Company => {
   const companyName = name ?? rng.shuffle([...COMPANY_NAMES]).pop()!;
   const companyArchetype = archetype ?? rng.shuffle([
@@ -67,8 +69,11 @@ export const createCompany = (
   const id = generateId.company();
   const color = isPlayer ? '#00d4aa' : (ARCHETYPE_COLORS[companyArchetype] ?? DEFAULT_COLORS[colorIndex % DEFAULT_COLORS.length]);
 
-  const startingCash = isPlayer ? 5000000 : rng.nextInt(3000000, 8000000);
-  const startingDebt = isPlayer ? 0 : rng.nextInt(0, 2000000);
+  // CEO trait shapes the starting position (ruthless.com-inspired).
+  const trait = ceoTrait ?? 'none';
+  const startingCash = isPlayer ? (trait === 'banker' ? 3000000 : 5000000) : rng.nextInt(3000000, 8000000);
+  // Banker starts deeper in debt (2x cumulative interest drag).
+  const startingDebt = isPlayer ? (trait === 'banker' ? 4000000 : 0) : rng.nextInt(0, 2000000);
 
   const departments = createStartingDepartments(rng, isPlayer);
   const products = createStartingProducts(rng, companyArchetype);
@@ -98,6 +103,8 @@ export const createCompany = (
     products,
     executives,
     archetype: companyArchetype,
+    ceoTrait: trait,
+    ceoLevel: 1,
     controlledTiles: [],
     isPlayer,
     voiceTone: isPlayer ? 'aggressive' : undefined,

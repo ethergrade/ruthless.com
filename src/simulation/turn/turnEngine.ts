@@ -19,6 +19,7 @@ import type { MarketSegment,
   ProductId,
   EventCategory,
   AuctionListing,
+  CEOTrait,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -35,9 +36,11 @@ export interface TurnResult {
 export class TurnEngine {
   private rng: ReturnType<typeof createRNG>;
   private state: GameState;
+  private ceoTrait: CEOTrait = 'none';
 
-  constructor(seed?: number) {
+  constructor(seed?: number, ceoTrait?: CEOTrait) {
     this.rng = createRNG(seed);
+    if (ceoTrait) this.ceoTrait = ceoTrait;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -58,7 +61,7 @@ export class TurnEngine {
   }
 
   private initializeGameState(): GameState {
-    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true);
+    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait);
     const aiCompanies = [
       createCompany(this.rng, 'NexusTech', 'hypergrowth_platform', false, 0),
       createCompany(this.rng, 'SentinelCyber', 'security_fortress', false, 1),
@@ -209,6 +212,11 @@ export class TurnEngine {
     }
 
     this.state.turn++;
+    // CEO gains experience over time (drives Initiative bonus scaling).
+    if (this.state.turn % 4 === 0) {
+      const p = this.state.companies.get(this.state.playerCompanyId);
+      if (p) p.ceoLevel += 1;
+    }
     this.checkVictoryConditions();
 
     // Persist this turn's news into the feed (P3: news must actually appear).
@@ -223,6 +231,25 @@ export class TurnEngine {
   }
 
   private processPlayerActions(events: GameEvent[], newsItems: NewsItem[]): void {
+    const player = this.state.companies.get(this.state.playerCompanyId);
+    // Initiative CEO: every 3 turns a free bonus executive order (expand market).
+    if (player && player.ceoTrait === 'initiative' && this.state.turn % 3 === 0) {
+      this.state.actions.push({
+        id: generateId.action(),
+        companyId: this.state.playerCompanyId,
+        type: 'expand_market',
+        budget: 200000,
+        priority: 0,
+        status: 'planned',
+      });
+      newsItems.push(this.createNewsItem(
+        this.state.turn, 'market',
+        'Initiative Bonus Order',
+        'Your Initiative CEO secured a free market-expansion order this turn.',
+        this.state.playerCompanyId, 'minor'
+      ));
+    }
+
     const playerActions = this.state.actions.filter(
       a => a.companyId === this.state.playerCompanyId && a.status === 'planned'
     );
@@ -303,7 +330,7 @@ export class TurnEngine {
   }
 
   private selectAIAction(archetype: string, _company: Company): ActionType | null {
-    const weights: Record<string, Record<ActionType, number>> = {
+    const weights: Record<string, Partial<Record<ActionType, number>>> = {
       hypergrowth_platform: {
         build_department: 20, launch_product: 25, improve_product: 15,
         expand_market: 20, marketing_campaign: 10, hire_executive: 5,
@@ -369,6 +396,7 @@ export class TurnEngine {
       industrial_espionage: 200000,
       cyber_attack: 250000,
       security_offline: 200000,
+      sabotage_building: 300000,
       security_online: 150000,
       legal_action: 250000,
       ceo_social: 100000,
@@ -460,6 +488,7 @@ export class TurnEngine {
       industrial_espionage: 200000,
       cyber_attack: 250000,
       security_offline: 200000,
+      sabotage_building: 300000,
       security_online: 150000,
       legal_action: 250000,
       ceo_social: 100000,
@@ -490,6 +519,7 @@ export class TurnEngine {
       industrial_espionage: ['cybersecurity', 'product_rd', 'ai_data'],
       cyber_attack: ['cybersecurity', 'ai_data'],
       security_offline: ['cybersecurity', 'people_culture'],
+      sabotage_building: ['cybersecurity', 'corporate_strategy'],
       security_online: ['cybersecurity', 'ai_data'],
       legal_action: ['legal_compliance', 'corporate_strategy'],
       ceo_social: ['sales_marketing', 'corporate_strategy'],
@@ -567,6 +597,9 @@ export class TurnEngine {
         break;
       case 'security_offline':
         this.runSecurityOffline(company, action);
+        break;
+      case 'sabotage_building':
+        this.runSabotage(company, action);
         break;
       case 'security_online':
         this.runSecurityOnline(company, action);
@@ -878,6 +911,40 @@ export class TurnEngine {
     company.buildings.forEach(b => { b.physicalSecurity = Math.min(100, b.physicalSecurity + 4); });
   }
 
+  /** Sabotage: arson / physical sabotage — set a rival building on fire (heavy damage). */
+  private runSabotage(company: Company, action: TurnAction): void {
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    if (tile && tile.controllerId && tile.controllerId !== company.id) {
+      const owner = this.state.companies.get(tile.controllerId);
+      const building = owner?.buildings.find(b => b.tileId === tile.id);
+      if (building) {
+        const dmg = Math.round(action.budget / 6000);
+        building.firewall = Math.max(0, building.firewall - dmg);
+        building.physicalSecurity = Math.max(0, building.physicalSecurity - dmg);
+        building.departmentIds.forEach(did => {
+          const d = owner?.departments.find(x => x.id === did);
+          if (d) { d.efficiency = Math.max(0.3, d.efficiency - 0.15); d.morale = Math.max(0.2, d.morale - 0.15); }
+        });
+        if (owner) {
+          owner.securityPosture = Math.max(0, owner.securityPosture - 8);
+          owner.brandTrust = Math.max(0, owner.brandTrust - 6);
+        }
+      }
+      // Arson carries real scandal risk for the attacker.
+      company.scandal = Math.min(100, company.scandal + 12);
+      tile.pendingAction = { type: 'sabotage_building', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+      return;
+    }
+    // Non-tile sabotage: general unrest / unrest at the rival's HQ.
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (target) {
+      target.buildings.forEach(b => { b.physicalSecurity = Math.max(0, b.physicalSecurity - Math.round(action.budget / 10000)); });
+      target.securityPosture = Math.max(0, target.securityPosture - 4);
+      target.brandTrust = Math.max(0, target.brandTrust - 3);
+      company.scandal = Math.min(100, company.scandal + 12);
+    }
+  }
+
   /** Online (cyber) defense: firewall, virus sweep, change passwords. */
   private runSecurityOnline(company: Company, action: TurnAction): void {
     company.computerPoints += Math.round(action.budget / 2000);
@@ -1160,10 +1227,20 @@ export class TurnEngine {
     const deptCost = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
     const productCost = company.products.reduce((sum, p) => sum + p.operatingCost, 0);
 
+    let operatingCosts = Math.round(deptCost + productCost);
+    // Banker CEO: debt compounds 2x faster (higher recurring drag).
+    if (company.ceoTrait === 'banker') operatingCosts = Math.round(operatingCosts * 1.1);
+    company.operatingCosts = operatingCosts;
+
     company.revenue = Math.round(productRevenue + tileRevenue);
-    company.operatingCosts = Math.round(deptCost + productCost);
     company.cashFlow = company.revenue - company.operatingCosts;
     company.valuation = Math.max(1, company.revenue * 4 + company.cash - company.debt);
+
+    // Smart CEO: +10% capability gain (experience compounds).
+    if (company.ceoTrait === 'smart') {
+      company.innovation = Math.min(100, company.innovation * 1.1);
+      company.aiCapability = Math.min(100, company.aiCapability * 1.1);
+    }
   }
 
   private resolveMarket(): void {

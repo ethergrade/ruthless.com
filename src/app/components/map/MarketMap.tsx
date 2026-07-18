@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
-import type { GameState, MarketTile } from '../../../types';
+import type { GameState, MarketTile, MarketSegment } from '../../../types';
+import { SEGMENT_COLORS, SEGMENT_LABELS } from '../../../data/generators';
 
 const TILE_W = 96;
 const TILE_H = 48;
@@ -175,11 +176,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
           ? contested ? 0x241433
             : (t.controllerId === state!.playerCompanyId ? 0x0c2a24 : 0x1a1320)
           : 0x0d0f1a;
-        const edge = owned
-          ? contested ? 0xe83e8c : companyColors.get(t.controllerId!) || 0x00d4aa
-          : 0x1d2740;
         tileLayer.fillStyle(fill, 1).fillPoints(diamondPoints(sx, sy), true);
-        tileLayer.lineStyle(1.5, edge, owned ? 0.9 : 0.5).strokePoints(diamondPoints(sx, sy), true);
+        // Segment-colored border so market segments read by color (P6-C).
+        const segCol = Phaser.Display.Color.HexStringToColor(SEGMENT_COLORS[t.segment]).color;
+        tileLayer.lineStyle(2, segCol, owned ? 0.55 : 0.35).strokePoints(diamondPoints(sx, sy), true);
         if (owned) {
           const col = companyColors.get(t.controllerId!) || 0x00d4aa;
           const h = 22 + t.controlStrength * 34;
@@ -190,7 +190,8 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             isoBox(tileLayer, sx, topY, w, segH, col, true);
             topY -= segH; w *= 0.72;
           }
-          glowLayer.fillStyle(col, 0.22).fillCircle(sx, sy - h * 0.6, 26);
+          // Glow intensity = market-share strength on this tile.
+          glowLayer.fillStyle(col, 0.12 + t.controlStrength * 0.25).fillCircle(sx, sy - h * 0.6, 26);
         } else if (t.productId) {
           tileLayer.fillStyle(0x00d4aa, 1).fillCircle(sx, sy - 6, 4);
         }
@@ -347,6 +348,15 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         <span><b>DRAG</b> (o Spazio+tasto) = pan</span>
         <span><b>WHEEL</b> = zoom</span>
         <span><b>Q / E</b> = ruota 90°</span>
+      </div>
+      <div className="segment-legend">
+        <div className="legend-title">Market Segments</div>
+        {Object.entries(SEGMENT_COLORS).map(([seg, col]) => (
+          <div key={seg} className="legend-row">
+            <span className="legend-swatch" style={{ background: col }} />
+            <span className="legend-label">{SEGMENT_LABELS[seg as MarketSegment]}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

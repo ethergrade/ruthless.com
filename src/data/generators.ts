@@ -64,6 +64,20 @@ export const SEGMENT_LABELS: Record<MarketSegment, string> = {
   startup_zone: 'Startup Zone',
 };
 
+/** Market-segment colors (used to tint map tiles so segments read at a glance). */
+export const SEGMENT_COLORS: Record<MarketSegment, string> = {
+  open_market: '#00d4aa',
+  enterprise_cluster: '#007bff',
+  public_sector: '#ffc107',
+  regulated_industry: '#6f42c1',
+  innovation_hub: '#20c997',
+  price_sensitive: '#fd7e14',
+  high_growth: '#e83e8c',
+  legacy_market: '#8a8d99',
+  strategic_account: '#ff6b35',
+  startup_zone: '#00ffa3',
+};
+
 export const VOICE_TONES: { value: VoiceTone; label: string; blurb: string }[] = [
   { value: 'aggressive', label: 'Aggressive', blurb: 'Attack rivals, claim dominance' },
   { value: 'visionary', label: 'Visionary', blurb: 'Paint the future, inspire' },

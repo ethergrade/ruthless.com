@@ -4,7 +4,7 @@ import { MiniDB } from '../../../data/db';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
-import type { CompanyArchetype } from '../../../types';
+import type { CompanyArchetype, CEOTrait } from '../../../types';
 
 interface MainMenuProps {
   onStartGame: () => void;
@@ -18,6 +18,13 @@ const ARCHETYPES: { id: CompanyArchetype; name: string; desc: string; color: str
   { id: 'lean_specialist', name: 'Lean Specialist', desc: 'Niche dominance, high margins, vulnerable to scale', color: '#ffc107', stats: ['+40% Margins', '+30% Innovation', '-2 Executive Orders', '-40% Market Expand'] },
 ];
 
+const CEOS: { id: CEOTrait; name: string; desc: string; stats: string[] }[] = [
+  { id: 'banker', name: 'Hunt (Banker)', desc: 'Debt compounds 2x — high leverage, fragile if cash stalls', stats: ['-$2M Start Debt', '+10% Operating Costs', 'High Risk / High Reward'] },
+  { id: 'smart', name: 'Jersild (Smart)', desc: 'Learns fast — capabilities compound +10% each turn', stats: ['+10% Innovation', '+10% AI Capability', 'Steady Edge'] },
+  { id: 'initiative', name: 'Laingang (Initiative)', desc: 'Drives hard — a free expansion order every 3 turns', stats: ['+1 Free Order / 3T', 'Aggressive Growth', 'Expends Resources'] },
+  { id: 'none', name: 'Balanced Operator', desc: 'No extreme trait — steady, predictable baseline', stats: ['Baseline', 'No Bonus / Penalty'] },
+];
+
 export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) => {
   const { initializeGame } = useGameStore();
   const [selectedArchetype, setSelectedArchetype] = useState<CompanyArchetype>('hypergrowth_platform');
@@ -27,6 +34,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [seed, setSeed] = useState('');
   const [selectedColor, setSelectedColor] = useState('#00d4aa');
   const [disasters, setDisasters] = useState(true);
+  const [selectedCeo, setSelectedCeo] = useState<CEOTrait>('none');
 
   const handleStart = () => {
     try {
@@ -36,6 +44,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         selectedArchetype,
         selectedColor,
         disasters,
+        selectedCeo,
       );
     } catch (err) {
       // initializeGame shouldn't throw, but never block the modal from closing.
@@ -101,6 +110,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
           setSelectedColor={setSelectedColor}
           disasters={disasters}
           setDisasters={setDisasters}
+          selectedCeo={selectedCeo}
+          setSelectedCeo={setSelectedCeo}
           seed={seed}
           setSeed={setSeed}
           onStart={handleStart}
@@ -127,11 +138,13 @@ const NewGameModal: React.FC<{
   setSelectedColor: (c: string) => void;
   disasters: boolean;
   setDisasters: (d: boolean) => void;
+  selectedCeo: CEOTrait;
+  setSelectedCeo: (c: CEOTrait) => void;
   seed: string;
   setSeed: (s: string) => void;
   onStart: () => void;
   onCancel: () => void;
-}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, disasters, setDisasters, seed, setSeed, onStart, onCancel }) => {
+}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, disasters, setDisasters, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
   const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
 
@@ -168,6 +181,30 @@ const NewGameModal: React.FC<{
                     <div className="archetype-stats">
                       {a.stats.map((s, i) => (
                         <span key={i} className={`stat ${s.startsWith('+') ? 'positive' : 'negative'}`}>{s}</span>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Starting CEO Trait</label>
+              <div className="archetype-selector">
+                {CEOS.map(c => (
+                  <button
+                    key={c.id}
+                    className={`archetype-card ${selectedCeo === c.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedCeo(c.id)}
+                    style={{ borderColor: selectedCeo === c.id ? '#00d4aa' : undefined }}
+                  >
+                    <div className="archetype-header" style={{ background: selectedCeo === c.id ? '#00d4aa' : '#2a2f3e' }}>
+                      <span className="archetype-name">{c.name}</span>
+                    </div>
+                    <p className="archetype-desc">{c.desc}</p>
+                    <div className="archetype-stats">
+                      {c.stats.map((s, i) => (
+                        <span key={i} className={`stat ${s.startsWith('+') ? 'positive' : s.startsWith('-') ? 'negative' : ''}`}>{s}</span>
                       ))}
                     </div>
                   </button>
