@@ -27,12 +27,15 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'makeHQ' | 'hqBuilding')[];
 }
 
 const ACTION_DEFS: ActionDef[] = [
   { type: 'build_department', label: 'Build Department', group: 'Corporate', baseCost: 500000, needs: ['targetTile', 'departmentType'] },
-  { type: 'build_building', label: 'Build Building', group: 'Corporate', baseCost: 750000, needs: ['targetTile'] },
+  { type: 'build_building', label: 'Build Building', group: 'Corporate', baseCost: 750000, needs: ['targetTile', 'makeHQ'] },
+  { type: 'hire_ceo', label: 'Hire CEO (HQ)', group: 'Corporate', baseCost: 500000, needs: ['hqBuilding'] },
+  { type: 'hire_coo', label: 'Hire COO (HQ)', group: 'Corporate', baseCost: 400000, needs: ['hqBuilding'] },
+  { type: 'mass_layoff', label: 'Mass Layoff', group: 'Corporate', baseCost: 0, needs: ['targetTile'] },
   { type: 'hire_executive', label: 'Hire Executive', group: 'Corporate', baseCost: 400000 },
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0 },
   { type: 'reduce_costs', label: 'Reduce Costs', group: 'Corporate', baseCost: 0 },
@@ -79,6 +82,7 @@ const DEPARTMENT_TYPE_OPTIONS: { value: DepartmentType; label: string }[] = [
   { value: 'people_culture', label: 'People & Culture' },
   { value: 'finance_investor', label: 'Finance & Investor' },
   { value: 'corporate_strategy', label: 'Corporate Strategy' },
+  { value: 'dev_engineering', label: 'DEV Engineering' },
 ];
 
 export const ActionComposer: React.FC<Props> = ({
@@ -102,6 +106,8 @@ export const ActionComposer: React.FC<Props> = ({
   const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
   const [ideaId, setIdeaId] = useState<string>('');
   const [deptType, setDeptType] = useState<DepartmentType>('product_rd');
+  const [makeHQ, setMakeHQ] = useState<boolean>(false);
+  const [hqBuildingId, setHqBuildingId] = useState<string>('');
 
   // product editor state
   const [productName, setProductName] = useState<string>('');
@@ -154,6 +160,8 @@ export const ActionComposer: React.FC<Props> = ({
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
     ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
+    makeHQ: needs.includes('makeHQ') ? makeHQ : undefined,
+    hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
   };
   const successPct = estimate ? Math.round(estimate(draft) * 100) : null;
 
@@ -174,6 +182,9 @@ export const ActionComposer: React.FC<Props> = ({
       productCategory: type === 'launch_product' ? productCategory : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
       targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
+      ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
+      makeHQ: needs.includes('makeHQ') ? makeHQ : undefined,
+      hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
     });
     onClose();
   };
@@ -257,6 +268,33 @@ export const ActionComposer: React.FC<Props> = ({
             <select value={deptType} onChange={e => setDeptType(e.target.value as DepartmentType)}>
               {DEPARTMENT_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
+          </div>
+        )}
+
+        {/* make-HQ toggle for building (multi-HQ corps) */}
+        {needs.includes('makeHQ') && (
+          <div className="ac-field ac-check">
+            <label>
+              <input type="checkbox" checked={makeHQ} onChange={e => setMakeHQ(e.target.checked)} />
+              Make this an HQ (needs HR dept + Hire CEO after)
+            </label>
+          </div>
+        )}
+
+        {/* HQ building picker for hiring CEO/COO */}
+        {needs.includes('hqBuilding') && (
+          <div className="ac-field">
+            <label>HQ Building</label>
+            {playerCompany.buildings.filter(b => b.isHQ).length === 0 ? (
+              <p className="ac-hint">No HQ buildings yet — build one with “Make HQ”.</p>
+            ) : (
+              <select value={hqBuildingId} onChange={e => setHqBuildingId(e.target.value)}>
+                <option value="">Select HQ…</option>
+                {playerCompany.buildings.filter(b => b.isHQ).map(b => (
+                  <option key={b.id} value={b.id}>{b.isHQ ? 'HQ ' : 'Bld '} · {b.tileId}{b.ceoId ? ' (staffed)' : ' (needs CEO)'}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 

@@ -50,8 +50,9 @@ export type DepartmentType =
   | 'sales_marketing'
   | 'acquisitions'
   | 'legal_compliance'
-  | 'people_culture'
-  | 'finance_investor';
+  | 'people_culture'   // HR
+  | 'finance_investor'
+  | 'dev_engineering'; // T: DEV with vertical tech skills
 
 /** Ruthless-com inspired department classes (mirrors the original 9 dept types). */
 export type RuthlessDept =
@@ -125,6 +126,10 @@ export type ActionType =
   | 'sell_source'             // sell an idea's source code to a rival: +cash, flips trend ownership
   // --- T: product lifecycle ---
   | 'pivot_product'           // change a product's scope/features → new version push
+  // --- T: building & department GDR ---
+  | 'hire_ceo'                // assign a CEO to a (new) HQ building — needs HR dept
+  | 'hire_coo'                // assign a COO to an HQ — needs HR dept
+  | 'mass_layoff'             // lay off staff: cuts costs but crushes morale/brand
   | 'end_turn';
 
 /** Win condition for a Scenario (tactical single-board setup). */
@@ -221,6 +226,41 @@ export interface Company {
   isStartup?: boolean;
   /** T9: R&D ideas / invented technologies owned by this company. */
   ideas: Idea[];
+  /** T: CEO roster — one per HQ; each grants +1 executive order. */
+  ceos: ChiefExecutive[];
+  /** T: workforce morale 0..100 (news/market events move it; layoffs crush it). */
+  employeeMorale: number;
+  /** T: employer brand / internal brand 0..100 (HR builds it). */
+  employerBrand: number;
+  /** T: HR-managed workforce metrics. */
+  hrMetrics: {
+    workLifeBalance: number;   // 0..100
+    internalBrand: number;     // 0..100
+    headcount: number;
+    layoffsThisTurn: number;
+  };
+}
+
+/** T: a technology in the consultable tech book (CI/CD present + invented futuristic). */
+export interface Technology {
+  id: string;
+  name: string;
+  category: 'cicd' | 'cloud' | 'ai' | 'futuristic' | 'security';
+  tier: 1 | 2 | 3 | 4 | 5;
+  /** Short description for the tech book. */
+  description: string;
+  /** Vertical skill it develops in DEV departments. */
+  skill: string;
+  invented: boolean; // true = futuristic/invented, false = real-world CI/CD
+}
+
+/** T: per-HQ CEO roster (multi-HQ corps run one CEO per HQ, each grants +1 order). */
+export interface ChiefExecutive extends Executive {
+  hqBuildingId: string;
+  /** XP gained from successful actions, market moves, awareness & social posts. */
+  xp: number;
+  /** Perks unlocked by XP: extra orders, bonus to action success. */
+  perks: string[];
 }
 
 export interface Building {
@@ -235,6 +275,10 @@ export interface Building {
   /** Hush-money drain from criminal acts (cash/turn). */
   hushMoney: number;
   isHQ: boolean;
+  /** T: CEO resident at this HQ (multi-HQ corps have one CEO per HQ). */
+  ceoId?: ExecutiveId;
+  /** T: hard cap on departments per building (ruthless.com: max 8). */
+  maxDepartments: number;
   /** True when this building is listed for auction (req 2). */
   upForAuction?: boolean;
 }
@@ -347,6 +391,10 @@ export interface Department {
   editableKpis?: DepartmentKpis;
   /** Building/tile this department operates from (req 6: different depts in different buildings). */
   buildingId?: string;
+  /** T: this department owns/produces exactly ONE product (1 product = 1 product). */
+  productId?: ProductId;
+  /** T: DEV vertical tech skills — name→skill 0..100 (CI/CD + futuristic techs). */
+  techStack?: Record<string, number>;
 }
 
 export interface DepartmentKpis {
@@ -443,6 +491,10 @@ export interface TurnAction {
   /** T: pivot_product — new category / segments for the scope change. */
   pivotCategory?: ProductCategory;
   pivotSegments?: MarketSegment[];
+  /** T: build_building — if true, the new building is an HQ (needs HR + hire_ceo after). */
+  makeHQ?: boolean;
+  /** T: hire_ceo / hire_coo — target HQ building id to seat the executive at. */
+  hqBuildingId?: string;
   /** Generated/editable product name + category (product creation). */
   productName?: string;
   productCategory?: ProductCategory;

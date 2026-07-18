@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology } from '../../../types';
+import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
   state: GameState | null;
   playerCompany: Company | undefined;
   newsFeed: NewsItem[];
-  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends';
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends' | 'tech' | 'workforce';
   onEdit: (action: TurnAction) => void;
   height?: number;
 }
@@ -19,7 +20,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onEdit,
   height = 220,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends' | 'tech' | 'workforce'>(defaultTab);
 
   if (!state || !playerCompany) return null;
 
@@ -48,6 +49,12 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => setActiveTab('trends')}>
           Trends
         </button>
+        <button className={`tab ${activeTab === 'tech' ? 'active' : ''}`} onClick={() => setActiveTab('tech')}>
+          Tech Book
+        </button>
+        <button className={`tab ${activeTab === 'workforce' ? 'active' : ''}`} onClick={() => setActiveTab('workforce')}>
+          Workforce
+        </button>
       </div>
 
       <div className="bottom-content">
@@ -58,6 +65,8 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
         {activeTab === 'trends' && <TrendsPanel trends={state.trends} weakSignals={state.weakSignals} onExploit={(_c) => setActiveTab('orders')} />}
+        {activeTab === 'tech' && <TechnologyBookPanel technologies={TECHNOLOGIES} />}
+        {activeTab === 'workforce' && <WorkforcePanel company={playerCompany} />}
     </div>
     </div>
   );
@@ -117,12 +126,19 @@ const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
   );
 };
 
-const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments }) => (
+const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments }) => {
+  // Count duplicate department types (2 legal, 3 legal → stacking synergy).
+  const typeCounts = new Map<string, number>();
+  departments.forEach(d => typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1));
+  return (
   <div className="departments-grid">
-    {departments.map((dept, i) => (
-      <div key={i} className="dept-card">
+    {departments.map((dept, i) => {
+      const count = typeCounts.get(dept.type) ?? 1;
+      const stack = count > 1 ? ` ×${count}` : '';
+      return (
+      <div key={i} className={`dept-card ${dept.type === 'dev_engineering' ? 'dev' : ''}`}>
         <div className="dept-header">
-          <span className="dept-name">{dept.type.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
+          <span className="dept-name">{dept.type.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}{stack}</span>
           <span className="dept-level">Lv. {dept.level}</span>
         </div>
         <div className="dept-stats">
@@ -131,11 +147,21 @@ const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments
           <StatBar label="Morale" value={Math.round(dept.morale * 100)} max={100} />
           <StatBar label="Risk" value={Math.round(dept.risk * 100)} max={100} inverted />
         </div>
+        {dept.productId && <div className="dept-product">1 product linked</div>}
+        {dept.techStack && (
+          <div className="dept-tech">
+            {Object.entries(dept.techStack).map(([k, v]) => (
+              <span key={k} className="tech-chip" title={k}>{k.replace('cicd_', '').replace('_', ' ')} {Math.round(v)}</span>
+            ))}
+          </div>
+        )}
         <div className="dept-cost">${dept.recurringCost.toLocaleString()}/turn</div>
       </div>
-    ))}
+      );
+    })}
   </div>
-);
+  );
+};
 
 const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ products, ideas }) => (
   <div className="products-grid">
@@ -336,13 +362,66 @@ const StatBar: React.FC<{ label: string; value: number; max: number; inverted?: 
   );
 };
 
-const CapabilityCard: React.FC<{ title: string; value: number; max?: number; icon: string; color: string }> = ({
-  title, value, max = 100, icon, color,
-}) => {
-  const pct = Math.min(100, (value / max) * 100);
+const TechnologyBookPanel: React.FC<{ technologies: Technology[] }> = ({ technologies }) => (
+  <div className="tech-book">
+    <p className="tech-book-intro">The Technology Book — CI/CD &amp; cloud stacks you can master in DEV departments, plus ruthless.com&apos;s invented FUTURISTIC techs.</p>
+    <div className="tech-grid">
+      {technologies.map(t => (
+        <div key={t.id} className={`tech-card ${t.invented ? 'futuristic' : ''} cat-${t.category}`}>
+          <div className="tech-head">
+            <span className="tech-name">{t.name}</span>
+            <span className="tech-tier">T{t.tier}</span>
+          </div>
+          <span className="tech-cat">{t.category}{t.invented ? ' · invented' : ''}</span>
+          <p className="tech-desc">{t.description}</p>
+          <span className="tech-skill">skill: {DEV_SKILLS[t.skill] ?? t.skill}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const WorkforcePanel: React.FC<{ company: Company }> = ({ company }) => {
+  const moraleColor = company.employeeMorale > 60 ? '#00d4aa' : company.employeeMorale > 30 ? '#ffc107' : '#ff4d4f';
   return (
-    <div className="capability-card">
-      <span className="capability-icon" style={{ color }}><Icon name={icon as IconName} size={18} /></span>
+    <div className="workforce-panel">
+      <div className="wf-grid">
+        <StatBar label="Employee Morale" value={Math.round(company.employeeMorale)} max={100} />
+        <StatBar label="Employer Brand" value={Math.round(company.employerBrand)} max={100} />
+        <StatBar label="Work-Life Balance" value={Math.round(company.hrMetrics.workLifeBalance)} max={100} />
+        <StatBar label="Internal Brand" value={Math.round(company.hrMetrics.internalBrand)} max={100} />
+      </div>
+      <div className="wf-stats">
+        <span>Headcount: {company.hrMetrics.headcount}</span>
+        <span>Layoffs this turn: {company.hrMetrics.layoffsThisTurn}</span>
+        <span>Scandal: {Math.round(company.scandal)}</span>
+        <span className="wf-morale" style={{ color: moraleColor }}>Morale: {Math.round(company.employeeMorale)}</span>
+      </div>
+      <div className="wf-ceos">
+        <div className="orders-section-head">CEOs / HQ <span className="alerts-count">{company.ceos.length}</span></div>
+        {company.ceos.length === 0 ? (
+          <p className="trends-empty">No CEO seated. Build an HQ + hire a CEO (needs HR dept) to gain +1 order each.</p>
+        ) : (
+          company.ceos.map(c => (
+            <div key={c.id} className="wf-ceo">
+              <span className="wf-ceo-role">{c.role.toUpperCase()}</span>
+              <span className="wf-ceo-xp">XP {c.xp} · lvl {company.ceoLevel}</span>
+              {c.perks.includes('extra_order') && <span className="wf-perk">+order</span>}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+  const CapabilityCard: React.FC<{ title: string; value: number; max?: number; icon: string; color: string }> = ({
+    title, value, max = 100, icon, color,
+  }) => {
+    const pct = Math.min(100, (value / max) * 100);
+    return (
+      <div className="capability-card">
+        <span className="capability-icon" style={{ color }}><Icon name={icon as IconName} size={18} /></span>
       <div className="capability-info">
         <span className="capability-title">{title}</span>
         <div className="capability-bar">

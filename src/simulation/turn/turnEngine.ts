@@ -5,6 +5,7 @@ import type { MarketSegment,
   MarketTile,
   Product,
   ProductCategory,
+  Department,
   TurnAction,
   ActionType,
   DepartmentType,
@@ -25,6 +26,8 @@ import type { MarketSegment,
   MarketTrend,
   WeakSignal,
   Idea,
+  Building,
+  ChiefExecutive,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -144,6 +147,8 @@ export class TurnEngine {
       physicalSecurity: 30,
       hushMoney: 0,
       isHQ: true,
+      ceoId: company.ceos[0]?.id,
+      maxDepartments: 8,
     });
     tile.buildingId = id;
   }
@@ -169,6 +174,7 @@ export class TurnEngine {
         departmentIds: c.departments.slice(0, 1).map(d => d.id),
         productIds: c.products.slice(0, 1).map(p => p.id),
         firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
+        maxDepartments: 8,
       });
       tile.buildingId = id;
       startups.push(c);
@@ -290,6 +296,14 @@ export class TurnEngine {
           this.state.playerCompanyId,
           'minor'
         ));
+        // T: CEO gains XP from successful actions (market moves, awareness, social).
+        const playerCompany = this.state.companies.get(this.state.playerCompanyId);
+        const ceo = playerCompany?.ceos[0];
+        if (ceo && playerCompany) {
+          ceo.xp += 10;
+          if (ceo.xp >= 100 && !ceo.perks.includes('extra_order')) { ceo.perks.push('extra_order'); playerCompany.executiveOrderLimit += 1; }
+          playerCompany.ceoLevel = Math.max(playerCompany.ceoLevel, 1 + Math.floor(ceo.xp / 100));
+        }
       } else {
         newsItems.push(this.createNewsItem(
           this.state.turn,
@@ -429,6 +443,9 @@ export class TurnEngine {
       release_source: 0,
       sell_source: 0,
       pivot_product: 250000,
+      hire_ceo: 500000,
+      hire_coo: 400000,
+      mass_layoff: 0,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -525,6 +542,9 @@ export class TurnEngine {
       release_source: 0,
       sell_source: 0,
       pivot_product: 250000,
+      hire_ceo: 500000,
+      hire_coo: 400000,
+      mass_layoff: 0,
     };
     return costs[actionType] || 100000;
   }
@@ -559,6 +579,9 @@ export class TurnEngine {
       release_source: ['product_rd', 'ai_data', 'sales_marketing'],
       sell_source: ['finance_investor', 'corporate_strategy', 'legal_compliance'],
       pivot_product: ['product_rd', 'ai_data', 'consulting_services'],
+      hire_ceo: ['people_culture', 'corporate_strategy'],
+      hire_coo: ['people_culture', 'corporate_strategy'],
+      mass_layoff: ['people_culture', 'finance_investor'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -652,6 +675,15 @@ export class TurnEngine {
       case 'pivot_product':
         this.runPivotProduct(company, action);
         break;
+      case 'hire_ceo':
+        this.runHireChief(company, action, 'ceo');
+        break;
+      case 'hire_coo':
+        this.runHireChief(company, action, 'coo');
+        break;
+      case 'mass_layoff':
+        this.runMassLayoff(company, action);
+        break;
       case 'ceo_social':
         this.runCeoSocial(company, action);
         break;
@@ -679,7 +711,7 @@ export class TurnEngine {
       type = action.departmentType;
     } else {
       const owned = new Set(company.departments.map(d => d.type));
-      const preferred: DepartmentType[] = ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor'];
+      const preferred: DepartmentType[] = ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'dev_engineering', 'corporate_strategy'];
       const missing = preferred.filter(t => !owned.has(t));
       const pool = missing.length > 0 ? missing : preferred;
       type = this.rng.shuffle(pool).pop()!;
@@ -691,18 +723,50 @@ export class TurnEngine {
       const b = company.buildings.find(b => b.tileId === action.targetTileId);
       if (b) buildingId = b.id;
     }
+    // T: enforce the ruthless.com rule — max 8 departments per building.
+    if (buildingId) {
+      const b = company.buildings.find(x => x.id === buildingId);
+      if (b && b.departmentIds.length >= b.maxDepartments) {
+        // Find any building with capacity, else bail (player must build a new building).
+        const room = company.buildings.find(x => x.departmentIds.length < x.maxDepartments);
+        if (!room) return;
+        buildingId = room.id;
+      }
+    } else {
+      const room = company.buildings.find(x => x.departmentIds.length < x.maxDepartments);
+      if (room) buildingId = room.id;
+    }
 
-    company.departments.push({
+    // T: duplicated departments (2 legal, 3 legal) stack — grant a corporate synergy bonus.
+    const sameType = company.departments.filter(d => d.type === type).length;
+    const stackBonus = 1 + sameType * 0.15; // each duplicate adds 15% effectiveness
+
+    // T: DEV departments start with a vertical tech stack (CI/CD + futuristic).
+    const techStack = type === 'dev_engineering'
+      ? { cicd_github: 20, cloud_k8s: 15, cicd_argo: 5 }
+      : undefined;
+
+    // T: 1 product = 1 product — a department may own at most one product.
+    const ownedProduct = company.products.find(p => !company.departments.some(d => d.productId === p.id));
+
+    const dept: Department = {
       id: generateId.department(),
       type,
-      level,
+      level: Math.round(level * stackBonus),
       capacity: level * 10,
-      efficiency: 0.7,
+      efficiency: 0.7 * stackBonus,
       morale: 0.8,
       risk: 0.2,
       recurringCost: level * 50000,
       buildingId,
-    });
+      techStack,
+      productId: ownedProduct?.id,
+    };
+    company.departments.push(dept);
+    if (buildingId) {
+      const b = company.buildings.find(x => x.id === buildingId);
+      b?.departmentIds.push(dept.id);
+    }
   }
 
   private launchProduct(company: Company, action: TurnAction): void {
@@ -875,15 +939,15 @@ export class TurnEngine {
   // ruthless.com-inspired new actions
   // ===================================================================
 
-  /** Build a new Building on a tile (cost ~750k; attaches to nearest owned building). */
+  /** Build a new Building on a tile. Max 8 departments/building. makeHQ seats a new CEO. */
   private buildNewBuilding(company: Company, action: TurnAction): void {
     const tileId = action.targetTileId;
     if (!tileId) return;
     const tile = this.state.marketTiles.get(tileId);
     if (!tile) return;
     const id = generateId.building();
-    const isHQ = company.buildings.length === 0;
-    company.buildings.push({
+    const isHQ = action.makeHQ === true || company.buildings.length === 0;
+    const building: Building = {
       id,
       tileId,
       departmentIds: company.departments.slice(0, 1).map(d => d.id),
@@ -892,7 +956,13 @@ export class TurnEngine {
       physicalSecurity: isHQ ? 40 : 15,
       hushMoney: 0,
       isHQ,
-    });
+      maxDepartments: 8,
+    };
+    if (isHQ) {
+      // A new HQ must be staffed by a CEO via hire_ceo (HR-gated). Seat later.
+      building.ceoId = undefined;
+    }
+    company.buildings.push(building);
     tile.buildingId = id;
     tile.controllerId = company.id;
     tile.controlStrength = Math.max(tile.controlStrength, 0.5);
@@ -1161,6 +1231,51 @@ export class TurnEngine {
     company.computerPoints += Math.round(action.budget / 2000);
     company.buildings.forEach(b => { b.firewall = Math.min(100, b.firewall + 8); });
     company.securityPosture = Math.min(100, company.securityPosture + action.budget / 12000);
+  }
+
+  /** T — Hire a CEO/COO to seat at an HQ building. Requires an HR (people_culture) dept. */
+  private runHireChief(company: Company, action: TurnAction, role: 'ceo' | 'coo'): void {
+    const hasHR = company.departments.some(d => d.type === 'people_culture');
+    if (!hasHR) return; // HR-gated: no new exec without HR
+    const hq = action.hqBuildingId
+      ? company.buildings.find(b => b.id === action.hqBuildingId && b.isHQ)
+      : company.buildings.find(b => b.isHQ && !b.ceoId);
+    if (!hq) return;
+    const chief: ChiefExecutive = {
+      id: generateId.executive(),
+      role,
+      level: 1,
+      experience: 5,
+      specialization: role === 'ceo' ? 'chief_executive' : 'operations',
+      energy: 0.9,
+      loyalty: 0.9,
+      ambition: 0.5,
+      reputation: 55,
+      cost: role === 'ceo' ? 500000 : 400000,
+      traits: [],
+      vulnerabilities: [],
+      hqBuildingId: hq.id,
+      xp: 0,
+      perks: [],
+    };
+    company.ceos.push(chief);
+    hq.ceoId = chief.id;
+    company.cash -= chief.cost;
+    // Each CEO/COO grants +1 executive order capacity.
+    company.executiveOrderLimit += 1;
+  }
+
+  /** T — Mass layoff: cuts costs now but crushes morale, employer brand & trust. */
+  private runMassLayoff(company: Company, action: TurnAction): void {
+    const cut = Math.max(1, Math.floor(action.budget / 50000));
+    const fired = Math.min(cut, company.hrMetrics.headcount);
+    company.hrMetrics.headcount = Math.max(0, company.hrMetrics.headcount - fired);
+    company.hrMetrics.layoffsThisTurn += fired;
+    company.operatingCosts = Math.max(0, Math.round(company.operatingCosts * 0.85));
+    company.employeeMorale = Math.max(0, company.employeeMorale - fired * 1.5);
+    company.employerBrand = Math.max(0, company.employerBrand - fired * 0.8);
+    company.brandTrust = Math.max(0, company.brandTrust - fired * 0.5);
+    company.scandal = Math.min(100, company.scandal + fired * 0.3);
   }
 
   /** Legal action: lawsuit / patent / dispute against a rival (or a rival tile). */
@@ -1707,6 +1822,8 @@ export class TurnEngine {
         if (fx.aiCapabilityDelta) c.aiCapability = Math.max(0, Math.min(100, c.aiCapability + fx.aiCapabilityDelta));
         if (fx.innovationDelta) c.innovation = Math.max(0, Math.min(100, c.innovation + fx.innovationDelta));
         if (fx.securityDelta) c.securityPosture = Math.max(0, Math.min(100, c.securityPosture + fx.securityDelta));
+        // T: market news move workforce morale (HR mechanic).
+        if (fx.marketInfluenceDelta) c.employeeMorale = Math.max(0, Math.min(100, c.employeeMorale + fx.marketInfluenceDelta * 0.3));
         if (fx.tileDamage || fx.buildingDamage || fx.deptDamage) {
           const owned = c.controlledTiles.filter(t => this.state.marketTiles.has(t));
           if (owned.length) {

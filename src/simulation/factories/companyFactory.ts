@@ -114,6 +114,32 @@ export const createCompany = (
     legalPoints: 0,
     scandal: 0,
     ideas: [],
+    // T: building & department GDR — seed initial HQ + CEO roster + workforce.
+    ceos: isPlayer ? [{
+      id: generateId.executive(),
+      role: 'ceo',
+      level: 1,
+      experience: 5,
+      specialization: 'chief_executive',
+      energy: 0.9,
+      loyalty: 1,
+      ambition: 0.5,
+      reputation: 50,
+      cost: 0,
+      traits: [],
+      vulnerabilities: [],
+      hqBuildingId: 'hq_' + id,
+      xp: 0,
+      perks: trait === 'initiative' ? ['extra_order'] : [],
+    }] : [],
+    employeeMorale: isPlayer ? 75 : rng.nextInt(50, 80),
+    employerBrand: isPlayer ? 60 : rng.nextInt(40, 70),
+    hrMetrics: {
+      workLifeBalance: isPlayer ? 70 : rng.nextInt(50, 75),
+      internalBrand: isPlayer ? 60 : rng.nextInt(40, 70),
+      headcount: departments.length * 12,
+      layoffsThisTurn: 0,
+    },
   };
 };
 
@@ -147,6 +173,7 @@ const getDepartmentCost = (type: DepartmentType, level: number): number => {
     legal_compliance: 80000,
     people_culture: 60000,
     finance_investor: 120000,
+    dev_engineering: 180000,
   };
   return baseCosts[type] * level;
 };
