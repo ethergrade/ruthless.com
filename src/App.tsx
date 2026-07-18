@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useSettings } from './store/settings';
 import { Header } from './app/components/layout/Header';
@@ -35,6 +35,16 @@ function App() {
     estimateAction,
   } = useGameStore();
   const { musicEnabled, setMusicEnabled } = useSettings();
+
+  // Push persisted audio settings into the engine on mount so volumes/toggles
+  // stay in sync (the engine is the single source of truth for Web Audio).
+  useEffect(() => {
+    const s = useSettings.getState();
+    audio.setSfxEnabled(s.sfxEnabled);
+    audio.setSfxVolume(s.sfxVolume);
+    audio.setMusicVolume(s.musicVolume);
+    audio.setMusicEnabled(s.musicEnabled);
+  }, []);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
@@ -142,6 +152,7 @@ function App() {
   };
 
   const handleStartGame = () => {
+    audio.unlock(); // first user gesture → create + resume the AudioContext
     setShowMainMenu(false);
   };
 

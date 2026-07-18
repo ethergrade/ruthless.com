@@ -41,7 +41,13 @@ class AudioEngine {
       this.sfxGain.gain.value = this._sfxEnabled ? this._sfxVolume : 0;
       this.sfxGain.connect(this.master);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    if (this.ctx.state === 'suspended') {
+      // resume() is async; once the context is running, (re)start BGM if it
+      // was requested while suspended (e.g. on the very first user gesture).
+      void this.ctx.resume().then(() => {
+        if (this._musicEnabled) this.startBgm();
+      });
+    }
     return this.ctx;
   }
 
@@ -63,6 +69,9 @@ class AudioEngine {
     this._musicVolume = Math.max(0, Math.min(1, v));
     if (this.musicGain && this._musicEnabled) this.musicGain.gain.value = this._musicVolume * 0.45;
   }
+
+  /** Resume the AudioContext after a user gesture (autoplay policy). */
+  unlock(): void { this.ensure(); }
 
   // ---- low-level voice ----------------------------------------------------
   private blip(opts: {
@@ -167,6 +176,9 @@ class AudioEngine {
   startBgm(): void {
     const ctx = this.ensure();
     if (!ctx || this.bgmTimer !== null) return;
+    // Browsers create the context suspended until a user gesture; if so, the
+    // scheduler can't schedule against currentTime — bail and let unlock() retry.
+    if (ctx.state === 'suspended') return;
     this.step = 0;
     this.nextNoteTime = ctx.currentTime + 0.1;
     const tempo = 100; // BPM — light, not frantic

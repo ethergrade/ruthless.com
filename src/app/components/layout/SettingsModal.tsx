@@ -4,7 +4,8 @@ import { useSettings, type GlobalDifficulty } from '../../../store/settings';
 
 /**
  * T — Global Settings: a difficulty override (default none) plus separate
- * SFX / Music toggles + volumes. Persisted to localStorage via useSettings.
+ * SFX / Music toggles + volumes. Persisted to localStorage via useSettings
+ * and pushed to the AudioEngine on every change.
  */
 export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const {
@@ -64,7 +65,7 @@ export const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         <div className="settings-row">
           <label className="toggle-row">
             <input type="checkbox" checked={music} onChange={e => setMusic(e.target.checked)} />
-            <span>Music (funk / hacker soundtrack)</span>
+            <span>Music</span>
           </label>
           <span className="settings-hint">default: OFF</span>
         </div>

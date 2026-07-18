@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { audio } from '../audio/AudioEngine';
 
 export type GlobalDifficulty = 'none' | 'docile' | 'aggressive' | 'ruthless';
 
@@ -40,10 +41,18 @@ const defaults = {
 export const useSettings = create<SettingsStore>()((set, get) => ({
   ...read(),
   setDifficultyOverride: (d) => { persist(set, get, { difficultyOverride: d }); },
-  setSfxEnabled: (v) => { persist(set, get, { sfxEnabled: v }); },
-  setMusicEnabled: (v) => { persist(set, get, { musicEnabled: v }); },
-  setSfxVolume: (v) => { persist(set, get, { sfxVolume: Math.max(0, Math.min(1, v)) }); },
-  setMusicVolume: (v) => { persist(set, get, { musicVolume: Math.max(0, Math.min(1, v)) }); },
+  setSfxEnabled: (v) => { audio.setSfxEnabled(v); persist(set, get, { sfxEnabled: v }); },
+  setMusicEnabled: (v) => { audio.setMusicEnabled(v); persist(set, get, { musicEnabled: v }); },
+  setSfxVolume: (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    audio.setSfxVolume(clamped);
+    persist(set, get, { sfxVolume: clamped });
+  },
+  setMusicVolume: (v) => {
+    const clamped = Math.max(0, Math.min(1, v));
+    audio.setMusicVolume(clamped);
+    persist(set, get, { musicVolume: clamped });
+  },
 }));
 
 function persist(
