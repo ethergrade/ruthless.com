@@ -1070,10 +1070,26 @@ export class TurnEngine {
 
   /** Industrial espionage: steal an idea / cash / evidence from a rival. */
   private runIndustrialEspionage(company: Company, action: TurnAction): void {
-    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    // T: a player may scope the interior of a specific competitor building by
+    // picking its tile. The target company is taken from the tile if given.
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    let target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target && tile && tile.controllerId && tile.controllerId !== company.id) {
+      target = this.state.companies.get(tile.controllerId);
+    }
     if (!target) return;
     const success = this.rng.nextBoolean(0.6 - (target.securityPosture / 400));
     if (!success) { company.scandal = Math.min(100, company.scandal + 8); return; }
+    // Tile-scoped: discover the interior of the rival building on that tile.
+    if (tile && tile.controllerId && tile.controllerId !== company.id) {
+      const owner = this.state.companies.get(tile.controllerId);
+      const building = owner?.buildings.find(b => b.tileId === tile.id);
+      if (building && !this.state.revealedBuildings.includes(building.id)) {
+        this.state.revealedBuildings.push(building.id);
+        const deptCount = building.departmentIds.length;
+        this.addNews(company.id, `${company.name} scopes the interior of ${owner!.name}'s tile ${building.tileId.replace('tile_', '').toUpperCase()} — ${deptCount} department${deptCount === 1 ? '' : 's'} exposed.`);
+      }
+    }
     switch (action.targetDept) {
       case 'rd':
       case 'product': {

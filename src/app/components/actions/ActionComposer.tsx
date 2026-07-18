@@ -55,7 +55,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'] },
   { type: 'defend_tile', label: 'Defend Tile', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'] },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000 },
-  { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetCompany', 'targetDept'] },
+  { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile', 'targetDept'] },
   { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'] },
   { type: 'legal_action', label: 'Legal Action', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'] },
   { type: 'scout_acquisition', label: 'Scout Acquisition', group: 'Security & M&A', baseCost: 50000 },
@@ -248,17 +248,26 @@ export const ActionComposer: React.FC<Props> = ({
           </div>
         )}
 
-        {/* target tile for building / department */}
+        {/* target tile for building / department / espionage / cyber / sabotage */}
         {needs.includes('targetTile') && (
           <div className="ac-field">
-            <label>Build On Tile (your controlled tile)</label>
-            <select value={targetTileId} onChange={e => setTargetTileId(e.target.value)}>
+            <label>{type === 'industrial_espionage' || type === 'cyber_attack' || type === 'sabotage_building' || type === 'legal_action' || type === 'security_offline' || type === 'defend_tile'
+              ? 'Target Tile (rival building / territory)'
+              : 'Build On Tile (your controlled tile)'}</label>
+            <select value={targetTileId} onChange={e => {
+              const tid = e.target.value as TileId | '';
+              setTargetTileId(tid);
+              const t = tiles.find(x => x.id === tid);
+              if (t && t.controllerId && t.controllerId !== playerCompany.id) {
+                setTargetCompanyId(t.controllerId);
+              }
+            }}>
               <option value="">— select tile —</option>
               {(type === 'build_department' || type === 'build_building'
                 ? ownedTiles
                 : tiles).map(t => (
                 <option key={t.id} value={t.id}>
-                  {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}
+                  {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}{t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ''}
                 </option>
               ))}
             </select>
