@@ -34,6 +34,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
   const [presetActionType, setPresetActionType] = useState<ActionType | null>(null);
+  const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
@@ -61,16 +62,12 @@ function App() {
     setShowMainMenu(true);
   };
 
-  const handleRebid = (action: import('./types').TurnAction) => {
-    if (!state || !playerCompany) return;
-    // re-plan a failed order with a 25% higher budget to improve the odds
-    const maxBudget = Math.floor(playerCompany.cash * 0.5);
-    const bumped = Math.min(Math.floor(action.budget * 1.25), maxBudget);
-    addAction({
-      ...action,
-      budget: Math.max(action.budget + 1, bumped),
-      outcome: undefined,
-    });
+  // Open the composer pre-filled with a previous order so the player can tweak
+  // it (e.g. pick a different target product) and re-plan it.
+  const handleEdit = (action: import('./types').TurnAction) => {
+    setPresetActionType(action.type);
+    setEditDraft(action);
+    setShowActionModal(true);
   };
 
   const handleBid = (listingId: string, amount: number) => {
@@ -176,18 +173,19 @@ function App() {
         playerCompany={playerCompany}
         newsFeed={state?.newsFeed || []}
         notifications={ui.notifications}
-        onRebid={handleRebid}
+        onEdit={handleEdit}
         onDismissNotification={dismissNotification}
       />
 
       {showActionModal && playerCompany && state && (
-        <Modal title="Plan Executive Order" onClose={() => setShowActionModal(false)} size="xl">
+        <Modal title="Plan Executive Order" onClose={() => { setShowActionModal(false); setEditDraft(null); }} size="xl">
           <ActionComposer
             playerCompany={playerCompany}
             companies={Array.from(state.companies.values())}
             tiles={Array.from(state.marketTiles.values())}
             presetType={presetActionType}
-            onClose={() => setShowActionModal(false)}
+            initialDraft={editDraft}
+            onClose={() => { setShowActionModal(false); setEditDraft(null); }}
             onAdd={handleAddAction}
             estimate={estimateAction}
           />

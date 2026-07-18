@@ -5,7 +5,7 @@ import type {
 } from '../../../types';
 import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
-  generateProductName, spinProductName,
+  spinProductName,
 } from '../../../data/generators';
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   companies: Company[];
   tiles: MarketTile[];
   presetType?: ActionType | null;
+  initialDraft?: import('../../../types').TurnAction | null;
   onClose: () => void;
   onAdd: (action: Omit<import('../../../types').TurnAction, 'id' | 'status'>) => void;
   /** Live success-estimate 0..1 for the currently configured action (req 4). */
@@ -62,7 +63,7 @@ const DEPT_OPTIONS: { value: RuthlessDept; label: string }[] = [
 ];
 
 export const ActionComposer: React.FC<Props> = ({
-  playerCompany, companies, tiles, presetType, onClose, onAdd, estimate,
+  playerCompany, companies, tiles, presetType, initialDraft, onClose, onAdd, estimate,
 }) => {
   const groups = Array.from(new Set(ACTION_DEFS.map(a => a.group)));
   const [type, setType] = useState<ActionType>(presetType ?? 'build_department');
@@ -86,12 +87,22 @@ export const ActionComposer: React.FC<Props> = ({
   const [productCategory, setProductCategory] = useState<ProductCategory>('saas');
   const [spinSeed] = useState<number>(Math.floor(Math.random() * 100000));
 
+  // Pre-fill from a previous order so the player can tweak & re-plan it (req P2).
   useEffect(() => {
-    if (type === 'launch_product' && !productName) {
-      setProductName(generateProductName(spinSeed, productCategory));
+    if (!initialDraft) return;
+    setType(initialDraft.type);
+    setBudget(initialDraft.budget);
+    setTargetCompanyId(initialDraft.targetCompanyId ?? '');
+    setTargetTileId(initialDraft.targetTileId ?? '');
+    setTargetProductId(initialDraft.targetProductId ?? '');
+    setTone(initialDraft.tone ?? (playerCompany.voiceTone ?? 'aggressive'));
+    setAuth(initialDraft.authenticity ?? (playerCompany.campaignAuthenticity ?? 'aspirational'));
+    if (initialDraft.type === 'launch_product') {
+      setProductName(initialDraft.productName ?? '');
+      setProductCategory((initialDraft.productCategory as ProductCategory) ?? 'saas');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, productCategory]);
+  }, [initialDraft]);
 
   const rivals = companies.filter(c => c.id !== playerCompany.id);
   const needs = def.needs ?? [];

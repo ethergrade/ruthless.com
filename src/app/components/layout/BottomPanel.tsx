@@ -8,7 +8,7 @@ interface BottomPanelProps {
   newsFeed: NewsItem[];
   notifications: string[];
   defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders';
-  onRebid: (action: TurnAction) => void;
+  onEdit: (action: TurnAction) => void;
   onDismissNotification: (index: number) => void;
 }
 
@@ -18,7 +18,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   newsFeed,
   notifications,
   defaultTab = 'kpi',
-  onRebid,
+  onEdit,
   onDismissNotification,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders'>(defaultTab);
@@ -54,7 +54,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
-        {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} onRebid={onRebid} />}
+        {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} onEdit={onEdit} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
       </div>
 
@@ -230,22 +230,50 @@ const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
   </div>
 );
 
-const OrdersPanel: React.FC<{ actions: TurnAction[]; onRebid: (action: TurnAction) => void }> = ({ actions, onRebid }) => {
-  if (actions.length === 0) return <div className="empty-state">No orders planned</div>;
+const OrdersPanel: React.FC<{
+  actions: TurnAction[];
+  history: TurnAction[];
+  onEdit: (action: TurnAction) => void;
+}> = ({ actions, history, onEdit }) => {
   const label = (t: string) => t.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+  if (actions.length === 0 && history.length === 0) return <div className="empty-state">No orders yet</div>;
+  // Group history by resolved turn for a compact "previous turns" view.
+  const byTurn = new Map<number, TurnAction[]>();
+  history.forEach(a => {
+    const t = a.resolvedTurn ?? 0;
+    if (!byTurn.has(t)) byTurn.set(t, []);
+    byTurn.get(t)!.push(a);
+  });
+  const turns = Array.from(byTurn.keys()).sort((a, b) => b - a);
   return (
     <div className="orders-list">
-      {actions.slice(-20).reverse().map((a) => (
-        <div key={a.id} className={`order-row ${a.status}`}>
-          <span className="order-type">{label(a.type)}</span>
-          <span className="order-budget">${a.budget.toLocaleString()}</span>
-          <span className={`order-status ${a.status}`}>
-            {a.status === 'planned' ? <><Icon name="clock" size={12} /> planned</> : a.status === 'resolved' ? <><Icon name="check" size={12} /> done</> : <><Icon name="cross" size={12} /> failed</>}
-          </span>
-          {a.outcome?.message && <span className="order-msg">{a.outcome.message}</span>}
-          {a.status === 'failed' && (
-            <button className="btn btn-ghost order-rebid" onClick={() => onRebid(a)}><Icon name="rerun" size={12} /> RE-BID</button>
-          )}
+      {actions.length > 0 && (
+        <div className="orders-section">
+          <div className="orders-section-head">Planned (this turn)</div>
+          {actions.slice().reverse().map((a) => (
+            <div key={a.id} className={`order-row ${a.status}`}>
+              <span className="order-type">{label(a.type)}</span>
+              <span className="order-budget">${a.budget.toLocaleString()}</span>
+              <span className={`order-status ${a.status}`}><Icon name="clock" size={12} /> planned</span>
+              {a.outcome?.message && <span className="order-msg">{a.outcome.message}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {turns.map((t) => (
+        <div key={t} className="orders-section">
+          <div className="orders-section-head">Turn {t}</div>
+          {byTurn.get(t)!.map((a) => (
+            <div key={a.id} className={`order-row ${a.status}`}>
+              <span className="order-type">{label(a.type)}</span>
+              <span className="order-budget">${a.budget.toLocaleString()}</span>
+              <span className={`order-status ${a.status}`}>
+                {a.status === 'resolved' ? <><Icon name="check" size={12} /> done</> : <><Icon name="cross" size={12} /> failed</>}
+              </span>
+              {a.outcome?.message && <span className="order-msg">{a.outcome.message}</span>}
+              <button className="btn btn-ghost order-rebid" onClick={() => onEdit(a)}><Icon name="rerun" size={12} /> {a.status === 'failed' ? 'RE-BID' : 'REPLAY'}</button>
+            </div>
+          ))}
         </div>
       ))}
     </div>

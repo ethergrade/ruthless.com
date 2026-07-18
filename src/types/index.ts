@@ -314,6 +314,8 @@ export interface TurnAction {
   budget: number;
   executiveId?: ExecutiveId;
   status: 'planned' | 'resolved' | 'failed';
+  /** Turn in which this order was resolved (set when moved to actionHistory). */
+  resolvedTurn?: number;
   outcome?: ActionOutcome;
   priority: number;
   // --- new action options ---
@@ -404,6 +406,7 @@ export interface GameState {
   marketBriefing: MarketBriefing;
   auctionHouse: AuctionListing[];   // req 2: assets up for auction
   kpiHistory: Record<string, number[]>; // keyed by KPI key, last N turns, for sparklines
+  actionHistory: TurnAction[]; // resolved/failed orders from previous turns (req: review & re-bid)
   disastersEnabled: boolean;
   isGameOver: boolean;
   victoryType?: VictoryType;

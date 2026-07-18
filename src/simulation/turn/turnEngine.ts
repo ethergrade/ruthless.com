@@ -99,6 +99,7 @@ export class TurnEngine {
       },
       auctionHouse: [],
       kpiHistory: {},
+      actionHistory: [],
       disastersEnabled: false,
       isGameOver: false,
       seed: this.rng.getSeed(),
@@ -227,6 +228,7 @@ export class TurnEngine {
       const outcome = this.resolveAction(action);
       action.status = outcome.success ? 'resolved' : 'failed';
       action.outcome = outcome;
+      action.resolvedTurn = this.state.turn;
 
       if (outcome.success) {
         newsItems.push(this.createNewsItem(
@@ -249,6 +251,10 @@ export class TurnEngine {
       }
     });
 
+    // Keep resolved/failed orders in history (for review & re-bid), keep only
+    // planned orders queued for processing next turn.
+    const resolved = this.state.actions.filter(a => a.status !== 'planned');
+    this.state.actionHistory.push(...resolved);
     this.state.actions = this.state.actions.filter(a => a.status === 'planned');
   }
 

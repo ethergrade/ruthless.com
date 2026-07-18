@@ -72,7 +72,7 @@ describe('Fase 2 — layout components render without crashing', () => {
         playerCompany: player,
         newsFeed: [],
         notifications: [],
-        onRebid: () => {},
+        onEdit: () => {},
         onDismissNotification: () => {},
       })
     );
