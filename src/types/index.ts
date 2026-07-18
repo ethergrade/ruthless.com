@@ -192,6 +192,12 @@ export interface MarketTile {
   baseQuality: number;
   /** True when the tile's building is listed for auction (req 2). */
   upForAuction?: boolean;
+  /** Marks an in-progress offensive action targeting this tile (shown to the player). */
+  pendingAction?: {
+    type: ActionType;
+    byCompanyId: CompanyId;
+    expiresTurn: number;
+  };
 }
 
 export interface Product {
@@ -356,6 +362,8 @@ export interface GameEvent {
     innovationDelta?: number;
     securityDelta?: number;
     tileDamage?: number; // 0..1 control loss on a random owned tile
+    buildingDamage?: number; // 0..100 firewall/physical security loss on hit buildings
+    deptDamage?: number; // 0..1 morale/effiency loss on departments on the hit tile
     scope: 'all' | 'player' | 'rivals' | 'random_tile';
   };
   affectedCompanies: CompanyId[];

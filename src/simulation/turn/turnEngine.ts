@@ -182,6 +182,10 @@ export class TurnEngine {
     this.resolveRisks(events, newsItems);
     this.resolveAuctions(newsItems);
     this.applyGlobalEvents(newsItems);
+    // Expire in-progress tile action markers.
+    this.state.marketTiles.forEach(t => {
+      if (t.pendingAction && t.pendingAction.expiresTurn <= this.state.turn) t.pendingAction = undefined;
+    });
     Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
     this.state.marketBriefing = this.generateMarketBriefing();
 
@@ -378,8 +382,11 @@ export class TurnEngine {
       return { success: false, message: 'Insufficient funds', effects: {}, risksTriggered: [] };
     }
 
+    // Building/construction actions are investments, not gambles: they always succeed.
+    // Only offensive / market / social actions are subject to the success roll.
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice'];
     const successChance = this.calculateSuccessChance(action, company);
-    const success = this.rng.nextBoolean(successChance);
+    const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
     const effects: Record<string, number> = {};
     const risks: string[] = [];
@@ -793,9 +800,30 @@ export class TurnEngine {
     }
   }
 
-  /** Cyber attack: hack a rival (data run / virus / breach) using computer points. */
+  /** Cyber attack: hack a rival (data run / virus / breach) using computer points. Can target a rival tile. */
   private runCyberAttack(company: Company, action: TurnAction): void {
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    // Tile-targeted attack: hit the building sitting on an enemy-owned tile.
+    if (tile && tile.controllerId && tile.controllerId !== company.id) {
+      const owner = this.state.companies.get(tile.controllerId);
+      const building = owner?.buildings.find(b => b.tileId === tile.id);
+      if (building) {
+        const spend = Math.min(company.computerPoints, Math.max(100, Math.round(action.budget / 1000)));
+        company.computerPoints -= spend;
+        const breach = spend > building.firewall;
+        if (breach) {
+          building.firewall = Math.max(0, building.firewall - 25);
+          building.physicalSecurity = Math.max(0, building.physicalSecurity - 10);
+          if (owner) { owner.securityPosture = Math.max(0, owner.securityPosture - 4); owner.brandTrust = Math.max(0, owner.brandTrust - 2); }
+          company.innovation = Math.min(100, company.innovation + 2);
+        } else {
+          company.scandal = Math.min(100, company.scandal + 5);
+        }
+      }
+      tile.pendingAction = { type: 'cyber_attack', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+      return;
+    }
     if (!target) return;
     const spend = Math.min(company.computerPoints, Math.max(100, Math.round(action.budget / 1000)));
     company.computerPoints -= spend;
@@ -809,8 +837,20 @@ export class TurnEngine {
     }
   }
 
-  /** Offline (physical) security: guards / lockdown / sabotage defense. */
+  /** Offline (physical) security: guards / lockdown / sabotage defense — or a raid on a rival tile. */
   private runSecurityOffline(company: Company, action: TurnAction): void {
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    if (tile && tile.controllerId && tile.controllerId !== company.id) {
+      // Offensive physical raid: degrade an enemy building's physical security.
+      const owner = this.state.companies.get(tile.controllerId);
+      const building = owner?.buildings.find(b => b.tileId === tile.id);
+      if (building) {
+        building.physicalSecurity = Math.max(0, building.physicalSecurity - Math.round(action.budget / 8000));
+        if (owner) owner.securityPosture = Math.max(0, owner.securityPosture - 2);
+      }
+      tile.pendingAction = { type: 'security_offline', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+      return;
+    }
     company.securityPosture = Math.min(100, company.securityPosture + action.budget / 8000);
     company.buildings.forEach(b => { b.physicalSecurity = Math.min(100, b.physicalSecurity + 4); });
   }
@@ -822,9 +862,20 @@ export class TurnEngine {
     company.securityPosture = Math.min(100, company.securityPosture + action.budget / 12000);
   }
 
-  /** Legal action: lawsuit / patent / dispute against a rival. */
+  /** Legal action: lawsuit / patent / dispute against a rival (or a rival tile). */
   private runLegalAction(company: Company, action: TurnAction): void {
     company.legalPoints += Math.round(action.budget / 1000);
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    if (tile && tile.controllerId && tile.controllerId !== company.id) {
+      const owner = this.state.companies.get(tile.controllerId);
+      if (owner) {
+        const win = this.rng.nextBoolean(0.5 + (company.legalPoints - owner.marketInfluence) / 500);
+        if (win) { owner.marketInfluence = Math.max(0, owner.marketInfluence - 6); company.marketInfluence += 3; }
+        else { owner.legalPoints += 200; }
+      }
+      tile.pendingAction = { type: 'legal_action', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+      return;
+    }
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     if (target) {
       const win = this.rng.nextBoolean(0.5 + (company.legalPoints - target.marketInfluence) / 500);
@@ -1280,8 +1331,8 @@ export class TurnEngine {
         });
       }
 
-      // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + cash hit).
-      if (this.rng.nextBoolean(0.18)) {
+      // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
+      if (this.rng.nextBoolean(0.12)) {
         const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
         const name = this.rng.shuffle(kinds).pop()!;
         globalEvents.push({
@@ -1290,9 +1341,9 @@ export class TurnEngine {
           category: 'cyber',
           kind: 'cataclysm',
           title: `Cataclysm: ${name}`,
-          description: `${name} strikes the market — a random territory loses control and owners take a cash hit.`,
-          impact: { control: -25, cash: -300000 },
-          effects: { tileDamage: 0.25, cashDelta: -300000, scope: 'random_tile' },
+          description: `${name} strikes the market — a random territory loses control, its buildings and teams take damage, and owners take a cash hit.`,
+          impact: { control: -20, building: -20, cash: -250000 },
+          effects: { tileDamage: 0.2, buildingDamage: 20, deptDamage: 0.15, cashDelta: -250000, scope: 'random_tile' },
           affectedCompanies: [],
           duration: 1,
           severity: 'critical',
@@ -1315,12 +1366,28 @@ export class TurnEngine {
         if (fx.aiCapabilityDelta) c.aiCapability = Math.max(0, Math.min(100, c.aiCapability + fx.aiCapabilityDelta));
         if (fx.innovationDelta) c.innovation = Math.max(0, Math.min(100, c.innovation + fx.innovationDelta));
         if (fx.securityDelta) c.securityPosture = Math.max(0, Math.min(100, c.securityPosture + fx.securityDelta));
-        if (fx.tileDamage) {
+        if (fx.tileDamage || fx.buildingDamage || fx.deptDamage) {
           const owned = c.controlledTiles.filter(t => this.state.marketTiles.has(t));
           if (owned.length) {
             const tile = this.state.marketTiles.get(this.rng.shuffle(owned).pop()!)!;
-            tile.controlStrength = Math.max(0, tile.controlStrength - fx.tileDamage);
-            if (tile.controlStrength <= 0.05) { tile.controllerId = undefined; tile.controlStrength = 0; c.controlledTiles = c.controlledTiles.filter(t => t !== tile.id); }
+            if (fx.tileDamage) {
+              tile.controlStrength = Math.max(0, tile.controlStrength - fx.tileDamage);
+              if (tile.controlStrength <= 0.05) { tile.controllerId = undefined; tile.controlStrength = 0; c.controlledTiles = c.controlledTiles.filter(t => t !== tile.id); }
+            }
+            if (fx.buildingDamage) {
+              const dmg = fx.buildingDamage;
+              c.buildings.filter(b => b.tileId === tile.id).forEach(b => {
+                b.firewall = Math.max(0, b.firewall - dmg);
+                b.physicalSecurity = Math.max(0, b.physicalSecurity - dmg);
+              });
+            }
+            if (fx.deptDamage) {
+              const dmg = fx.deptDamage;
+              c.departments.forEach(d => {
+                d.morale = Math.max(0.2, d.morale - dmg);
+                d.efficiency = Math.max(0.3, d.efficiency - dmg);
+              });
+            }
           }
         }
       };

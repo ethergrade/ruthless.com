@@ -194,6 +194,16 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         } else if (t.productId) {
           tileLayer.fillStyle(0x00d4aa, 1).fillCircle(sx, sy - 6, 4);
         }
+        // In-progress offensive action marker (cyber / legal / physical raid).
+        if (t.pendingAction) {
+          const paCol = t.pendingAction.byCompanyId === state!.playerCompanyId ? 0x00ffa3 : 0xff5c5c;
+          glowLayer.fillStyle(paCol, 0.5).fillCircle(sx, sy - 40, 12);
+          overlay.lineStyle(2, paCol, 0.9).strokeCircle(sx, sy - 40, 9);
+          const pulse = scene.add.text(sx, sy - 40, '!', {
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '13px', color: '#0b0e16', fontStyle: 'bold',
+          }).setOrigin(0.5).setDepth(6);
+          scene.tweens.add({ targets: pulse, alpha: { from: 0.4, to: 1 }, duration: 600, yoyo: true, repeat: -1 });
+        }
       });
       scene.tweens.add({ targets: glowLayer, alpha: { from: 0.6, to: 1 }, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
 

@@ -99,24 +99,26 @@ export const useGameStore = create<GameStore>()(
       },
 
       addAction: (action) =>
-        set((prev) => ({
-          state: prev.state
-            ? {
-                ...prev.state,
-                actions: [...prev.state.actions, { ...action, id: generateId.action(), status: 'planned' }],
-              }
-            : null,
-        })),
+        set((prev) => {
+          if (!prev.state) return {};
+          const next = {
+            ...prev.state,
+            actions: [...prev.state.actions, { ...action, id: generateId.action(), status: 'planned' as const }],
+          };
+          get().engine?.setState(next);
+          return { state: next };
+        }),
 
       removeAction: (actionId) =>
-        set((prev) => ({
-          state: prev.state
-            ? {
-                ...prev.state,
-                actions: prev.state.actions.filter((a) => a.id !== actionId),
-              }
-            : null,
-        })),
+        set((prev) => {
+          if (!prev.state) return {};
+          const next = {
+            ...prev.state,
+            actions: prev.state.actions.filter((a) => a.id !== actionId),
+          };
+          get().engine?.setState(next);
+          return { state: next };
+        }),
 
       selectTile: (tileId) => set({ selectedTileId: tileId, selectedCompanyId: null }),
       selectCompany: (companyId) => set({ selectedCompanyId: companyId, selectedTileId: null }),

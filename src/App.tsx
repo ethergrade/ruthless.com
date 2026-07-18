@@ -353,6 +353,13 @@ const SelectedTilePanel: React.FC<SelectedTilePanelProps> = ({ tile, controller,
           {controller.name}
         </div>
       )}
+      {tile.pendingAction && (
+        <div className="tile-action-pending">
+          <span className="tap-icon">!</span>
+          {tile.pendingAction.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} in corso
+          (turno {tile.pendingAction.expiresTurn})
+        </div>
+      )}
     </div>
   );
 };

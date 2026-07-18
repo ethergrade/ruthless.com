@@ -29,13 +29,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [disasters, setDisasters] = useState(true);
 
   const handleStart = () => {
-    initializeGame(
-      seed ? parseInt(seed) : undefined,
-      companyName.trim() || undefined,
-      selectedArchetype,
-      selectedColor,
-      disasters,
-    );
+    try {
+      initializeGame(
+        seed ? parseInt(seed) : undefined,
+        companyName.trim() || undefined,
+        selectedArchetype,
+        selectedColor,
+        disasters,
+      );
+    } catch (err) {
+      // initializeGame shouldn't throw, but never block the modal from closing.
+    }
+    setShowNewGame(false);
     onStartGame();
   };
 

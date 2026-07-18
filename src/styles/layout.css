@@ -1094,3 +1094,8 @@
   font-weight: 700;
 }
 
+/* In-progress tile action reminder (point 2 of prior session) */
+.selected-tile-owner { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 8px; border: 1px solid; border-radius: 4px; font-size: 12px; }
+.tile-action-pending { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 8px; border: 1px solid #ff5c5c; border-radius: 4px; font-size: 11px; color: #ff8a8a; background: rgba(255,92,92,0.08); }
+.tap-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #ff5c5c; color: #0b0e16; font-weight: bold; font-size: 11px; }
+
