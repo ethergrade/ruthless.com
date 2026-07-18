@@ -113,6 +113,7 @@ export const createCompany = (
     computerPoints: 0,
     legalPoints: 0,
     scandal: 0,
+    ideas: [],
   };
 };
 

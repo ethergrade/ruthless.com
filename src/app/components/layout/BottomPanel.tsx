@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea } from '../../../types';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
@@ -53,7 +53,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       <div className="bottom-content">
         {activeTab === 'kpi' && <KPIPanel company={playerCompany} history={state.kpiHistory} />}
         {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} />}
-        {activeTab === 'products' && <ProductsPanel products={playerCompany.products} />}
+        {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
@@ -137,7 +137,7 @@ const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments
   </div>
 );
 
-const ProductsPanel: React.FC<{ products: Product[] }> = ({ products }) => (
+const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ products, ideas }) => (
   <div className="products-grid">
     {products.length === 0 ? (
       <div className="empty-state">No products launched</div>
@@ -162,6 +162,19 @@ const ProductsPanel: React.FC<{ products: Product[] }> = ({ products }) => (
         </div>
       ))
     )}
+    <div className="ideas-section">
+      <div className="orders-section-head">R&amp;D Ideas <span className="alerts-count">{ideas.length}</span></div>
+      {ideas.length === 0 ? (
+        <p className="trends-empty">No ideas invented yet — use “Create Ideas (R&D)”.</p>
+      ) : (
+        ideas.slice().reverse().map(idea => (
+          <div key={idea.id} className={`idea-card ${idea.breakthrough ? 'breakthrough' : ''}`}>
+            <span className="idea-name">{idea.name}</span>
+            <span className="idea-meta">{idea.category.replace('_', ' ')} · maturity {idea.maturity}</span>
+          </div>
+        ))
+      )}
+    </div>
   </div>
 );
 

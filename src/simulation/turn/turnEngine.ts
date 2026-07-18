@@ -24,6 +24,7 @@ import type { MarketSegment,
   CompanyArchetype,
   MarketTrend,
   WeakSignal,
+  Idea,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -123,6 +124,7 @@ export class TurnEngine {
       trends: this.generateMarketTrends(2),
       weakSignals: this.generateWeakSignals(2),
       alerts: [],
+      inventions: [],
     };
   }
 
@@ -422,6 +424,9 @@ export class TurnEngine {
       auction_sell: 0,
       end_turn: 0,
       auction_bid: 0,
+      create_ideas: 400000,
+      release_source: 0,
+      sell_source: 0,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -514,6 +519,9 @@ export class TurnEngine {
       auction_sell: 0,
       end_turn: 0,
       auction_bid: 0,
+      create_ideas: 400000,
+      release_source: 0,
+      sell_source: 0,
     };
     return costs[actionType] || 100000;
   }
@@ -544,6 +552,9 @@ export class TurnEngine {
       public_tender_offer: ['acquisitions', 'finance_investor', 'legal_compliance'],
       auction_sell: ['finance_investor', 'corporate_strategy', 'acquisitions'],
       auction_bid: ['corporate_strategy', 'finance_investor', 'acquisitions'],
+      create_ideas: ['product_rd', 'ai_data', 'consulting_services'],
+      release_source: ['product_rd', 'ai_data', 'sales_marketing'],
+      sell_source: ['finance_investor', 'corporate_strategy', 'legal_compliance'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -583,7 +594,7 @@ export class TurnEngine {
         this.hireExecutive(company, action.budget);
         break;
       case 'security_hardening':
-        this.hardenSecurity(company, action.budget);
+        this.hardenSecurity(company, action.budget, action.targetProductId);
         break;
       case 'ai_automation':
         this.automateAI(company, action.budget);
@@ -624,6 +635,15 @@ export class TurnEngine {
         break;
       case 'legal_action':
         this.runLegalAction(company, action);
+        break;
+      case 'create_ideas':
+        this.runCreateIdeas(company, action);
+        break;
+      case 'release_source':
+        this.runReleaseSource(company, action);
+        break;
+      case 'sell_source':
+        this.runSellSource(company, action);
         break;
       case 'ceo_social':
         this.runCeoSocial(company, action);
@@ -716,9 +736,12 @@ export class TurnEngine {
     const product = (targetProductId && company.products.find(p => p.id === targetProductId))
       || this.rng.shuffle([...company.products]).pop()!;
     const improvement = _budget / 100000;
+    // Quality + market fit both climb with R&D investment (T: product lifecycle).
     product.quality = Math.min(100, product.quality + improvement * 5);
-    product.marketFit = Math.min(100, product.marketFit + improvement * 3);
+    product.marketFit = Math.min(100, product.marketFit + improvement * 4);
     product.technicalDebt = Math.max(0, product.technicalDebt - improvement * 2);
+    // Better-engineered products are also a little more secure by default.
+    product.security = Math.min(100, product.security + improvement * 1.5);
   }
 
   private expandMarket(company: Company, _budget: number): void {
@@ -768,8 +791,15 @@ export class TurnEngine {
     });
   }
 
-  private hardenSecurity(company: Company, _budget: number): void {
+  private hardenSecurity(company: Company, _budget: number, targetProductId?: string): void {
+    // Corporate security posture always improves with the investment.
     company.securityPosture = Math.min(100, company.securityPosture + _budget / 10000);
+    // T: product-level security hardening — harden a specific product or the whole portfolio.
+    const products = targetProductId
+      ? company.products.filter(p => p.id === targetProductId)
+      : company.products;
+    const perProduct = _budget / 60000;
+    products.forEach(p => { p.security = Math.min(100, p.security + perProduct); });
   }
 
   private automateAI(company: Company, _budget: number): void {
@@ -967,6 +997,85 @@ export class TurnEngine {
       target.securityPosture = Math.max(0, target.securityPosture - 4);
       target.brandTrust = Math.max(0, target.brandTrust - 3);
       company.scandal = Math.min(100, company.scandal + 12);
+    }
+  }
+
+  /** T9 — R&D: invent a new idea/technology. Breakthroughs can spark a market trend. */
+  private runCreateIdeas(company: Company, action: TurnAction): void {
+    const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
+    const category = action.productCategory ?? this.rng.shuffle(cats).pop()!;
+    const researchPush = Math.min(100, 30 + action.budget / 12000 + company.innovation / 4);
+    const breakthrough = this.rng.nextBoolean(0.25 + researchPush / 400);
+    const idea: Idea = {
+      id: generateId.trend(),
+      name: `Idea: ${category.replace('_', ' ')}${breakthrough ? ' (Breakthrough)' : ''}`,
+      category,
+      maturity: Math.round(researchPush),
+      breakthrough,
+      companyId: company.id,
+      createdTurn: this.state.turn,
+    };
+    company.ideas.push(idea);
+    this.state.inventions = [...this.state.inventions, idea];
+    company.innovation = Math.min(100, company.innovation + 4);
+    // A breakthrough can ignite a brand-new global trend for this category (R&D pull).
+    if (breakthrough && !this.state.trends.some(t => t.category === category)) {
+      this.state.trends.push({
+        id: generateId.trend(),
+        title: `R&D Breakthrough: ${category.replace('_', ' ').toUpperCase()} demand ignites`,
+        category,
+        sector: this.rng.shuffle(['enterprise_cluster', 'innovation_hub', 'high_growth', 'strategic_account']).pop()! as MarketSegment,
+        strength: this.rng.nextFloat(0.5, 0.85),
+        expiresTurn: this.state.turn + this.rng.nextInt(4, 8),
+        blurb: `${company.name} just broke ground on ${category.replace('_', ' ')} — the market is taking notice.`,
+      });
+    }
+  }
+
+  /** T9 — Open-source an idea: +awareness/trust globally, can mature a weak signal. */
+  private runReleaseSource(company: Company, action: TurnAction): void {
+    const idea = action.ideaId
+      ? company.ideas.find(i => i.id === action.ideaId)
+      : company.ideas[company.ideas.length - 1];
+    company.brandTrust = Math.min(100, company.brandTrust + 8);
+    company.marketInfluence = Math.min(100, company.marketInfluence + 4); // awareness
+    if (idea) {
+      // Releasing source can mature a weak signal into a real trend for that category.
+      const signal = this.state.weakSignals.find(w => w.relatedCategory === idea.category && w.expiresTurn > this.state.turn);
+      if (signal && this.rng.nextBoolean(0.6)) {
+        this.state.trends.push({
+          id: generateId.trend(),
+          title: `Open-Source Wave: ${idea.category.replace('_', ' ').toUpperCase()} goes mainstream`,
+          category: idea.category,
+          sector: this.rng.shuffle(['open_market', 'startup_zone', 'high_growth', 'innovation_hub']).pop()! as MarketSegment,
+          strength: this.rng.nextFloat(0.45, 0.8),
+          expiresTurn: this.state.turn + this.rng.nextInt(3, 7),
+          blurb: `${company.name} open-sourced their ${idea.category.replace('_', ' ')} tech — adoption is snowballing.`,
+        });
+        this.state.weakSignals = this.state.weakSignals.filter(w => w.id !== signal.id);
+      }
+    }
+  }
+
+  /** T9 — Sell an idea's source code to a rival: +cash now, flips trend ownership/awareness. */
+  private runSellSource(company: Company, action: TurnAction): void {
+    const idea = action.ideaId
+      ? company.ideas.find(i => i.id === action.ideaId)
+      : company.ideas[company.ideas.length - 1];
+    const buyer = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    const price = idea ? Math.round(300000 + idea.maturity * 6000 + (idea.breakthrough ? 500000 : 0)) : 200000;
+    company.cash += price;
+    if (idea) {
+      company.ideas = company.ideas.filter(i => i.id !== idea.id);
+      this.state.inventions = this.state.inventions.filter(i => i.id !== idea.id);
+      if (buyer) {
+        buyer.ideas.push({ ...idea, id: generateId.trend(), companyId: buyer.id, createdTurn: this.state.turn });
+        buyer.brandTrust = Math.min(100, buyer.brandTrust + 3);
+        buyer.marketInfluence = Math.min(100, buyer.marketInfluence + 2); // buyer gains awareness
+        // The trend (if any) now benefits the buyer's category presence.
+        const t = this.state.trends.find(tr => tr.category === idea.category && tr.expiresTurn > this.state.turn);
+        if (t) company.marketInfluence = Math.max(0, company.marketInfluence - 3);
+      }
     }
   }
 

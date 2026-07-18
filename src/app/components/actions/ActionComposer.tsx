@@ -27,7 +27,7 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea')[];
 }
 
 const ACTION_DEFS: ActionDef[] = [
@@ -37,13 +37,16 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0 },
   { type: 'reduce_costs', label: 'Reduce Costs', group: 'Corporate', baseCost: 0 },
   { type: 'launch_product', label: 'Launch Product', group: 'Product & R&D', baseCost: 300000, needs: ['productEditor'] },
+  { type: 'create_ideas', label: 'Create Ideas (R&D)', group: 'Product & R&D', baseCost: 400000 },
+  { type: 'release_source', label: 'Release Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea'] },
+  { type: 'sell_source', label: 'Sell Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea', 'targetCompany'] },
   { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000, needs: ['targetProduct'] },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000 },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000 },
   { type: 'marketing_campaign', label: 'Marketing Campaign', group: 'Market & Sales', baseCost: 150000, needs: ['targetProduct', 'tone', 'auth'] },
   { type: 'launch_consulting_practice', label: 'Consulting Practice', group: 'Market & Sales', baseCost: 150000 },
   { type: 'ceo_social', label: 'CEO Social Post', group: 'Market & Sales', baseCost: 100000, needs: ['tone', 'auth'] },
-  { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000 },
+  { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000, needs: ['targetProduct'] },
   { type: 'security_offline', label: 'Physical Security', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile'] },
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'] },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000 },
@@ -96,6 +99,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
   const [auctionAssetId, setAuctionAssetId] = useState<string>('');
   const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
+  const [ideaId, setIdeaId] = useState<string>('');
   const [deptType, setDeptType] = useState<DepartmentType>('product_rd');
 
   // product editor state
@@ -127,7 +131,9 @@ export const ActionComposer: React.FC<Props> = ({
   const needs = def.needs ?? [];
   const canSubmit = budget > 0 || def.baseCost === 0 ||
     (type === 'launch_product' && !!productName) ||
-    (type === 'auction_sell' && !!auctionAssetId);
+    (type === 'auction_sell' && !!auctionAssetId) ||
+    (type === 'release_source' && !!ideaId) ||
+    (type === 'sell_source' && !!ideaId && !!targetCompanyId);
 
   // live success estimate (req 4)
   const draft: Omit<import('../../../types').TurnAction, 'id' | 'status'> = {
@@ -146,6 +152,7 @@ export const ActionComposer: React.FC<Props> = ({
     productCategory: type === 'launch_product' ? productCategory : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
+    ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
   };
   const successPct = estimate ? Math.round(estimate(draft) * 100) : null;
 
@@ -249,6 +256,23 @@ export const ActionComposer: React.FC<Props> = ({
             <select value={deptType} onChange={e => setDeptType(e.target.value as DepartmentType)}>
               {DEPARTMENT_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
+          </div>
+        )}
+
+        {/* idea picker (T9: release / sell source code) */}
+        {needs.includes('targetIdea') && (
+          <div className="ac-field">
+            <label>Idea / Technology</label>
+            {playerCompany.ideas.length === 0 ? (
+              <p className="ac-hint">No ideas yet — use “Create Ideas (R&D)” first.</p>
+            ) : (
+              <select value={ideaId} onChange={e => setIdeaId(e.target.value)}>
+                <option value="">Select an idea…</option>
+                {playerCompany.ideas.map(i => (
+                  <option key={i.id} value={i.id}>{i.name} · {i.category.replace('_', ' ')}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 

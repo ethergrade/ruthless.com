@@ -119,6 +119,10 @@ export type ActionType =
   | 'public_tender_offer'     // OPA: public tender offer for a rival building/company
   | 'auction_sell'            // list one of your assets on the open auction house (req 2)
   | 'auction_bid'             // place a bid on an existing listing (buy side)
+  // --- T9: R&D ideas + source-code economy ---
+  | 'create_ideas'            // R&D: invent a new technology/idea (brevity → trend)
+  | 'release_source'          // open-source an idea: +awareness/trust, can mature a weak signal
+  | 'sell_source'             // sell an idea's source code to a rival: +cash, flips trend ownership
   | 'end_turn';
 
 /** Win condition for a Scenario (tactical single-board setup). */
@@ -213,6 +217,8 @@ export interface Company {
   scandal: number;
   /** True for AI corps that are "start-ups" available for acquisition. */
   isStartup?: boolean;
+  /** T9: R&D ideas / invented technologies owned by this company. */
+  ideas: Idea[];
 }
 
 export interface Building {
@@ -286,6 +292,21 @@ export interface Product {
   customNamed?: boolean;
   /** True when listed for auction (req 2). */
   upForAuction?: boolean;
+}
+
+/** T9 — an R&D idea / invented technology. Can be patented, open-sourced, or sold. */
+export interface Idea {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  /** 0..100 research maturity. */
+  maturity: number;
+  /** True for a breakthrough that can spark a market trend. */
+  breakthrough: boolean;
+  /** Company that owns it. */
+  companyId: CompanyId;
+  /** Turn it was created. */
+  createdTurn: number;
 }
 
 /** Player-tunable product KPIs shown in the product editor. */
@@ -403,6 +424,8 @@ export interface TurnAction {
   departmentType?: DepartmentType;
   /** Product id to improve / market (improve_product, marketing_campaign). */
   targetProductId?: ProductId;
+  /** T9: idea id to release / sell as source code (release_source, sell_source). */
+  ideaId?: string;
   /** Generated/editable product name + category (product creation). */
   productName?: string;
   productCategory?: ProductCategory;
@@ -489,6 +512,8 @@ export interface GameState {
   weakSignals: WeakSignal[];
   /** T6: persistent alert log (news/events that warranted a toast) surfaced in the Orders tab. */
   alerts: AlertItem[];
+  /** T9: every invented idea across all corps (source-code economy reference). */
+  inventions: Idea[];
 }
 
 export interface AlertItem {
