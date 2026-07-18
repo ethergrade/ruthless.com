@@ -517,7 +517,7 @@ export class TurnEngine {
 
     switch (action.type) {
       case 'build_department':
-        this.buildDepartment(company, action.budget);
+        this.buildDepartment(company, action);
         break;
       case 'launch_product':
         this.launchProduct(company, action);
@@ -591,25 +591,39 @@ export class TurnEngine {
     // metrics are recomputed once per turn in endTurn() (see recalcAllCompanies)
   }
 
-  private buildDepartment(company: Company, _budget: number): void {
-    const level = Math.max(1, Math.floor(_budget / 200000));
-    // Pick a department type that the company currently lacks or has weakest,
-    // so growth stays balanced instead of random spam.
-    const owned = new Set(company.departments.map(d => d.type));
-    const preferred: DepartmentType[] = ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions'];
-    const missing = preferred.filter(t => !owned.has(t));
-    const pool = missing.length > 0 ? missing : preferred;
-    const type = this.rng.shuffle(pool).pop()!;
+  private buildDepartment(company: Company, action: TurnAction): void {
+    const budget = action.budget;
+    const level = Math.max(1, Math.floor(budget / 200000));
+    // Player-chosen type if provided, else pick a department type the company
+    // currently lacks or has weakest, so growth stays balanced.
+    let type: DepartmentType;
+    if (action.departmentType) {
+      type = action.departmentType;
+    } else {
+      const owned = new Set(company.departments.map(d => d.type));
+      const preferred: DepartmentType[] = ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor'];
+      const missing = preferred.filter(t => !owned.has(t));
+      const pool = missing.length > 0 ? missing : preferred;
+      type = this.rng.shuffle(pool).pop()!;
+    }
+
+    // Place the department inside a player-owned building on the chosen tile.
+    let buildingId: string | undefined;
+    if (action.targetTileId) {
+      const b = company.buildings.find(b => b.tileId === action.targetTileId);
+      if (b) buildingId = b.id;
+    }
 
     company.departments.push({
       id: generateId.department(),
-      type: type as DepartmentType,
+      type,
       level,
       capacity: level * 10,
       efficiency: 0.7,
       morale: 0.8,
       risk: 0.2,
       recurringCost: level * 50000,
+      buildingId,
     });
   }
 

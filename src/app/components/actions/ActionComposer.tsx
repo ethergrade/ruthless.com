@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type {
   ActionType, Company, CompanyId, MarketTile, ProductCategory,
-  VoiceTone, CampaignAuthenticity, RuthlessDept, TileId, ProductId,
+  VoiceTone, CampaignAuthenticity, RuthlessDept, TileId, ProductId, DepartmentType,
 } from '../../../types';
 import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
@@ -26,11 +26,11 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType')[];
 }
 
 const ACTION_DEFS: ActionDef[] = [
-  { type: 'build_department', label: 'Build Department', group: 'Corporate', baseCost: 500000 },
+  { type: 'build_department', label: 'Build Department', group: 'Corporate', baseCost: 500000, needs: ['targetTile', 'departmentType'] },
   { type: 'build_building', label: 'Build Building', group: 'Corporate', baseCost: 750000, needs: ['targetTile'] },
   { type: 'hire_executive', label: 'Hire Executive', group: 'Corporate', baseCost: 400000 },
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0 },
@@ -62,6 +62,19 @@ const DEPT_OPTIONS: { value: RuthlessDept; label: string }[] = [
   { value: 'acquisitions', label: 'Acquisitions' },
 ];
 
+const DEPARTMENT_TYPE_OPTIONS: { value: DepartmentType; label: string }[] = [
+  { value: 'product_rd', label: 'Product R&D' },
+  { value: 'ai_data', label: 'AI & Data' },
+  { value: 'cybersecurity', label: 'Cybersecurity' },
+  { value: 'sales_marketing', label: 'Sales & Marketing' },
+  { value: 'consulting_services', label: 'Consulting Services' },
+  { value: 'acquisitions', label: 'Acquisitions' },
+  { value: 'legal_compliance', label: 'Legal & Compliance' },
+  { value: 'people_culture', label: 'People & Culture' },
+  { value: 'finance_investor', label: 'Finance & Investor' },
+  { value: 'corporate_strategy', label: 'Corporate Strategy' },
+];
+
 export const ActionComposer: React.FC<Props> = ({
   playerCompany, companies, tiles, presetType, initialDraft, onClose, onAdd, estimate,
 }) => {
@@ -81,6 +94,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
   const [auctionAssetId, setAuctionAssetId] = useState<string>('');
   const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
+  const [deptType, setDeptType] = useState<DepartmentType>('product_rd');
 
   // product editor state
   const [productName, setProductName] = useState<string>('');
@@ -101,6 +115,7 @@ export const ActionComposer: React.FC<Props> = ({
       setProductName(initialDraft.productName ?? '');
       setProductCategory((initialDraft.productCategory as ProductCategory) ?? 'saas');
     }
+    if (initialDraft.departmentType) setDeptType(initialDraft.departmentType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft]);
 
@@ -122,6 +137,7 @@ export const ActionComposer: React.FC<Props> = ({
     tone: needs.includes('tone') ? tone : undefined,
     authenticity: needs.includes('auth') ? auth : undefined,
     targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
+    departmentType: needs.includes('departmentType') ? deptType : undefined,
     productName: type === 'launch_product' ? productName : undefined,
     productCategory: type === 'launch_product' ? productCategory : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
@@ -141,6 +157,7 @@ export const ActionComposer: React.FC<Props> = ({
       tone: needs.includes('tone') ? tone : undefined,
       authenticity: needs.includes('auth') ? auth : undefined,
       targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
+      departmentType: needs.includes('departmentType') ? deptType : undefined,
       productName: type === 'launch_product' ? productName : undefined,
       productCategory: type === 'launch_product' ? productCategory : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
@@ -204,10 +221,10 @@ export const ActionComposer: React.FC<Props> = ({
           </div>
         )}
 
-        {/* target tile for building */}
+        {/* target tile for building / department */}
         {needs.includes('targetTile') && (
           <div className="ac-field">
-            <label>Build On Tile</label>
+            <label>Build On Tile (your controlled tile)</label>
             <select value={targetTileId} onChange={e => setTargetTileId(e.target.value)}>
               <option value="">— select tile —</option>
               {tiles.map(t => (
@@ -215,6 +232,16 @@ export const ActionComposer: React.FC<Props> = ({
                   {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}
                 </option>
               ))}
+            </select>
+          </div>
+        )}
+
+        {/* department type to build */}
+        {needs.includes('departmentType') && (
+          <div className="ac-field">
+            <label>Department Type</label>
+            <select value={deptType} onChange={e => setDeptType(e.target.value as DepartmentType)}>
+              {DEPARTMENT_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
           </div>
         )}

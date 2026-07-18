@@ -329,6 +329,8 @@ export interface TurnAction {
   authenticity?: CampaignAuthenticity;
   /** Tile id to build a building on. */
   targetTileId?: TileId;
+  /** Department type to build (build_department) — player-chosen. */
+  departmentType?: DepartmentType;
   /** Product id to improve / market (improve_product, marketing_campaign). */
   targetProductId?: ProductId;
   /** Generated/editable product name + category (product creation). */
