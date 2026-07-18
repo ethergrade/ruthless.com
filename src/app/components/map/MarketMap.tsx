@@ -182,16 +182,21 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         tileLayer.lineStyle(2, segCol, owned ? 0.55 : 0.35).strokePoints(diamondPoints(sx, sy), true);
         if (owned) {
           const col = companyColors.get(t.controllerId!) || 0x00d4aa;
-          const h = 22 + t.controlStrength * 34;
-          const segs = 2 + Math.min(2, Math.floor(t.controlStrength * 3));
-          let topY = sy - TILE_H / 2, w = 46;
+          // Height encodes the number of departments housed in this tile's
+          // building (proportional, but kept low so the board stays readable
+          // and the player can compare competitor "mass" at a glance).
+          const building = t.buildingId ? state!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
+          const deptCount = building ? building.departmentIds.length : 0;
+          const h = Math.min(92, 16 + deptCount * 11); // ~27 (1 dept) .. 92 (8 depts)
+          const segs = Math.max(1, Math.min(6, deptCount + 1));
+          let topY = sy - TILE_H / 2, w = 40;
           for (let s = 0; s < segs; s++) {
             const segH = h / segs;
             isoBox(tileLayer, sx, topY, w, segH, col, true);
-            topY -= segH; w *= 0.72;
+            topY -= segH; w *= 0.82;
           }
-          // Glow intensity = market-share strength on this tile.
-          glowLayer.fillStyle(col, 0.12 + t.controlStrength * 0.25).fillCircle(sx, sy - h * 0.6, 26);
+          // Glow intensity reflects how built-up this tile is (departments).
+          glowLayer.fillStyle(col, 0.10 + Math.min(0.35, deptCount * 0.05)).fillCircle(sx, sy - h * 0.6, 24);
         }
         // Startup territories: distinct amber border + a marker. "Empty" shells
         // are blind buys (no building); promising/high carry a building + idea.
