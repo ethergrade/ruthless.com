@@ -43,7 +43,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [disasters, setDisasters] = useState(true);
   const [selectedCeo, setSelectedCeo] = useState<CEOTrait>('none');
 
-  const handleStart = () => {
+  const handleStart = (statOverrides?: Partial<Record<string, number>>) => {
     try {
       initializeGame(
         seed ? parseInt(seed) : undefined,
@@ -52,6 +52,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         selectedColor,
         disasters,
         selectedCeo,
+        undefined,
+        statOverrides,
       );
     } catch (err) {
       // initializeGame shouldn't throw, but never block the modal from closing.
@@ -188,11 +190,27 @@ const NewGameModal: React.FC<{
   setSelectedCeo: (c: CEOTrait) => void;
   seed: string;
   setSeed: (s: string) => void;
-  onStart: () => void;
+  onStart: (statOverrides?: Partial<Record<string, number>>) => void;
   onCancel: () => void;
 }> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, disasters, setDisasters, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
   const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
+
+  // T: point-buy token system for editable starting stats (GDR character build).
+  const TOKEN_BUDGET = 100;
+  const [statOverrides, setStatOverrides] = useState<Partial<Record<string, number>>>({});
+  const usedTokens = Object.values(statOverrides).reduce<number>((s, v) => s + (v ?? 0), 0);
+  const adjustStat = (key: string, delta: number) => {
+    setStatOverrides(prev => {
+      const cur = prev[key] ?? 0;
+      const next = Math.max(-20, Math.min(40, cur + delta));
+      const nextUsed = usedTokens - (cur ?? 0) + next;
+      if (nextUsed > TOKEN_BUDGET) return prev; // would exceed budget
+      const copy = { ...prev };
+      if (next === 0) delete copy[key]; else copy[key] = next;
+      return copy;
+    });
+  };
 
   return (
     <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
@@ -269,16 +287,28 @@ const NewGameModal: React.FC<{
               <h3>{archetype.name}</h3>
               <p>{archetype.desc}</p>
 
-              <div className="preview-section-label">Initial Build Stats</div>
+              <div className="preview-section-label">
+                Initial Build Stats
+                <span className={`token-budget ${usedTokens >= TOKEN_BUDGET ? 'full' : ''}`}>
+                  {TOKEN_BUDGET - usedTokens} / {TOKEN_BUDGET} tokens
+                </span>
+              </div>
               <div className="build-stats">
                 {(Object.keys(STAT_LABELS) as (keyof CompanyStats)[]).map(k => {
-                  const v = ARCHETYPE_STATS[selectedArchetype][k];
+                  const base = ARCHETYPE_STATS[selectedArchetype][k];
+                  const ov = statOverrides[k] ?? 0;
+                  const v = Math.max(0, Math.min(100, base + ov));
                   const tone = v >= 60 ? 'high' : v >= 35 ? 'mid' : 'low';
                   return (
                     <div key={k} className="build-stat">
                       <span className="bs-label">{STAT_LABELS[k]}</span>
                       <span className={`bs-bar bs-${tone}`} style={{ width: `${v}%` }} />
                       <span className="bs-val">{v}</span>
+                      <span className="bs-stepper">
+                        <button type="button" className="bs-btn" disabled={usedTokens >= TOKEN_BUDGET && ov <= 0} onClick={() => adjustStat(k, -1)}>−</button>
+                        <span className="bs-ov">{ov > 0 ? `+${ov}` : ov < 0 ? ov : '·'}</span>
+                        <button type="button" className="bs-btn" disabled={usedTokens >= TOKEN_BUDGET && ov >= 0} onClick={() => adjustStat(k, +1)}>+</button>
+                      </span>
                     </div>
                   );
                 })}
@@ -349,7 +379,7 @@ const NewGameModal: React.FC<{
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={onStart} disabled={!companyName.trim()}>
+          <button className="btn btn-primary" onClick={() => onStart(statOverrides)} disabled={!companyName.trim()}>
             START GAME
           </button>
         </div>

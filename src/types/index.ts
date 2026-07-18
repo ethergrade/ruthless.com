@@ -114,6 +114,7 @@ export type ActionType =
   | 'cyber_attack'            // hack a rival: data run / virus / breach
   | 'security_offline'        // physical security: guards, lockdown, sabotage defense
   | 'sabotage_building'       // arson / physical sabotage: set a rival building on fire
+  | 'defend_tile'            // T7: reinforce own building/tile firewall + physical
   | 'security_online'         // cyber defense: firewall, sweep, change passwords
   | 'legal_action'            // lawsuit / patent / dispute
   | 'ceo_social'              // CEO social post: tone + authenticity
@@ -596,6 +597,8 @@ export interface GameState {
   alerts: AlertItem[];
   /** T9: every invented idea across all corps (source-code economy reference). */
   inventions: Idea[];
+  /** T: building ids whose interior (departments) the player has revealed via espionage / cyber breach. */
+  revealedBuildings: string[];
 }
 
 export interface AlertItem {

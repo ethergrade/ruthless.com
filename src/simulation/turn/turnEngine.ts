@@ -47,10 +47,14 @@ export class TurnEngine {
   private ceoTrait: CEOTrait = 'none';
   private scenarioOpts: ScenarioConfig | null = null;
 
-  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) {
+  // T: point-buy stat overrides for the player's starting build.
+  private statOverrides?: Partial<Record<string, number>>;
+
+  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
     if (scenario) this.scenarioOpts = scenario;
+    this.statOverrides = statOverrides;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -84,7 +88,7 @@ export class TurnEngine {
     const aiCompanies = rivalDefs.slice(0, rivalCount).map(([name, arch], i) =>
       createCompany(this.rng, name, arch, false, i));
 
-    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait);
+    const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides);
     if (so?.startCash) playerCompany.cash = so.startCash;
     const marketTiles = createMarketMap(this.rng, mw, mh);
     this.assignStartingTerritories(marketTiles, [playerCompany, ...aiCompanies]);
@@ -128,6 +132,7 @@ export class TurnEngine {
       weakSignals: this.generateWeakSignals(2),
       alerts: [],
       inventions: [],
+      revealedBuildings: [],
     };
   }
 
@@ -209,7 +214,8 @@ export class TurnEngine {
     this.resolveMarket();
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
-    this.resolveAuctions(newsItems);
+    this.autoAggression();
+    this.applySharkMarket();
     this.applyGlobalEvents(newsItems);
     // Expire in-progress tile action markers.
     this.state.marketTiles.forEach(t => {
@@ -446,6 +452,7 @@ export class TurnEngine {
       hire_ceo: 500000,
       hire_coo: 400000,
       mass_layoff: 0,
+      defend_tile: 150000,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -545,6 +552,7 @@ export class TurnEngine {
       hire_ceo: 500000,
       hire_coo: 400000,
       mass_layoff: 0,
+      defend_tile: 150000,
     };
     return costs[actionType] || 100000;
   }
@@ -570,6 +578,7 @@ export class TurnEngine {
       security_offline: ['cybersecurity', 'people_culture'],
       sabotage_building: ['cybersecurity', 'corporate_strategy'],
       security_online: ['cybersecurity', 'ai_data'],
+      defend_tile: ['cybersecurity', 'corporate_strategy'],
       legal_action: ['legal_compliance', 'corporate_strategy'],
       ceo_social: ['sales_marketing', 'corporate_strategy'],
       public_tender_offer: ['acquisitions', 'finance_investor', 'legal_compliance'],
@@ -656,6 +665,9 @@ export class TurnEngine {
         break;
       case 'sabotage_building':
         this.runSabotage(company, action);
+        break;
+      case 'defend_tile':
+        this.runDefendTile(company, action);
         break;
       case 'security_online':
         this.runSecurityOnline(company, action);
@@ -1029,6 +1041,10 @@ export class TurnEngine {
           building.physicalSecurity = Math.max(0, building.physicalSecurity - 10);
           if (owner) { owner.securityPosture = Math.max(0, owner.securityPosture - 4); owner.brandTrust = Math.max(0, owner.brandTrust - 2); }
           company.innovation = Math.min(100, company.innovation + 2);
+          // Breach reveals the building interior (departments) to the attacker.
+          if (!this.state.revealedBuildings.includes(building.id)) {
+            this.state.revealedBuildings.push(building.id);
+          }
         } else {
           company.scandal = Math.min(100, company.scandal + 5);
         }
@@ -1099,6 +1115,86 @@ export class TurnEngine {
       target.brandTrust = Math.max(0, target.brandTrust - 3);
       company.scandal = Math.min(100, company.scandal + 12);
     }
+  }
+
+  /** T7 — Defend Tile: reinforce a player-owned building's firewall + physical. */
+  private runDefendTile(company: Company, action: TurnAction): void {
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    if (!tile || tile.controllerId !== company.id) return;
+    const building = company.buildings.find(b => b.tileId === tile.id);
+    if (!building) return;
+    const boost = Math.min(40, Math.round(action.budget / 4000));
+    building.firewall = Math.min(100, building.firewall + boost);
+    building.physicalSecurity = Math.min(100, building.physicalSecurity + boost);
+    company.securityPosture = Math.min(100, company.securityPosture + Math.round(boost / 2));
+  }
+
+  /**
+   * T7 — Auto-aggression: each AI corp, with probability scaled by its
+   * aggression (voiceTone / archetype), launches a covert strike against a
+   * random rival's building (cyber breach or physical sabotage).
+   */
+  private autoAggression(): void {
+    const corps = [...this.state.companies.values()];
+    corps.forEach(attacker => {
+      if (attacker.isPlayer) return;
+      const aggression = attacker.voiceTone === 'aggressive' ? 0.6
+        : attacker.archetype === 'acquisition_machine' ? 0.5
+        : attacker.archetype === 'security_fortress' ? 0.2 : 0.35;
+      if (this.rng.nextFloat(0, 1) > aggression) return;
+      const rivals = corps.filter(c => c.id !== attacker.id);
+      if (rivals.length === 0) return;
+      const target = this.rng.shuffle(rivals).pop()!;
+      const building = this.rng.shuffle(target.buildings).pop();
+      if (!building) return;
+      // Spend computer/legal points as the covert weapon.
+      const spend = Math.min(attacker.computerPoints + 200, 300);
+      attacker.computerPoints = Math.max(0, attacker.computerPoints - spend);
+      const breached = spend > building.firewall;
+      if (breached) {
+        building.firewall = Math.max(0, building.firewall - 18);
+        building.physicalSecurity = Math.max(0, building.physicalSecurity - 8);
+        target.securityPosture = Math.max(0, target.securityPosture - 3);
+        attacker.innovation = Math.min(100, attacker.innovation + 1);
+        if (!this.state.revealedBuildings.includes(building.id)) {
+          this.state.revealedBuildings.push(building.id);
+        }
+      }
+    });
+  }
+
+  /**
+   * T7 — Shark market: corporations in crisis (negative cash, high scandal,
+   * low valuation) get preyed upon — rivals auto-breach their buildings
+   * and can steal a controlled tile. Ruthless.com's "sharks circle the wounded".
+   */
+  private applySharkMarket(): void {
+    const corps = [...this.state.companies.values()];
+    const inCrisis = corps.filter(c =>
+      (c.cash < -200000 || c.scandal > 70) && c.valuation < 4000000);
+    inCrisis.forEach(victim => {
+      const predators = corps.filter(c => c.id !== victim.id);
+      predators.forEach(shark => {
+        const building = this.rng.shuffle(victim.buildings).pop();
+        if (building) {
+          building.firewall = Math.max(0, building.firewall - 12);
+          if (!this.state.revealedBuildings.includes(building.id)) {
+            this.state.revealedBuildings.push(building.id);
+          }
+        }
+        // A shark may seize a weakly-held tile from the wounded corp.
+        const tile = victim.controlledTiles
+          .map(id => this.state.marketTiles.get(id))
+          .filter((t): t is MarketTile => Boolean(t))
+          .find(t => t!.controlStrength < 25);
+        if (tile) {
+          tile.controllerId = shark.id;
+          tile.controlStrength = Math.max(20, tile.controlStrength - 10);
+          shark.controlledTiles.push(tile.id);
+          victim.controlledTiles = victim.controlledTiles.filter(id => id !== tile.id);
+        }
+      });
+    });
   }
 
   /** T9 — R&D: invent a new idea/technology. Breakthroughs can spark a market trend. */

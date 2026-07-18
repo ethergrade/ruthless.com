@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
 import { Icon, IconName } from '../ui/Icon';
 
@@ -51,7 +51,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
       <div className="bottom-content">
         {activeTab === 'kpi' && <KPIPanel company={playerCompany} history={state.kpiHistory} />}
-        {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} />}
+        {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} buildings={playerCompany.buildings} />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
@@ -116,17 +116,45 @@ const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
   );
 };
 
-const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments }) => {
-  // Count duplicate department types (2 legal, 3 legal → stacking synergy).
-  const typeCounts = new Map<string, number>();
-  departments.forEach(d => typeCounts.set(d.type, (typeCounts.get(d.type) ?? 0) + 1));
+const DepartmentsPanel: React.FC<{ departments: Department[]; buildings: Building[] }> = ({
+  departments, buildings,
+}) => {
+  const [openId, setOpenId] = useState<string | null>(null);
+  if (buildings.length === 0) return <div className="empty-state">No buildings yet. Raise one from the ORDERS tab.</div>;
   return (
-  <div className="departments-grid">
-    {departments.map((dept, i) => {
-      const count = typeCounts.get(dept.type) ?? 1;
-      const stack = count > 1 ? ` ×${count}` : '';
-      return (
-      <div key={i} className={`dept-card ${dept.type === 'dev_engineering' ? 'dev' : ''}`}>
+    <div className="building-tree">
+      {buildings.map(b => {
+        const depts = b.departmentIds
+          .map(id => departments.find(d => d.id === id))
+          .filter((d): d is Department => Boolean(d));
+        const isOpen = openId === b.id;
+        return (
+          <div key={b.id} className={`building-node ${b.isHQ ? 'hq' : ''}`}>
+            <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
+              <span className="bu-caret">{isOpen ? '▾' : '▸'}</span>
+              <span className="bu-name">{b.isHQ ? '⚑ HQ' : '⌂ Branch'}</span>
+              <span className="bu-seg">{b.tileId}</span>
+              <span className="bu-fw">FW {b.firewall}</span>
+              <span className="bu-count">{depts.length} dept{depts.length === 1 ? '' : 's'}</span>
+            </button>
+            {isOpen && (
+              <div className="building-depts">
+                {depts.length === 0
+                  ? <div className="empty-state small">Empty — no departments housed here.</div>
+                  : <div className="departments-grid">{depts.map((d, i) => <DepartmentCard key={i} dept={d} />)}</div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export const DepartmentCard: React.FC<{ dept: Department; stackCount?: number }> = ({ dept, stackCount = 1 }) => {
+  const stack = stackCount > 1 ? ` ×${stackCount}` : '';
+  return (
+      <div className={`dept-card ${dept.type === 'dev_engineering' ? 'dev' : ''}`}>
         <div className="dept-header">
           <span className="dept-name">{dept.type.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}{stack}</span>
           <span className="dept-level">Lv. {dept.level}</span>
@@ -147,9 +175,6 @@ const DepartmentsPanel: React.FC<{ departments: Department[] }> = ({ departments
         )}
         <div className="dept-cost">${dept.recurringCost.toLocaleString()}/turn</div>
       </div>
-      );
-    })}
-  </div>
   );
 };
 

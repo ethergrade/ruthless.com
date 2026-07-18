@@ -23,7 +23,7 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -60,8 +60,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined) {
           const player = state.companies.get(state.playerCompanyId);

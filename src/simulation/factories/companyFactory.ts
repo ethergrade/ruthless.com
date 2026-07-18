@@ -61,6 +61,8 @@ export const createCompany = (
   isPlayer = false,
   colorIndex = 0,
   ceoTrait?: CEOTrait,
+  /** T: point-buy overrides (0..100) applied on top of archetype + CEO mods. */
+  statOverrides?: Partial<CompanyStats>,
 ): Company => {
   const companyName = name ?? rng.shuffle([...COMPANY_NAMES]).pop()!;
   const companyArchetype = archetype ?? rng.shuffle([
@@ -79,14 +81,14 @@ export const createCompany = (
   const base = ARCHETYPE_STATS[companyArchetype];
   // Apply CEO trait stat modifiers on top of the archetype baseline.
   const stats: CompanyStats = {
-    security: clamp(base.security + (traitDef.statMods.security ?? 0)),
-    ai: clamp(base.ai + (traitDef.statMods.ai ?? 0)),
-    consulting: clamp(base.consulting + (traitDef.statMods.consulting ?? 0)),
-    innovation: clamp(base.innovation + (traitDef.statMods.innovation ?? 0)),
-    trust: clamp(base.trust + (traitDef.statMods.trust ?? 0)),
-    productQuality: clamp(base.productQuality + (traitDef.statMods.productQuality ?? 0)),
-    productRd: clamp(base.productRd + (traitDef.statMods.productRd ?? 0)),
-    salesMarketing: clamp(base.salesMarketing + (traitDef.statMods.salesMarketing ?? 0)),
+    security: clamp(base.security + (traitDef.statMods.security ?? 0) + (statOverrides?.security ?? 0)),
+    ai: clamp(base.ai + (traitDef.statMods.ai ?? 0) + (statOverrides?.ai ?? 0)),
+    consulting: clamp(base.consulting + (traitDef.statMods.consulting ?? 0) + (statOverrides?.consulting ?? 0)),
+    innovation: clamp(base.innovation + (traitDef.statMods.innovation ?? 0) + (statOverrides?.innovation ?? 0)),
+    trust: clamp(base.trust + (traitDef.statMods.trust ?? 0) + (statOverrides?.trust ?? 0)),
+    productQuality: clamp(base.productQuality + (traitDef.statMods.productQuality ?? 0) + (statOverrides?.productQuality ?? 0)),
+    productRd: clamp(base.productRd + (traitDef.statMods.productRd ?? 0) + (statOverrides?.productRd ?? 0)),
+    salesMarketing: clamp(base.salesMarketing + (traitDef.statMods.salesMarketing ?? 0) + (statOverrides?.salesMarketing ?? 0)),
   };
 
   const startingCash = isPlayer

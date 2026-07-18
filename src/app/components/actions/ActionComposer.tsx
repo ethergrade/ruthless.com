@@ -53,6 +53,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000, needs: ['targetProduct'] },
   { type: 'security_offline', label: 'Physical Security', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile'] },
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'] },
+  { type: 'defend_tile', label: 'Defend Tile', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'] },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000 },
   { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetCompany', 'targetDept'] },
   { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'] },

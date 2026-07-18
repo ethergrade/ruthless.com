@@ -7,6 +7,7 @@ import { BottomPanel } from './app/components/layout/BottomPanel';
 import { RightSidebar } from './app/components/layout/RightSidebar';
 import { MarketMap } from './app/components/map/MarketMap';
 import { MainMenu, SaveGameModal } from './app/components/layout/MainMenu';
+import { BuildingDetailModal } from './app/components/layout/BuildingDetailModal';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { ActionComposer } from './app/components/actions/ActionComposer';
@@ -41,6 +42,7 @@ function App() {
   const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
   const [bottomH, setBottomH] = useState(240);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [buildingDetail, setBuildingDetail] = useState<{ buildingId: string; ownerId: string } | null>(null);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -124,6 +126,12 @@ function App() {
 
   const handleTileSelect = (tileId: TileId | null) => {
     selectTile(tileId);
+    if (!tileId || !state) return;
+    const tile = state.marketTiles.get(tileId);
+    if (!tile?.controllerId) return;
+    const owner = state.companies.get(tile.controllerId);
+    const building = owner?.buildings.find(b => b.tileId === tileId);
+    if (building) setBuildingDetail({ buildingId: building.id, ownerId: tile.controllerId });
   };
 
   const handleCompanySelect = (companyId: CompanyId | null) => {
@@ -243,6 +251,13 @@ function App() {
         <CompanyModal
           company={state.companies.get(selectedCompanyId)!}
           onClose={() => setShowCompanyModal(false)}
+        />
+      )}
+      {buildingDetail && (
+        <BuildingDetailModal
+          buildingId={buildingDetail.buildingId}
+          ownerCompanyId={buildingDetail.ownerId}
+          onClose={() => setBuildingDetail(null)}
         />
       )}
 
