@@ -3,6 +3,7 @@ import { useGameStore } from './store/gameStore';
 import { Header } from './app/components/layout/Header';
 import { Sidebar } from './app/components/layout/Sidebar';
 import { BottomPanel } from './app/components/layout/BottomPanel';
+import { RightSidebar } from './app/components/layout/RightSidebar';
 import { MarketMap } from './app/components/map/MarketMap';
 import { MainMenu, SaveGameModal } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
@@ -181,6 +182,11 @@ function App() {
             onClose={() => selectTile(null)}
           />
         </main>
+
+        <RightSidebar
+          state={state}
+          newsFeed={state?.newsFeed || []}
+        />
       </div>
 
       <div className="panel-resizer" onPointerDown={startResize} role="separator" aria-label="Resize panel" />
@@ -191,7 +197,6 @@ function App() {
         height={bottomH}
         state={state}
         playerCompany={playerCompany}
-        newsFeed={state?.newsFeed || []}
         onEdit={handleEdit}
       />
 

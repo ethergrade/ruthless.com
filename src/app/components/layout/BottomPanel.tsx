@@ -6,21 +6,19 @@ import { Icon, IconName } from '../ui/Icon';
 interface BottomPanelProps {
   state: GameState | null;
   playerCompany: Company | undefined;
-  newsFeed: NewsItem[];
-  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends' | 'tech' | 'workforce';
   onEdit: (action: TurnAction) => void;
   height?: number;
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce';
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
   state,
   playerCompany,
-  newsFeed,
   defaultTab = 'kpi',
   onEdit,
   height = 220,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends' | 'tech' | 'workforce'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce'>(defaultTab);
 
   if (!state || !playerCompany) return null;
 
@@ -43,12 +41,6 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <button className={`tab ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
           Orders
         </button>
-        <button className={`tab ${activeTab === 'news' ? 'active' : ''}`} onClick={() => setActiveTab('news')}>
-          News
-        </button>
-        <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => setActiveTab('trends')}>
-          Trends
-        </button>
         <button className={`tab ${activeTab === 'tech' ? 'active' : ''}`} onClick={() => setActiveTab('tech')}>
           Tech Book
         </button>
@@ -63,8 +55,6 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
-        {activeTab === 'news' && <NewsPanel news={newsFeed} />}
-        {activeTab === 'trends' && <TrendsPanel trends={state.trends} weakSignals={state.weakSignals} onExploit={(_c) => setActiveTab('orders')} />}
         {activeTab === 'tech' && <TechnologyBookPanel technologies={TECHNOLOGIES} />}
         {activeTab === 'workforce' && <WorkforcePanel company={playerCompany} />}
     </div>
@@ -248,7 +238,7 @@ const CapabilitiesPanel: React.FC<{ company: Company }> = ({ company }) => {
   );
 };
 
-const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
+export const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
   <div className="news-feed">
     {news.length === 0 ? (
       <div className="empty-state">No news this turn</div>
@@ -434,7 +424,7 @@ const WorkforcePanel: React.FC<{ company: Company }> = ({ company }) => {
 };
 
 /** T5 — Global market trends + weak signals. Exploit opens the Orders tab. */
-const TrendsPanel: React.FC<{
+export const TrendsPanel: React.FC<{
   trends: MarketTrend[];
   weakSignals: WeakSignal[];
   onExploit: (category: string) => void;

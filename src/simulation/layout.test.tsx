@@ -70,11 +70,10 @@ describe('Fase 2 — layout components render without crashing', () => {
       createElement(BottomPanel, {
         state,
         playerCompany: player,
-        newsFeed: [],
         onEdit: () => {},
       })
     );
-    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'News']) {
+    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'Tech Book', 'Workforce']) {
       expect(html).toContain(tab);
     }
     expect(html).toContain('class="bottom-panel"');
