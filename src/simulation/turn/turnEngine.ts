@@ -211,6 +211,9 @@ export class TurnEngine {
     this.state.turn++;
     this.checkVictoryConditions();
 
+    // Persist this turn's news into the feed (P3: news must actually appear).
+    this.state.newsFeed = [...this.state.newsFeed, ...newsItems].slice(-60);
+
     return {
       newState: this.state,
       events,
@@ -1294,49 +1297,50 @@ export class TurnEngine {
 
     const globalEvents: GameEvent[] = [];
 
-    // World events that condition player & AI choices (point 5 + SimCity-like cataclysms, point 8).
+    // World market events — always active (req P3: news like "Bull Market Rally: ...").
+    // Stock market swing — affects everyone's valuation/influence.
+    if (this.rng.nextBoolean(0.35)) {
+      const up = this.rng.nextBoolean(0.5);
+      globalEvents.push({
+        id: generateId.event(),
+        turn: this.state.turn,
+        category: 'financial',
+        kind: up ? 'stock_surge' : 'stock_crash',
+        title: up ? 'Bull Market Rally' : 'Market Correction',
+        description: up
+          ? 'Investor confidence surges — valuations and market reach climb across the board.'
+          : 'A sharp sell-off hits the sector — influence and cash reserves contract.',
+        impact: { marketInfluence: up ? 8 : -10, cash: up ? 200000 : -150000 },
+        effects: {
+          marketInfluenceDelta: up ? 8 : -10,
+          cashDelta: up ? 200000 : -150000,
+          scope: 'all',
+        },
+        affectedCompanies: [],
+        duration: 1,
+        severity: up ? 'high' : 'critical',
+      });
+    }
+
+    // Technology breakthrough — boosts AI/innovation for all (race to adopt).
+    if (this.rng.nextBoolean(0.25)) {
+      globalEvents.push({
+        id: generateId.event(),
+        turn: this.state.turn,
+        category: 'product',
+        kind: 'tech_breakthrough',
+        title: 'Breakthrough Technology Emerges',
+        description: 'A new platform shifts the competitive landscape. Early adopters leap ahead in AI and innovation.',
+        impact: { aiCapability: 6, innovation: 5 },
+        effects: { aiCapabilityDelta: 6, innovationDelta: 5, scope: 'all' },
+        affectedCompanies: [],
+        duration: 1,
+        severity: 'high',
+      });
+    }
+
+    // SimCity-like disasters (cataclysms) — only when the player enables them.
     if (this.state.disastersEnabled) {
-      // Stock market swing — affects everyone's valuation/influence.
-      if (this.rng.nextBoolean(0.35)) {
-        const up = this.rng.nextBoolean(0.5);
-        globalEvents.push({
-          id: generateId.event(),
-          turn: this.state.turn,
-          category: 'financial',
-          kind: up ? 'stock_surge' : 'stock_crash',
-          title: up ? 'Bull Market Rally' : 'Market Correction',
-          description: up
-            ? 'Investor confidence surges — valuations and market reach climb across the board.'
-            : 'A sharp sell-off hits the sector — influence and cash reserves contract.',
-          impact: { marketInfluence: up ? 8 : -10, cash: up ? 200000 : -150000 },
-          effects: {
-            marketInfluenceDelta: up ? 8 : -10,
-            cashDelta: up ? 200000 : -150000,
-            scope: 'all',
-          },
-          affectedCompanies: [],
-          duration: 1,
-          severity: up ? 'high' : 'critical',
-        });
-      }
-
-      // Technology breakthrough — boosts AI/innovation for all (race to adopt).
-      if (this.rng.nextBoolean(0.25)) {
-        globalEvents.push({
-          id: generateId.event(),
-          turn: this.state.turn,
-          category: 'product',
-          kind: 'tech_breakthrough',
-          title: 'Breakthrough Technology Emerges',
-          description: 'A new platform shifts the competitive landscape. Early adopters leap ahead in AI and innovation.',
-          impact: { aiCapability: 6, innovation: 5 },
-          effects: { aiCapabilityDelta: 6, innovationDelta: 5, scope: 'all' },
-          affectedCompanies: [],
-          duration: 1,
-          severity: 'high',
-        });
-      }
-
       // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
       if (this.rng.nextBoolean(0.12)) {
         const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
@@ -1409,7 +1413,7 @@ export class TurnEngine {
         if (owners.length) applyTo(this.rng.shuffle(owners).pop()!);
       }
       const imp: 'minor' | 'major' | 'critical' = ev.severity === 'critical' ? 'critical' : ev.severity === 'low' || ev.severity === 'medium' ? 'minor' : 'major';
-      newsItems.push(this.createNewsItem(this.state.turn, ev.category, ev.title, ev.description, undefined, imp));
+      newsItems.push(this.createNewsItem(this.state.turn, ev.category, `${ev.title}: ${ev.description}`, '', undefined, imp));
     }
   }
 
