@@ -12,7 +12,7 @@ import { NotificationToast } from './app/components/ui/NotificationToast';
 import { ActionComposer } from './app/components/actions/ActionComposer';
 import { formatNumber } from './utils/formatters';
 import { audio } from './audio/AudioEngine';
-import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
+import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile, DepartmentType } from './types';
 import './styles/globals.css';
 import './styles/layout.css';
 import './styles/composer.css';
@@ -32,6 +32,8 @@ function App() {
     saveGame,
     loadGame,
     estimateAction,
+    placeBuilding,
+    finishPlacement,
   } = useGameStore();
   const { musicEnabled, setMusicEnabled } = useSettings();
 
@@ -54,6 +56,8 @@ function App() {
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  // T: real-map placement scratch state (depts for the next building to drop).
+  const [placementDepts, setPlacementDepts] = useState<DepartmentType[]>([]);
 
   const playerCompany = state?.companies.get(state.playerCompanyId);
 
@@ -154,6 +158,20 @@ function App() {
     selectCompany(companyId);
   };
 
+  // T: real-map placement — drop the next building (HQ if first) with the chosen
+  // departments on the clicked tile, then reset the dept picker for the next one.
+  const handlePlaceTile = (tileId: string) => {
+    if (!state || state.phase !== 'placement') return;
+    const isHQ = state.pendingBuildings.length === 0;
+    placeBuilding({ tileId, isHQ, deptTypes: placementDepts.slice(0, 3) });
+    setPlacementDepts([]);
+    if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
+  };
+
+  const handleFinishPlacement = () => {
+    finishPlacement();
+  };
+
   const handleStartGame = () => {
     audio.unlock(); // first user gesture → create + resume the AudioContext
     setShowMainMenu(false);
@@ -218,6 +236,7 @@ function App() {
             state={state}
             selectedTileId={selectedTileId}
             onTileSelect={handleTileSelect}
+            onPlaceTile={state?.phase === 'placement' ? handlePlaceTile : undefined}
           />
           <SelectedTilePanel
             tile={state && selectedTileId ? state.marketTiles.get(selectedTileId) || null : null}
@@ -227,6 +246,43 @@ function App() {
             onClose={() => selectTile(null)}
           />
         </main>
+
+        {/* T: real-map placement overlay — pick departments, drop buildings on the
+            live board, then finish to spawn rivals. */}
+        {state?.phase === 'placement' && (
+          <div className="placement-overlay">
+            <div className="placement-panel">
+              <h2>EMPIRE SETUP — drop your buildings</h2>
+              <p className="placement-hint">
+                Click a free tile to place {state.pendingBuildings.length === 0 ? 'your HQ' : 'a building'}.
+                Max 3 buildings, 1 HQ, up to 3 departments each. Rivals appear after you finish.
+              </p>
+              <div className="placement-depts">
+                {(['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'corporate_strategy', 'dev_engineering'] as DepartmentType[]).map(dt => {
+                  const on = placementDepts.includes(dt);
+                  return (
+                    <button
+                      key={dt}
+                      className={`eb-dept ${on ? 'on' : ''}`}
+                      disabled={!on && placementDepts.length >= 3}
+                      onClick={() => setPlacementDepts(prev => on ? prev.filter(d => d !== dt) : prev.length < 3 ? [...prev, dt] : prev)}
+                    >
+                      {dt.replace('_', ' ')}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="placement-status">
+                <span>Buildings placed: {state.pendingBuildings.length} / 3</span>
+                <span>Next: {state.pendingBuildings.length === 0 ? 'HQ' : 'Branch'}</span>
+                <span>Departments: {placementDepts.length} / 3</span>
+              </div>
+              <button className="btn btn-primary placement-done" onClick={handleFinishPlacement} disabled={state.pendingBuildings.length === 0}>
+                DONE — SPAWN RIVALS
+              </button>
+            </div>
+          </div>
+        )}
 
         <RightSidebar
           state={state}

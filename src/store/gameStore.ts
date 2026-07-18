@@ -23,7 +23,10 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[]) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => void;
+  /** T: real-map placement — drop a player building on a real tile, or finish placement (spawn rivals). */
+  placeBuilding: (spec: InitialBuildingSpec) => void;
+  finishPlacement: () => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -60,8 +63,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[]) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings, realMapPlacement);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined || sim) {
           const player = state.companies.get(state.playerCompanyId);
@@ -77,6 +80,20 @@ export const useGameStore = create<GameStore>()(
           }
         }
         set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+      },
+
+      placeBuilding: (spec: InitialBuildingSpec) => {
+        const { engine, state } = get();
+        if (!engine || !state || state.phase !== 'placement') return;
+        engine.placePlayerBuilding(spec);
+        set({ state: engine.getState() });
+      },
+
+      finishPlacement: () => {
+        const { engine, state } = get();
+        if (!engine || !state || state.phase !== 'placement') return;
+        engine.finishPlacement();
+        set({ state: engine.getState() });
       },
 
       setState: (newState) => set({ state: newState }),

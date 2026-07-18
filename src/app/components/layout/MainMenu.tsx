@@ -3,7 +3,7 @@ import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import { SettingsModal } from './SettingsModal';
-import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec, DepartmentType } from '../../../types';
+import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec } from '../../../types';
 import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_SKILLS, SPECIAL_LABELS, CEO_TOKEN_BUDGET, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
@@ -43,7 +43,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [simulation, setSimulation] = useState({ marketSimulation: true, cataclysms: false, newTech: false });
   const [selectedCeo, setSelectedCeo] = useState<CEOTrait>('none');
 
-  const handleStart = (statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, initialBuildings?: InitialBuildingSpec[]) => {
+  const handleStart = (statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, _initialBuildings?: InitialBuildingSpec[], realMapPlacement = true) => {
     try {
       initializeGame(
         seed ? parseInt(seed) : undefined,
@@ -56,7 +56,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         statOverrides,
         ceoBuild,
         simulation,
-        initialBuildings,
+        undefined,        // initialBuildings (modal-grid path retired — real-map placement used instead)
+        realMapPlacement, // T: player drops buildings live on the board
       );
     } catch (err) {
       // initializeGame shouldn't throw, but never block the modal from closing.
@@ -194,7 +195,7 @@ const NewGameModal: React.FC<{
   setSelectedCeo: (c: CEOTrait) => void;
   seed: string;
   setSeed: (s: string) => void;
-  onStart: (statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, initialBuildings?: InitialBuildingSpec[]) => void;
+  onStart: (statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => void;
   onCancel: () => void;
 }> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, simulation, setSimulation, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
@@ -247,52 +248,6 @@ const NewGameModal: React.FC<{
     luck: ceoLuck,
     specialPoints: 1,
   };
-
-  // T: New Game placement — player hand-places up to 3 buildings (1 HQ + others),
-  // each with up to 3 departments, onto the starting market grid before rivals spawn.
-  const GRID_W = 8;
-  const GRID_H = 8;
-  const DEPT_CHOICES: { value: DepartmentType; label: string }[] = [
-    { value: 'product_rd', label: 'R&D' },
-    { value: 'ai_data', label: 'AI' },
-    { value: 'cybersecurity', label: 'Cyber' },
-    { value: 'sales_marketing', label: 'Sales' },
-    { value: 'consulting_services', label: 'Consulting' },
-    { value: 'acquisitions', label: 'Acq' },
-    { value: 'legal_compliance', label: 'Legal' },
-    { value: 'people_culture', label: 'People' },
-    { value: 'finance_investor', label: 'Finance' },
-    { value: 'corporate_strategy', label: 'Strategy' },
-    { value: 'dev_engineering', label: 'DEV' },
-  ];
-  const [empireSetup, setEmpireSetup] = useState<InitialBuildingSpec[]>([
-    { isHQ: true, deptTypes: ['product_rd', 'sales_marketing'], slot: 27 },
-    { isHQ: false, deptTypes: ['cybersecurity', 'legal_compliance'], slot: 28 },
-  ]);
-  // which building a grid slot is assigned to (slot -> building index), for highlighting
-  const slotToBuilding = (slot: number) => empireSetup.findIndex(b => b.slot === slot);
-  const toggleSlot = (slot: number) => {
-    setEmpireSetup(prev => {
-      const idx = prev.findIndex(b => b.slot === slot);
-      if (idx >= 0) {
-        // clicking an occupied slot removes that building
-        const copy = prev.filter((_, i) => i !== idx);
-        return copy.length ? copy : [{ isHQ: true, deptTypes: [], slot }];
-      }
-      if (prev.length >= 3) return prev; // max 3 buildings
-      const isFirst = prev.length === 0;
-      return [...prev, { isHQ: isFirst, deptTypes: [], slot }];
-    });
-  };
-  const updateBuilding = (idx: number, patch: Partial<InitialBuildingSpec>) =>
-    setEmpireSetup(prev => prev.map((b, i) => (i === idx ? { ...b, ...patch } : b)));
-  const toggleDept = (idx: number, dt: DepartmentType) =>
-    setEmpireSetup(prev => prev.map((b, i) => {
-      if (i !== idx) return b;
-      const has = b.deptTypes.includes(dt);
-      const next = has ? b.deptTypes.filter(d => d !== dt) : b.deptTypes.length < 3 ? [...b.deptTypes, dt] : b.deptTypes;
-      return { ...b, deptTypes: next };
-    }));
 
   return (
     <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
@@ -518,65 +473,9 @@ const NewGameModal: React.FC<{
           </div>
         </div>
 
-        {/* T: New Game placement — hand-place up to 3 buildings (1 HQ + others) on the grid */}
-        <div className="empire-setup">
-          <h3>EMPIRE SETUP — place your buildings</h3>
-          <p className="setup-hint">Click grid cells to drop up to 3 buildings (1st = HQ). Each holds up to 3 departments. Rivals appear after you start.</p>
-          <div className="empire-grid" style={{ gridTemplateColumns: `repeat(${GRID_W}, 1fr)` }}>
-            {Array.from({ length: GRID_W * GRID_H }).map((_, slot) => {
-              const bi = slotToBuilding(slot);
-              return (
-                <button
-                  key={slot}
-                  className={`grid-cell ${bi >= 0 ? (empireSetup[bi].isHQ ? 'hq' : 'bld') : ''}`}
-                  disabled={bi < 0 && empireSetup.length >= 3}
-                  onClick={() => toggleSlot(slot)}
-                  title={bi >= 0 ? `${empireSetup[bi].isHQ ? 'HQ' : 'BUILDING'} (slot ${slot})` : 'Place building'}
-                >
-                  {bi >= 0 ? (empireSetup[bi].isHQ ? '⚑' : (bi + 1)) : ''}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="empire-buildings">
-            {empireSetup.map((b, idx) => (
-              <div key={idx} className={`empire-bld ${b.isHQ ? 'hq' : ''}`}>
-                <div className="eb-head">
-                  <label className="eb-name">
-                    {b.isHQ ? 'HQ' : `BUILDING ${idx + 1}`} name
-                    <input
-                      type="text"
-                      value={b.name ?? ''}
-                      maxLength={24}
-                      placeholder={b.isHQ ? 'HQ' : `BUILDING ${idx + 1}`}
-                      onChange={e => updateBuilding(idx, { name: e.target.value })}
-                    />
-                  </label>
-                  {!b.isHQ && (
-                    <button className="eb-rm" onClick={() => setEmpireSetup(prev => prev.filter((_, i) => i !== idx))}>remove</button>
-                  )}
-                </div>
-                <div className="eb-depts">
-                  {DEPT_CHOICES.map(dt => (
-                    <button
-                      key={dt.value}
-                      className={`eb-dept ${b.deptTypes.includes(dt.value) ? 'on' : ''}`}
-                      disabled={!b.deptTypes.includes(dt.value) && b.deptTypes.length >= 3}
-                      onClick={() => toggleDept(idx, dt.value)}
-                    >
-                      {dt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild, empireSetup)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET}>
+          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET}>
             START GAME
           </button>
         </div>

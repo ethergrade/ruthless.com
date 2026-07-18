@@ -53,6 +53,9 @@ export class TurnEngine {
   private ceoBuild?: CeoBuild;
   /** T: player's hand-placed starting empire (New Game placement flow). */
   private initialBuildings?: InitialBuildingSpec[];
+  /** T: New Game "place on the real map" mode — player drops buildings live on the
+   *  Phaser board; rivals stay hidden until the player finishes (phase -> playing). */
+  private realMapPlacement = false;
   /** Ideas actually created this turn, per company — backs the R&D capacity cap. */
   private ideasCreatedThisTurn = new Map<string, number>();
 
@@ -66,6 +69,7 @@ export class TurnEngine {
     statOverrides?: Partial<Record<string, number>>,
     ceoBuild?: CeoBuild,
     initialBuildings?: InitialBuildingSpec[],
+    realMapPlacement = false,
   ) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
@@ -73,6 +77,7 @@ export class TurnEngine {
     this.statOverrides = statOverrides;
     this.ceoBuild = ceoBuild;
     this.initialBuildings = initialBuildings;
+    this.realMapPlacement = realMapPlacement;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -116,9 +121,13 @@ export class TurnEngine {
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
 
     // Give each corporation a starting HQ Building on its first controlled tile.
-    // If the player hand-placed an empire via the New Game flow, honour that instead.
+    // In real-map placement mode the player drops their own buildings live on the
+    // board, so we seed only the rivals/startups here (they stay hidden until the
+    // player finishes placement and the phase flips to 'playing').
     if (this.initialBuildings && this.initialBuildings.length > 0) {
       this.seedPlayerBuildings(playerCompany, marketTiles, this.initialBuildings);
+    } else if (this.realMapPlacement) {
+      aiCompanies.forEach(c => this.seedCompanyBuilding(c, marketTiles));
     } else {
       [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
     }
@@ -157,6 +166,8 @@ export class TurnEngine {
       alerts: [],
       inventions: [],
       revealedBuildings: [],
+      phase: this.realMapPlacement ? 'placement' : 'playing',
+      pendingBuildings: this.realMapPlacement ? [] : (this.initialBuildings ?? []),
     };
   }
 
@@ -194,7 +205,7 @@ export class TurnEngine {
   ): void {
     const allTiles = Array.from(tiles.values());
     specs.forEach((spec, idx) => {
-      const tile = allTiles[spec.slot] ?? allTiles[idx];
+      const tile = allTiles[spec.slot ?? idx] ?? allTiles[idx];
       if (!tile) return;
       const id = generateId.building();
       const isHQ = spec.isHQ || idx === 0;
@@ -234,6 +245,49 @@ export class TurnEngine {
       tile.controllerId = company.id;
       if (!company.controlledTiles.includes(tile.id)) company.controlledTiles.push(tile.id);
     });
+  }
+
+  /**
+   * T: real-map placement — drop one player building on a real tile. Creates the
+   * Building (+ chosen departments) live so it renders immediately; appends to
+   * pendingBuildings so finishPlacement() can flip the phase. No-op if the tile is
+   * already occupied or not player-controlled.
+   */
+  placePlayerBuilding(spec: InitialBuildingSpec): void {
+    const state = this.state;
+    if (state.phase !== 'placement') return;
+    const player = state.companies.get(state.playerCompanyId);
+    if (!player) return;
+    const tile = state.marketTiles.get(spec.tileId!);
+    if (!tile || tile.buildingId) return;
+    const id = generateId.building();
+    const isHQ = spec.isHQ || state.pendingBuildings.length === 0;
+    const deptTypes = spec.deptTypes.slice(0, 3);
+    const deptIds: DepartmentId[] = [];
+    deptTypes.forEach(dt => {
+      const dId = generateId.department();
+      const dept: Department = {
+        id: dId, type: dt, level: 1, capacity: 10, efficiency: 0.7,
+        morale: 0.8, risk: 0.2, recurringCost: 50000, buildingId: id,
+      };
+      player.departments.push(dept);
+      deptIds.push(dId);
+    });
+    player.buildings.push({
+      id, tileId: tile.id, name: spec.name?.trim() || (isHQ ? 'HQ' : `BUILDING ${state.pendingBuildings.length + 1}`),
+      departmentIds: deptIds, productIds: [], firewall: isHQ ? 30 : 10, physicalSecurity: isHQ ? 40 : 15,
+      hushMoney: 0, isHQ, ceoId: isHQ ? player.ceos[0]?.id : undefined, maxDepartments: 8,
+    });
+    tile.buildingId = id;
+    if (!tile.controllerId) tile.controllerId = player.id;
+    if (!player.controlledTiles.includes(tile.id)) player.controlledTiles.push(tile.id);
+    state.pendingBuildings.push({ ...spec, isHQ, tileId: tile.id });
+  }
+
+  /** T: finish the real-map placement — rivals/startups become visible, game begins. */
+  finishPlacement(): void {
+    if (this.state.phase !== 'placement') return;
+    this.state.phase = 'playing';
   }
 
   /** Create neutral start-up corps on random unclaimed tiles. */
@@ -570,9 +624,20 @@ export class TurnEngine {
       return { success: false, message: 'Insufficient funds', effects: {}, risksTriggered: [] };
     }
 
+    // T: Acquire Company is an investment, not a gamble — but the target only
+    // accepts if the offer clears a minimum price (scales with valuation). The
+    // composer's offer slider controls this; below the floor the deal is rejected.
+    if (action.type === 'acquire_company') {
+      const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+      if (!target) return { success: false, message: 'Target not found', effects: {}, risksTriggered: [] };
+      const minAccept = Math.round(target.valuation * (target.isStartup ? 0.6 : 0.8));
+      if (action.budget < minAccept) {
+        return { success: false, message: `Offer rejected — minimum acceptable $${minAccept.toLocaleString()}`, effects: {}, risksTriggered: [] };
+      }
+    }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 

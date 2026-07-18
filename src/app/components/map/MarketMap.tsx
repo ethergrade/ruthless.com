@@ -10,6 +10,8 @@ interface Props {
   state: GameState | null;
   selectedTileId: string | null;
   onTileSelect: (tileId: string | null) => void;
+  /** T: real-map placement — drop a player building on a tile instead of selecting it. */
+  onPlaceTile?: (tileId: string) => void;
 }
 
 /* ---- color helpers ------------------------------------------------------- */
@@ -57,16 +59,36 @@ function isoBox(
   }
 }
 
-export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect }) => {
+// T: draw a building as a stacked iso box — base footprint (always visible) plus
+// one floor per housed department, so mass scales with departments and an empty
+// shell still reads on the board. Used for player/rival buildings and startup shells.
+function drawBuilding(
+  g: Phaser.GameObjects.Graphics,
+  glow: Phaser.GameObjects.Graphics,
+  sx: number, sy: number, deptCount: number, col: number,
+): void {
+  const h = Math.min(92, 30 + deptCount * 9);
+  const segs = Math.max(1, Math.min(6, deptCount + 1));
+  let topY = sy - TILE_H / 2, w = 40;
+  for (let s = 0; s < segs; s++) {
+    const segH = h / segs;
+    isoBox(g, sx, topY, w, segH, col, true);
+    topY -= segH; w *= 0.82;
+  }
+  glow.fillStyle(col, 0.10 + Math.min(0.35, deptCount * 0.05)).fillCircle(sx, sy - h * 0.6, 24);
+}
+
+export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect, onPlaceTile }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const selectedTileIdRef = useRef(selectedTileId);
   const onTileSelectRef = useRef(onTileSelect);
+  const onPlaceTileRef = useRef(onPlaceTile);
   const camStateRef = useRef<{ zoom: number; rotation: number; scrollX: number; scrollY: number } | null>(null);
 
   useEffect(() => { selectedTileIdRef.current = selectedTileId; }, [selectedTileId]);
   useEffect(() => { onTileSelectRef.current = onTileSelect; }, [onTileSelect]);
-
+  useEffect(() => { onPlaceTileRef.current = onPlaceTile; }, [onPlaceTile]);
   // Rebuild the Phaser scene only when a new game state object is created.
   // (selection / callbacks flow through refs so they never reset the camera.)
   useEffect(() => {
@@ -156,7 +178,11 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
           byCompany.get(t.controllerId)!.push(t);
         }
       });
+      // T: during real-map placement, rivals/startups are hidden — only the player's
+      // tiles (dropped live) show. Territory lines therefore skip non-player corps.
+      const hideRivals = state?.phase === 'placement';
       byCompany.forEach((list, cid) => {
+        if (hideRivals && cid !== state!.playerCompanyId) return;
         const col = companyColors.get(cid) || 0x00d4aa;
         linesLayer.lineStyle(1.5, col, 0.18);
         const cxavg = list.reduce((s, t) => s + centers.get(t.id)!.x, 0) / list.length;
@@ -170,7 +196,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       sorted.forEach((t) => {
         const c = centers.get(t.id)!;
         const sx = offX + c.x, sy = offY + c.y;
-        const owned = !!t.controllerId;
+        const ownedByPlayer = !!t.controllerId && t.controllerId === state!.playerCompanyId;
+        // T: in placement, only the player's own tiles read as owned; rivals/startups
+        // are masked so the board looks empty until the player finishes.
+        const owned = hideRivals ? ownedByPlayer : !!t.controllerId;
         const contested = owned && t.challengerId && t.challengerId !== t.controllerId;
         const fill = owned
           ? contested ? 0x241433
@@ -182,28 +211,18 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         tileLayer.lineStyle(2, segCol, owned ? 0.55 : 0.35).strokePoints(diamondPoints(sx, sy), true);
         if (owned) {
           const col = companyColors.get(t.controllerId!) || 0x00d4aa;
-          // Height encodes the number of departments housed in this tile's
-          // building (proportional, but kept low so the board stays readable
-          // and the player can compare competitor "mass" at a glance).
           const building = t.buildingId ? state!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
           const deptCount = building ? building.departmentIds.length : 0;
-          // Base footprint (always visible) + one floor per housed department,
-          // so a freshly-built empty shell still reads on the board and mass
-          // scales with departments (player can compare rival "mass" at a glance).
-          const h = Math.min(92, 30 + deptCount * 9);
-          const segs = Math.max(1, Math.min(6, deptCount + 1));
-          let topY = sy - TILE_H / 2, w = 40;
-          for (let s = 0; s < segs; s++) {
-            const segH = h / segs;
-            isoBox(tileLayer, sx, topY, w, segH, col, true);
-            topY -= segH; w *= 0.82;
-          }
-          // Glow intensity reflects how built-up this tile is (departments).
-          glowLayer.fillStyle(col, 0.10 + Math.min(0.35, deptCount * 0.05)).fillCircle(sx, sy - h * 0.6, 24);
+          drawBuilding(tileLayer, glowLayer, sx, sy, deptCount, col);
+        } else if (t.isStartupTile && !t.buildingId && !hideRivals) {
+          // T: empty-shell startups still render a base-height building (grey) so
+          // the board reads as occupied; departments raise it (same rule as all).
+          drawBuilding(tileLayer, glowLayer, sx, sy, 0, 0x8a94a6);
         }
         // Startup territories: distinct amber border + a marker. "Empty" shells
         // are blind buys (no building); promising/high carry a building + idea.
-        if (t.isStartupTile) {
+        // Hidden entirely during placement so the board reads as empty.
+        if (t.isStartupTile && !hideRivals) {
           const pot = t.startupPotential ?? 'empty';
           const starCol = pot === 'high' ? 0xffd166 : pot === 'promising' ? 0xf4a259 : 0x8a8f9c;
           tileLayer.lineStyle(2.5, starCol, 0.9).strokePoints(diamondPoints(sx, sy), true);
@@ -295,7 +314,13 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         const isPan = p.middleButtonDown() || p.rightButtonDown() || (spaceKey.isDown && p.leftButtonDown());
         if (isPan) { panning = true; lastPX = p.x; lastPY = p.y; scene.input.setDefaultCursor('grabbing'); return; }
         const t = screenToTile(p.worldX, p.worldY);
-        onTileSelectRef.current(t ? t.id : null);
+        // T: in placement mode, a click drops a building on the tile (if free);
+        // otherwise it just selects (drives the DEPARTMENTS tab).
+        if (t && state?.phase === 'placement' && onPlaceTileRef.current) {
+          onPlaceTileRef.current(t.id);
+        } else {
+          onTileSelectRef.current(t ? t.id : null);
+        }
       });
 
       scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {

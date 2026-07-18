@@ -548,7 +548,47 @@ export const ActionComposer: React.FC<Props> = ({
             step={50000}
           />
         </div>
+
+        {/* T: Acquire offer slider — the offer controls acceptance (risk). The target
+            only accepts at/above a valuation-based floor; show the live status. */}
+        {type === 'acquire_company' && targetCompanyId && (() => {
+          const tgt = playerCompany.id !== targetCompanyId ? companies.find(c => c.id === targetCompanyId) : undefined;
+          if (!tgt) return null;
+          const minAccept = Math.round(tgt.valuation * (tgt.isStartup ? 0.6 : 0.8));
+          const maxOffer = Math.min(maxBudget, Math.round(tgt.valuation * 2));
+          const accepted = budget >= minAccept;
+          return (
+            <div className="ac-field">
+              <label>Acquisition Offer</label>
+              <div className="ac-budget">
+                <input
+                  type="number"
+                  value={budget}
+                  onChange={e => setBudget(Math.max(0, Math.min(maxOffer, parseInt(e.target.value) || 0)))}
+                  min={minAccept}
+                  max={maxOffer}
+                  step={50000}
+                />
+                <span>/ ${maxOffer.toLocaleString()} max</span>
+              </div>
+              <input
+                type="range"
+                value={Math.min(budget, maxOffer)}
+                onChange={e => setBudget(parseInt(e.target.value))}
+                min={minAccept}
+                max={maxOffer}
+                step={50000}
+              />
+              <div className={`ac-offer-status ${accepted ? 'ok' : 'bad'}`}>
+                {accepted
+                  ? `✓ Deal accepted — offering $${budget.toLocaleString()} (${Math.round((budget / tgt.valuation) * 100)}% of $${tgt.valuation.toLocaleString()} valuation)`
+                  : `✗ Offer rejected — minimum acceptable $${minAccept.toLocaleString()} (${Math.round((minAccept / tgt.valuation) * 100)}% of valuation)`}
+              </div>
+            </div>
+          );
+        })()}
       </div>
+
 
       <div className="modal-actions">
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>

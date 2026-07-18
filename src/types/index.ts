@@ -335,7 +335,9 @@ export interface InitialBuildingSpec {
   /** up to 3 department types housed inside this building at game start */
   deptTypes: DepartmentType[];
   /** placement slot index into the starting market grid (row*mw + col) */
-  slot: number;
+  slot?: number;
+  /** T: real-map placement — the actual tile id the player dropped this on */
+  tileId?: TileId;
 }
 
 export interface MarketTile {
@@ -683,6 +685,12 @@ export interface GameState {
   inventions: Idea[];
   /** T: building ids whose interior (departments) the player has revealed via espionage / cyber breach. */
   revealedBuildings: string[];
+  /** T: New Game real-map placement phase. While 'placement', rivals/startups are
+   *  hidden and the player drops their HQ + buildings on real tiles. Flips to
+   *  'playing' (rivals spawn / become visible) when the player finishes. */
+  phase: 'placement' | 'playing';
+  /** T: buildings the player has already dropped during the placement phase. */
+  pendingBuildings: InitialBuildingSpec[];
 }
 
 export interface AlertItem {

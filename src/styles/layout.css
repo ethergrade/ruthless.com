@@ -1392,4 +1392,37 @@
 .ac-lock { font-size: 10px; margin-left: 4px; }
 .ac-cost { margin-left: auto; font-size: 10px; color: var(--text-muted); }
 
+/* ---- Acquire offer slider status ---- */
+.ac-offer-status { margin-top: 6px; font-size: 11px; font-weight: 600; }
+.ac-offer-status.ok { color: var(--accent-cyan); }
+.ac-offer-status.bad { color: #ff6b6b; }
+
+/* ---- Real-map placement overlay ---- */
+.placement-overlay {
+  position: absolute;
+  top: 16px; right: 16px;
+  z-index: 40;
+  max-width: 340px;
+  pointer-events: none;
+}
+.placement-panel {
+  pointer-events: auto;
+  background: rgba(10, 12, 20, 0.95);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 0 24px rgba(0, 212, 170, 0.25);
+}
+.placement-panel h2 { margin: 0 0 6px; font-size: 14px; color: var(--accent-cyan); letter-spacing: 0.5px; }
+.placement-hint { margin: 0 0 10px; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.placement-depts { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.placement-depts .eb-dept {
+  font-size: 10px; padding: 3px 7px; border-radius: 5px; cursor: pointer;
+  background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border);
+}
+.placement-depts .eb-dept.on { background: var(--accent-cyan); color: #04130f; border-color: var(--accent-cyan); }
+.placement-depts .eb-dept:disabled { opacity: 0.35; cursor: not-allowed; }
+.placement-status { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text); margin-bottom: 10px; }
+.placement-done { width: 100%; }
+
 
