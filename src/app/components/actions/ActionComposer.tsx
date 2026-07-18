@@ -39,7 +39,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'hire_executive', label: 'Hire Executive', group: 'Corporate', baseCost: 400000 },
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0 },
   { type: 'reduce_costs', label: 'Reduce Costs', group: 'Corporate', baseCost: 0 },
-  { type: 'launch_product', label: 'Launch Product', group: 'Product & R&D', baseCost: 300000, needs: ['productEditor'] },
+  { type: 'launch_product', label: 'Launch Product', group: 'Product & R&D', baseCost: 300000, needs: ['productEditor', 'targetIdea'] },
   { type: 'create_ideas', label: 'Create Ideas (R&D)', group: 'Product & R&D', baseCost: 400000 },
   { type: 'release_source', label: 'Release Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea'] },
   { type: 'sell_source', label: 'Sell Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea', 'targetCompany'] },
