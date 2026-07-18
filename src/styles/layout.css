@@ -710,7 +710,7 @@
 }
 
 /* ---- New game / load game modals --------------------------------------- */
-.new-game-modal { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); }
+.new-game-modal { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); }
 .setup-top {
   display: grid;
   grid-template-columns: 1fr 1fr 280px;
@@ -850,6 +850,10 @@
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-panel);
+  padding-top: 8px;
 }
 
 /* ---- Action / Company / Event modals ------------------------------------ */
@@ -987,7 +991,7 @@
   color: var(--text-muted);
 }
 .modal-close:hover { color: var(--text-primary); }
-.modal-body { padding: 18px; }
+.modal-body { padding: 18px; max-height: calc(80vh - 64px); overflow-y: auto; }
 .confirm-message { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
