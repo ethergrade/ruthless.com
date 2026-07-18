@@ -169,6 +169,20 @@ const createStartingProducts = (rng: ReturnType<typeof createRNG>, archetype: Co
     data_service: ['innovation_hub', 'enterprise_cluster', 'high_growth'],
     platform_api: ['innovation_hub', 'startup_zone', 'high_growth'],
     hybrid: ['enterprise_cluster', 'regulated_industry', 'high_growth'],
+    fintech: ['regulated_industry', 'strategic_account', 'enterprise_cluster'],
+    cloud_infra: ['enterprise_cluster', 'high_growth', 'innovation_hub'],
+    iot: ['enterprise_cluster', 'legacy_market', 'high_growth'],
+    blockchain: ['innovation_hub', 'startup_zone', 'strategic_account'],
+    healthtech: ['regulated_industry', 'public_sector', 'innovation_hub'],
+    edtech: ['public_sector', 'startup_zone', 'high_growth'],
+    greentech: ['public_sector', 'high_growth', 'innovation_hub'],
+    gaming: ['high_growth', 'startup_zone', 'open_market'],
+    ecommerce: ['open_market', 'price_sensitive', 'high_growth'],
+    data_analytics: ['enterprise_cluster', 'innovation_hub', 'strategic_account'],
+    robotics: ['enterprise_cluster', 'legacy_market', 'high_growth'],
+    biotech: ['regulated_industry', 'innovation_hub', 'public_sector'],
+    quantum: ['innovation_hub', 'enterprise_cluster', 'strategic_account'],
+    ar_vr: ['high_growth', 'startup_zone', 'open_market'],
   };
 
   categories.forEach(category => {
@@ -207,6 +221,20 @@ const generateProductName = (rng: ReturnType<typeof createRNG>, category: Produc
     data_service: ['Data', 'Analytics', 'Insights', 'Intelligence', 'Metrics', 'Warehouse', 'Lake', 'Stream'],
     platform_api: ['Platform', 'API', 'Gateway', 'Connect', 'Bridge', 'Mesh', 'Fabric', 'Layer'],
     hybrid: ['Fusion', 'Blend', 'Hybrid', 'Unified', 'Integrated', 'Combined', 'Joint', 'Merged'],
+    fintech: ['Pay', 'Bank', 'Capital', 'Ledger', 'Coin', 'Finance', 'Fund', 'Trade'],
+    cloud_infra: ['Cloud', 'Stack', 'Compute', 'Scale', 'Grid', 'Edge', 'Mesh', 'Node'],
+    iot: ['Sense', 'Connect', 'Thing', 'Device', 'Edge', 'Mesh', 'Pulse', 'Track'],
+    blockchain: ['Chain', 'Ledger', 'Token', 'Block', 'Node', 'Protocol', 'Verify', 'Trust'],
+    healthtech: ['Health', 'Care', 'Med', 'Bio', 'Vital', 'Clinic', 'Genome', 'Therapy'],
+    edtech: ['Learn', 'Academy', 'Edu', 'Class', 'Teach', 'Scholar', 'Campus', 'Tutor'],
+    greentech: ['Green', 'Eco', 'Solar', 'Clean', 'Carbon', 'Earth', 'Leaf', 'Volt'],
+    gaming: ['Play', 'Quest', 'Arcade', 'Arena', 'World', 'Pixel', 'Realm', 'Game'],
+    ecommerce: ['Shop', 'Cart', 'Store', 'Market', 'Buy', 'Retail', 'Mall', 'Deal'],
+    data_analytics: ['Metrics', 'Insight', 'Graph', 'Query', 'Report', 'Dash', 'BI', 'Stats'],
+    robotics: ['Bot', 'Arm', 'Automaton', 'Mech', 'Drone', 'Assembly', 'Kinetic', 'Servo'],
+    biotech: ['Gene', 'Cell', 'Protein', 'Vitro', 'Therapy', 'Lab', 'Biome', 'Culture'],
+    quantum: ['Qubit', 'Entangle', 'Superpose', 'Gate', 'Compute', 'Cipher', 'Cohere', 'Phase'],
+    ar_vr: ['Vision', 'Immerse', 'Reality', 'Holo', 'Spatial', 'Lens', 'World', 'Mixed'],
   };
 
   const prefix = rng.shuffle([...prefixes]).pop()!;

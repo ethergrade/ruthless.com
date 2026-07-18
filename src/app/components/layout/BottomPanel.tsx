@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal } from '../../../types';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
@@ -7,7 +7,7 @@ interface BottomPanelProps {
   playerCompany: Company | undefined;
   newsFeed: NewsItem[];
   notifications: string[];
-  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders';
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends';
   onEdit: (action: TurnAction) => void;
   onDismissNotification: (index: number) => void;
   height?: number;
@@ -23,7 +23,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onDismissNotification,
   height = 220,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'news' | 'orders' | 'trends'>(defaultTab);
 
   if (!state || !playerCompany) return null;
 
@@ -49,6 +49,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <button className={`tab ${activeTab === 'news' ? 'active' : ''}`} onClick={() => setActiveTab('news')}>
           News
         </button>
+        <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => setActiveTab('trends')}>
+          Trends
+        </button>
       </div>
 
       <div className="bottom-content">
@@ -58,6 +61,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} onEdit={onEdit} />}
         {activeTab === 'news' && <NewsPanel news={newsFeed} />}
+        {activeTab === 'trends' && <TrendsPanel trends={state.trends} weakSignals={state.weakSignals} onExploit={(_c) => setActiveTab('orders')} />}
       </div>
 
       {notifications.length > 0 && (
@@ -312,6 +316,57 @@ const CapabilityCard: React.FC<{ title: string; value: number; max?: number; ico
         </div>
       </div>
       <span className="capability-value">{value.toFixed(0)}</span>
+    </div>
+  );
+};
+
+/** T5 — Global market trends + weak signals. Exploit opens the Orders tab. */
+const TrendsPanel: React.FC<{
+  trends: MarketTrend[];
+  weakSignals: WeakSignal[];
+  onExploit: (category: string) => void;
+}> = ({ trends, weakSignals, onExploit }) => {
+  return (
+    <div className="trends-panel">
+      <div className="trends-section">
+        <div className="trends-section-head">
+          <span>GLOBAL TRENDS</span>
+          <span className="trends-count">{trends.length}</span>
+        </div>
+        {trends.length === 0 && <p className="trends-empty">No active trends — the market is flat. Watch for weak signals.</p>}
+        {trends.map(t => (
+          <div key={t.id} className="trend-card" style={{ borderLeftColor: '#00d4aa' }}>
+            <div className="trend-top">
+              <span className="trend-title">{t.title}</span>
+              <span className="trend-strength">{(t.strength * 100).toFixed(0)}%</span>
+            </div>
+            <p className="trend-blurb">{t.blurb}</p>
+            <div className="trend-meta">
+              <span className="trend-tag cat">{t.category.replace('_', ' ')}</span>
+              <span className="trend-tag sec">{t.sector.replace('_', ' ')}</span>
+              <span className="trend-exp">until T{t.expiresTurn}</span>
+            </div>
+            <button className="trend-exploit" onClick={() => onExploit(t.category)}>EXPLOIT ▶</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="trends-section">
+        <div className="trends-section-head">
+          <span>WEAK SIGNALS</span>
+          <span className="trends-count">{weakSignals.length}</span>
+        </div>
+        {weakSignals.length === 0 && <p className="trends-empty">No weak signals right now.</p>}
+        {weakSignals.map(w => (
+          <div key={w.id} className="trend-card weak" style={{ borderLeftColor: '#ffc107' }}>
+            <p className="trend-blurb">{w.hint}</p>
+            <div className="trend-meta">
+              <span className="trend-tag cat">{w.relatedCategory.replace('_', ' ')}</span>
+              <span className="trend-exp">conf {(w.confidence * 100).toFixed(0)}% · until T{w.expiresTurn}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

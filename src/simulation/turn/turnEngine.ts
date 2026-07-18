@@ -22,6 +22,8 @@ import type { MarketSegment,
   CEOTrait,
   ScenarioConfig,
   CompanyArchetype,
+  MarketTrend,
+  WeakSignal,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap } from '../factories/marketFactory';
@@ -118,6 +120,8 @@ export class TurnEngine {
       disastersEnabled: false,
       isGameOver: false,
       seed: this.rng.getSeed(),
+      trends: this.generateMarketTrends(2),
+      weakSignals: this.generateWeakSignals(2),
     };
   }
 
@@ -204,6 +208,7 @@ export class TurnEngine {
     });
     Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
     this.state.marketBriefing = this.generateMarketBriefing();
+    this.refreshTrends();
 
     // Record KPI snapshot for the player (drives sparklines in the UI).
     const player = this.state.companies.get(this.state.playerCompanyId);
@@ -673,27 +678,34 @@ export class TurnEngine {
   }
 
   private launchProduct(company: Company, action: TurnAction): void {
-    const categories = ['saas', 'ai', 'cybersecurity', 'consulting', 'managed_service'];
-    const category = (action.productCategory && categories.includes(action.productCategory))
-      ? action.productCategory as ProductCategory
-      : this.rng.shuffle(categories).pop()!;
+    // All 22 categories are valid launch targets (T5: expanded catalogue).
+    const category: ProductCategory = action.productCategory ?? this.rng.shuffle([
+      'saas', 'ai', 'cybersecurity', 'consulting', 'managed_service', 'data_service',
+      'platform_api', 'hybrid', 'fintech', 'cloud_infra', 'iot', 'blockchain',
+      'healthtech', 'edtech', 'greentech', 'gaming', 'ecommerce', 'data_analytics',
+      'robotics', 'biotech', 'quantum', 'ar_vr',
+    ]).pop()! as ProductCategory;
     const name = action.productName?.trim() || `Product_${company.products.length + 1}`;
+
+    // T5: riding an active global trend for this category grants a launch bonus.
+    const trend = this.state.trends.find(t => t.category === category && t.expiresTurn > this.state.turn);
+    const trendBonus = trend ? trend.strength : 0;
 
     company.products.push({
       id: generateId.product(),
       companyId: company.id,
       name,
-      category: category as ProductCategory,
-      maturity: 20,
-      quality: 50,
+      category,
+      maturity: 20 + Math.round(trendBonus * 15),
+      quality: 50 + Math.round(trendBonus * 25),
       security: category === 'cybersecurity' ? 80 : 40,
       scalability: category === 'saas' ? 80 : 50,
-      marketFit: 40,
+      marketFit: 40 + Math.round(trendBonus * 30),
       price: 10000,
       operatingCost: 5000,
       technicalDebt: 10,
       trust: 50,
-      targetSegments: ['enterprise_cluster', 'high_growth'],
+      targetSegments: trend ? [trend.sector] : ['enterprise_cluster', 'high_growth'],
       tileIds: [],
     });
   }
@@ -1518,6 +1530,63 @@ export class TurnEngine {
       const imp: 'minor' | 'major' | 'critical' = ev.severity === 'critical' ? 'critical' : ev.severity === 'low' || ev.severity === 'medium' ? 'minor' : 'major';
       newsItems.push(this.createNewsItem(this.state.turn, ev.category, `${ev.title}: ${ev.description}`, '', undefined, imp));
     }
+  }
+
+  /** Generate `count` fresh global market trends (demanded category x sector). */
+  private generateMarketTrends(count: number): MarketTrend[] {
+    const t = this.state?.turn ?? 1;
+    const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr', 'gaming', 'ecommerce', 'robotics', 'edtech'];
+    const segs: MarketSegment[] = ['enterprise_cluster', 'public_sector', 'regulated_industry', 'innovation_hub', 'high_growth', 'strategic_account', 'startup_zone', 'legacy_market'];
+    const out: MarketTrend[] = [];
+    for (let i = 0; i < count; i++) {
+      const category = this.rng.shuffle(cats).pop()!;
+      const sector = this.rng.shuffle(segs).pop()!;
+      const strength = this.rng.nextFloat(0.4, 0.95);
+      out.push({
+        id: generateId.trend(),
+        title: `Demand Surge: ${category.replace('_', ' ').toUpperCase()} for ${sector.replace('_', ' ')}`,
+        category, sector,
+        strength,
+        expiresTurn: t + this.rng.nextInt(4, 9),
+        blurb: `The market is pulling ${category.replace('_', ' ')} hard in the ${sector.replace('_', ' ')} segment. Ride it with a matching launch or campaign.`,
+      });
+    }
+    return out;
+  }
+
+  /** Generate `count` weak signals (early hints of emerging demand). */
+  private generateWeakSignals(count: number): WeakSignal[] {
+    const t = this.state?.turn ?? 1;
+    const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
+    const hints = [
+      'Whispers of a regulatory shift favouring',
+      'A key client was spotted piloting',
+      'Talent is quietly flowing toward',
+      'A competitor acquisition hints at',
+      'Early adopters are asking about',
+    ];
+    const out: WeakSignal[] = [];
+    for (let i = 0; i < count; i++) {
+      const relatedCategory = this.rng.shuffle(cats).pop()!;
+      out.push({
+        id: generateId.weak(),
+        hint: `${this.rng.shuffle(hints).pop()} ${relatedCategory.replace('_', ' ')}…`,
+        relatedCategory,
+        confidence: this.rng.nextFloat(0.25, 0.6),
+        expiresTurn: t + this.rng.nextInt(3, 6),
+      });
+    }
+    return out;
+  }
+
+  /** Refresh trends/signals each turn: drop expired, occasionally add new ones. */
+  private refreshTrends(): void {
+    const t = this.state.turn;
+    this.state.trends = this.state.trends.filter(tr => tr.expiresTurn > t);
+    this.state.weakSignals = this.state.weakSignals.filter(w => w.expiresTurn > t);
+    // ~50% chance to spin up a new trend; ~60% for a weak signal each turn.
+    if (this.rng.nextBoolean(0.5)) this.state.trends.push(...this.generateMarketTrends(1));
+    if (this.rng.nextBoolean(0.6)) this.state.weakSignals.push(...this.generateWeakSignals(1));
   }
 
   private createNewsItem(

@@ -25,7 +25,21 @@ export type ProductCategory =
   | 'managed_service'
   | 'data_service'
   | 'platform_api'
-  | 'hybrid';
+  | 'hybrid'
+  | 'fintech'
+  | 'cloud_infra'
+  | 'iot'
+  | 'blockchain'
+  | 'healthtech'
+  | 'edtech'
+  | 'greentech'
+  | 'gaming'
+  | 'ecommerce'
+  | 'data_analytics'
+  | 'robotics'
+  | 'biotech'
+  | 'quantum'
+  | 'ar_vr';
 
 export type DepartmentType =
   | 'corporate_strategy'
@@ -469,6 +483,10 @@ export interface GameState {
   isGameOver: boolean;
   victoryType?: VictoryType;
   seed: number;
+  /** Active global market trends (T5): demanded category x sector. */
+  trends: MarketTrend[];
+  /** Early weak signals hinting at emerging trends (T5). */
+  weakSignals: WeakSignal[];
 }
 
 export interface NewsItem {
@@ -488,6 +506,37 @@ export interface MarketBriefing {
   cyberAlerts: CyberAlert[];
   maOpportunities: MAOpportunity[];
   clientRequests: ClientRequest[];
+}
+
+/**
+ * A global market trend: the world is demanding a product CATEGORY in a SECTOR.
+ * Players who launch/market matching products ride the wave (demand + fit bonus).
+ */
+export interface MarketTrend {
+  id: string;
+  title: string;
+  category: ProductCategory;
+  sector: MarketSegment;
+  /** 0..1 strength of the demand pull. */
+  strength: number;
+  /** turn this trend expires. */
+  expiresTurn: number;
+  /** short narrative. */
+  blurb: string;
+}
+
+/**
+ * A weak signal: an early hint of an emerging trend. Lower confidence than a
+ * full trend. Savvy players act before it becomes obvious.
+ */
+export interface WeakSignal {
+  id: string;
+  hint: string;
+  /** category likely to surge if the signal matures. */
+  relatedCategory: ProductCategory;
+  /** 0..1 confidence the signal becomes a real trend. */
+  confidence: number;
+  expiresTurn: number;
 }
 
 export interface DemandShift {

@@ -1127,3 +1127,21 @@
 .scenario-editor .editor-sub { border-left: 2px solid var(--accent-cyan); padding-left: 10px; }
 .campaign-editor .editor-sub { border-left: 2px solid #ff6b35; padding-left: 10px; }
 
+/* ---- Trends tab (T5) --------------------------------------------------- */
+.trends-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px; height: 100%; overflow-y: auto; }
+.trends-section-head { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); display: flex; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid var(--border-primary); margin-bottom: 8px; }
+.trends-count { color: var(--accent-cyan); }
+.trends-empty { color: var(--text-muted); font-size: 12.5px; font-style: italic; }
+.trend-card { background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-left: 3px solid var(--accent-cyan); border-radius: 8px; padding: 9px 11px; margin-bottom: 9px; }
+.trend-card.weak { border-left-color: #ffc107; opacity: 0.92; }
+.trend-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.trend-title { font-weight: 700; font-size: 13px; color: var(--text-primary); }
+.trend-strength { font-size: 13px; font-weight: 700; color: #36e0a0; white-space: nowrap; }
+.trend-blurb { color: var(--text-secondary); font-size: 12.5px; line-height: 1.45; margin: 5px 0 7px; }
+.trend-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.trend-tag { font-size: 11px; padding: 2px 7px; border-radius: 5px; background: rgba(0,212,170,0.12); color: var(--accent-cyan); text-transform: capitalize; }
+.trend-tag.sec { background: rgba(255,107,53,0.12); color: #ff8a5c; }
+.trend-exp { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+.trend-exploit { margin-top: 8px; width: 100%; background: linear-gradient(135deg, #00d4aa, #0098c9); color: #04121b; border: none; border-radius: 6px; padding: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.trend-exploit:hover { filter: brightness(1.12); }
+

@@ -20,6 +20,8 @@ export const generateId = {
   action: (): ActionId => `action_${++counters.action}` as ActionId,
   building: (): string => `bld_${++counters.building}`,
   event: (): string => `evt_${++counters.event}`,
+  trend: (): string => `trend_${++counters.tile}`,
+  weak: (): string => `weak_${++counters.tile}`,
 };
 
 export const resetIdCounters = (): void => {
