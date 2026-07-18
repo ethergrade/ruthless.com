@@ -67,6 +67,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'legal_action', label: 'Legal Action', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'legal_compliance' },
   { type: 'scout_acquisition', label: 'Scout Acquisition', group: 'Security & M&A', baseCost: 50000, requiresDept: 'acquisitions' },
   { type: 'acquire_company', label: 'Acquire Company', group: 'Security & M&A', baseCost: 2000000, needs: ['targetCompany'], requiresDept: 'acquisitions' },
+  { type: 'acquire_below_value', label: 'Buy Below Valuation', group: 'Security & M&A', baseCost: 500000, needs: ['targetCompany'], requiresDept: 'finance_investor' },
   { type: 'public_tender_offer', label: 'Public Tender Offer (OPA)', group: 'Security & M&A', baseCost: 1500000, needs: ['targetCompany', 'offer'], requiresDept: 'acquisitions' },
   { type: 'auction_sell', label: 'List on Auction House', group: 'Security & M&A', baseCost: 0, needs: ['auctionAsset'] },
 ];

@@ -1587,7 +1587,10 @@ export class TurnEngine {
     const lift = Math.round(action.budget / 50000) + 3;
     target.valuation = Math.max(0, target.valuation + lift * 40000);
     target.brandTrust = Math.min(100, target.brandTrust + lift);
-    // Praising a competitor signals confidence — slightly lifts your own market influence.
+    // Praising a competitor signals sector confidence — lifts the whole market read:
+    // your own valuation ticks up (you're seen as a constructive sector leader) and
+    // your market influence rises. This is the CEO "moving the market" globally.
+    company.valuation = Math.max(1, company.valuation + lift * 15000);
     company.marketInfluence = Math.min(100, company.marketInfluence + 1);
     this.addNews(target.id, `${company.name}'s CEO publicly praises ${target.name} — markets read it as sector confidence.`);
   }
@@ -1601,6 +1604,9 @@ export class TurnEngine {
     target.brandTrust = Math.max(0, target.brandTrust - hit);
     target.valuation = Math.max(0, target.valuation - hit * 60000);
     target.marketInfluence = Math.max(0, target.marketInfluence - 2);
+    // Global market read: aggressive PR is rewarded by speculators — your own
+    // valuation edges up even as the rival's falls (you're seizing the narrative).
+    company.valuation = Math.max(1, company.valuation + hit * 12000);
     // Self-risk scales down with the CEO's Luck (Fallout-style soft bias).
     const luck = company.ceos[0]?.luck ?? 5;
     const caught = this.rng.nextBoolean(Math.max(0.05, 0.35 - luck / 40));
