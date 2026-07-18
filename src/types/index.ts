@@ -123,6 +123,8 @@ export type ActionType =
   | 'create_ideas'            // R&D: invent a new technology/idea (brevity → trend)
   | 'release_source'          // open-source an idea: +awareness/trust, can mature a weak signal
   | 'sell_source'             // sell an idea's source code to a rival: +cash, flips trend ownership
+  // --- T: product lifecycle ---
+  | 'pivot_product'           // change a product's scope/features → new version push
   | 'end_turn';
 
 /** Win condition for a Scenario (tactical single-board setup). */
@@ -286,6 +288,18 @@ export interface Product {
   trust: number;
   targetSegments: MarketSegment[];
   tileIds: TileId[];
+  /** T: product lifecycle phase. */
+  lifecycleStage: 'early' | 'growth' | 'mature' | 'decline';
+  /** T: version number (v1, v2, …) — incremented on decline→relaunch. */
+  version: number;
+  /** T: market penetration / adopter fraction 0..1 (early adopters → mainstream). */
+  adopters: number;
+  /** T: installed base of loyal customers that repurchase (fidelizzati). */
+  baseInstalled: number;
+  /** T: number of pivots performed on this product. */
+  pivotCount: number;
+  /** T: turns since launch (drives lifecycle progression). */
+  ageTurns: number;
   /** Player-editable KPIs (startup refactor). */
   editableKpis?: ProductKpis;
   /** True if name/segment were chosen by the player at creation. */
@@ -426,6 +440,9 @@ export interface TurnAction {
   targetProductId?: ProductId;
   /** T9: idea id to release / sell as source code (release_source, sell_source). */
   ideaId?: string;
+  /** T: pivot_product — new category / segments for the scope change. */
+  pivotCategory?: ProductCategory;
+  pivotSegments?: MarketSegment[];
   /** Generated/editable product name + category (product creation). */
   productName?: string;
   productCategory?: ProductCategory;

@@ -159,6 +159,11 @@ const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ produ
             <span>Cost: ${product.operatingCost.toLocaleString()}</span>
             <span>Margin: {(((product.price - product.operatingCost) / product.price) * 100).toFixed(0)}%</span>
           </div>
+          <div className="product-lifecycle">
+            <span className={`lifecycle-badge ${product.lifecycleStage}`}>{product.lifecycleStage.toUpperCase()} · v{product.version}</span>
+            <span className="lifecycle-adopters">adopters {(product.adopters * 100).toFixed(0)}%</span>
+            {product.pivotCount > 0 && <span className="lifecycle-pivot">pivots {product.pivotCount}</span>}
+          </div>
         </div>
       ))
     )}

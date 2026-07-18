@@ -1167,3 +1167,13 @@
 .idea-name { font-weight: 700; font-size: 12.5px; color: var(--text-primary); }
 .idea-meta { font-size: 11px; color: var(--text-muted); text-transform: capitalize; }
 
+/* ---- Product lifecycle (T) -------------------------------------------- */
+.product-lifecycle { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.lifecycle-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.lifecycle-badge.early { background: rgba(255,193,7,0.18); color: #ffc107; }
+.lifecycle-badge.growth { background: rgba(0,212,170,0.18); color: #36e0a0; }
+.lifecycle-badge.mature { background: rgba(79,140,255,0.18); color: #4f8cff; }
+.lifecycle-badge.decline { background: rgba(255,77,79,0.18); color: #ff4d4f; }
+.lifecycle-adopters { font-size: 11px; color: var(--text-secondary); }
+.lifecycle-pivot { font-size: 11px; color: var(--accent-purple, #9b59b6); }
+

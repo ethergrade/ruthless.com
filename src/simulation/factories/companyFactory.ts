@@ -205,6 +205,12 @@ const createStartingProducts = (rng: ReturnType<typeof createRNG>, archetype: Co
       trust: rng.nextInt(50, 80),
       targetSegments: segments,
       tileIds: [],
+      lifecycleStage: 'mature',
+      version: 1,
+      adopters: rng.nextFloat(0.2, 0.5),
+      baseInstalled: rng.nextFloat(10, 40),
+      pivotCount: 0,
+      ageTurns: rng.nextInt(5, 15),
     });
   });
 

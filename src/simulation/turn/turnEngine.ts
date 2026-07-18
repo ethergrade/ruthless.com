@@ -212,6 +212,7 @@ export class TurnEngine {
     Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
     this.state.marketBriefing = this.generateMarketBriefing();
     this.refreshTrends();
+    this.advanceProductLifecycles();
 
     // Record KPI snapshot for the player (drives sparklines in the UI).
     const player = this.state.companies.get(this.state.playerCompanyId);
@@ -427,6 +428,7 @@ export class TurnEngine {
       create_ideas: 400000,
       release_source: 0,
       sell_source: 0,
+      pivot_product: 250000,
     };
 
     const base = baseBudgets[actionType] || 100000;
@@ -522,6 +524,7 @@ export class TurnEngine {
       create_ideas: 400000,
       release_source: 0,
       sell_source: 0,
+      pivot_product: 250000,
     };
     return costs[actionType] || 100000;
   }
@@ -555,6 +558,7 @@ export class TurnEngine {
       create_ideas: ['product_rd', 'ai_data', 'consulting_services'],
       release_source: ['product_rd', 'ai_data', 'sales_marketing'],
       sell_source: ['finance_investor', 'corporate_strategy', 'legal_compliance'],
+      pivot_product: ['product_rd', 'ai_data', 'consulting_services'],
       end_turn: [],
     };
     return mapping[actionType]?.includes(deptType) ?? false;
@@ -645,6 +649,9 @@ export class TurnEngine {
       case 'sell_source':
         this.runSellSource(company, action);
         break;
+      case 'pivot_product':
+        this.runPivotProduct(company, action);
+        break;
       case 'ceo_social':
         this.runCeoSocial(company, action);
         break;
@@ -728,6 +735,13 @@ export class TurnEngine {
       trust: 50,
       targetSegments: trend ? [trend.sector] : ['enterprise_cluster', 'high_growth'],
       tileIds: [],
+      // T: lifecycle bootstrapping — launches start at the early-adopter phase.
+      lifecycleStage: 'early',
+      version: 1,
+      adopters: 0.02 + trendBonus * 0.05, // a live trend seeds real early adopters
+      baseInstalled: 0,
+      pivotCount: 0,
+      ageTurns: 0,
     });
   }
 
@@ -1079,6 +1093,69 @@ export class TurnEngine {
     }
   }
 
+  /** T — Pivot a product: change scope with new features → relaunch as a fresh version. */
+  private runPivotProduct(company: Company, action: TurnAction): void {
+    const product = action.targetProductId
+      ? company.products.find(p => p.id === action.targetProductId)
+      : company.products[company.products.length - 1];
+    if (!product) return;
+    if (action.pivotCategory) product.category = action.pivotCategory;
+    if (action.pivotSegments && action.pivotSegments.length) product.targetSegments = action.pivotSegments;
+    product.pivotCount += 1;
+    // A pivot is a scope change with new features: bump quality/innovation, reset to early phase.
+    product.quality = Math.min(100, product.quality + 8);
+    product.maturity = Math.min(100, product.maturity + 10);
+    product.technicalDebt = Math.max(0, product.technicalDebt - 5);
+    product.lifecycleStage = 'early';
+    product.version += 1;
+    product.adopters = Math.max(0.03, product.adopters * 0.6);
+    company.innovation = Math.min(100, company.innovation + 4);
+  }
+
+  /**
+   * T — Advance every product through its lifecycle each turn.
+   * early → growth → mature → decline, with decline triggering a v(n+1) relaunch
+   * (new version resets to early with a quality boost) per market-penetration logic.
+   */
+  private advanceProductLifecycles(): void {
+    this.state.companies.forEach(c => {
+      c.products.forEach(p => {
+        p.ageTurns += 1;
+        // Fidelizzati: a maintained, shipping product accumulates an installed base.
+        if (p.lifecycleStage !== 'early') {
+          p.baseInstalled = Math.min(100, p.baseInstalled + (p.marketFit / 100) * (p.lifecycleStage === 'mature' ? 4 : 2));
+        }
+        // Adopter growth depends on market fit + a live trend pull for the category.
+        const liveTrend = this.state.trends.find(t => t.category === p.category && t.expiresTurn > this.state.turn);
+        const trendPull = liveTrend ? liveTrend.strength : 0;
+        const growth = (p.marketFit / 100) * 0.06 + trendPull * 0.04;
+        p.adopters = Math.min(1, p.adopters + growth);
+
+        // Phase transitions by age + adoption + upkeep.
+        if (p.lifecycleStage === 'early' && (p.adopters > 0.15 || p.ageTurns > 4)) {
+          p.lifecycleStage = 'growth';
+        } else if (p.lifecycleStage === 'growth' && (p.adopters > 0.4 || p.ageTurns > 10)) {
+          p.lifecycleStage = 'mature';
+        } else if (p.lifecycleStage === 'mature') {
+          // Decay triggers decline when neglected (debt piles up) or adopters erode.
+          if (p.technicalDebt > 60 || p.adopters < 0.2 || p.ageTurns > 24) {
+            p.lifecycleStage = 'decline';
+          }
+        } else if (p.lifecycleStage === 'decline') {
+          // Decline plan: relaunch as next version (v2, v3, …) with a quality bump.
+          if (p.version < 6) {
+            p.version += 1;
+            p.lifecycleStage = 'early';
+            p.adopters = Math.max(0.04, p.adopters * 0.5);
+            p.quality = Math.min(100, p.quality + 10);
+            p.technicalDebt = Math.max(0, p.technicalDebt - 15);
+            p.ageTurns = 0;
+          }
+        }
+      });
+    });
+  }
+
   /** Online (cyber) defense: firewall, virus sweep, change passwords. */
   private runSecurityOnline(company: Company, action: TurnAction): void {
     company.computerPoints += Math.round(action.budget / 2000);
@@ -1344,10 +1421,39 @@ export class TurnEngine {
 
     // Revenue from products: units sold scale with the company's market reach
     // (influence) and the product's market fit, priced at the product price.
+    // T: modulated by the product lifecycle phase (early adopters → mature plateau → decline).
     const productRevenue = company.products.reduce((sum, p) => {
       const qualityMul = 0.4 + (p.quality / 100) * 0.6;
       const fitMul = 0.3 + (p.marketFit / 100) * 0.7;
-      const units = Math.max(0, (company.marketInfluence + p.marketFit) * 0.5);
+
+      // --- Lifecycle phase multipliers ---
+      let stageMul = 1;
+      if (p.lifecycleStage === 'early') {
+        // Early adopters only convert if there's a REAL market signal (live trend for this
+        // category) — otherwise the market is skeptical and revenue stays tiny.
+        const liveTrend = this.state.trends.find(t => t.category === p.category && t.expiresTurn > this.state.turn);
+        const weakSignal = this.state.weakSignals.find(w => w.relatedCategory === p.category && w.expiresTurn > this.state.turn);
+        stageMul = liveTrend ? 0.5 + liveTrend.strength * 0.8 : (weakSignal ? 0.25 : 0.08);
+      } else if (p.lifecycleStage === 'growth') {
+        // Fidelizzati: existing installed base repurchases a percentage each turn.
+        stageMul = 1.0 + Math.min(0.8, p.baseInstalled / 100);
+      } else if (p.lifecycleStage === 'mature') {
+        // Mature: stable plateau IF maintained (quality high, technical debt low).
+        const maintained = (p.quality / 100) * (1 - p.technicalDebt / 200);
+        stageMul = 0.8 + maintained * 0.6;
+      } else {
+        // Decline: eroding demand.
+        stageMul = 0.4;
+      }
+
+      // Blue-ocean bonus: no rival offers this category in the same segments → open space.
+      const rivals = Array.from(this.state.companies.values()).filter(c => c.id !== company.id);
+      const hasCompetitor = rivals.some(c => c.products.some(rp =>
+        rp.category === p.category && rp.targetSegments.some(s => p.targetSegments.includes(s))));
+      const blueOcean = hasCompetitor ? 1 : 1.25;
+
+      const penetration = p.adopters * p.version * blueOcean;
+      const units = Math.max(0, (company.marketInfluence + p.marketFit) * 0.5 * penetration * stageMul);
       return sum + units * p.price * qualityMul * fitMul;
     }, 0);
 

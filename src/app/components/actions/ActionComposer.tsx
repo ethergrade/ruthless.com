@@ -40,6 +40,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'create_ideas', label: 'Create Ideas (R&D)', group: 'Product & R&D', baseCost: 400000 },
   { type: 'release_source', label: 'Release Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea'] },
   { type: 'sell_source', label: 'Sell Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea', 'targetCompany'] },
+  { type: 'pivot_product', label: 'Pivot Product', group: 'Product & R&D', baseCost: 250000, needs: ['targetProduct'] },
   { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000, needs: ['targetProduct'] },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000 },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000 },
