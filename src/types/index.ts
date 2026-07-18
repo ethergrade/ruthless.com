@@ -158,7 +158,9 @@ export interface ScenarioConfig {
   mapSize: 'small' | 'medium' | 'large';
   seed?: number;
   aiRivals: number;            // 1..4 rival corporations
-  disasters: boolean;
+  disasters: boolean;          // @deprecated legacy — derive from `simulation`
+  /** Granular world-simulation toggles (player chooses each at new game). */
+  simulation?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean };
   winConditions: ScenarioWinCondition[];
   startCash: number;           // player starting cash
   description?: string;
@@ -239,6 +241,10 @@ export interface Company {
   scandal: number;
   /** True for AI corps that are "start-ups" available for acquisition. */
   isStartup?: boolean;
+  /** Acquisition appeal for a startup (empty shell vs promising/high). */
+  startupPotential?: 'empty' | 'promising' | 'high';
+  /** Count of startups / companies acquired by this company. */
+  acquisitions?: number;
   /** T9: R&D ideas / invented technologies owned by this company. */
   ideas: Idea[];
   /** T: CEO roster — one per HQ; each grants +1 executive order. */
@@ -342,6 +348,10 @@ export interface MarketTile {
   buildingId?: string;
   /** Base Quality of the product controlling this tile (ruthless.com model). */
   baseQuality: number;
+  /** Marks an in-play startup territory (acquirable, may be empty). */
+  isStartupTile?: boolean;
+  /** Acquisition appeal for a startup tile (shown on the map / in the buy flow). */
+  startupPotential?: 'empty' | 'promising' | 'high';
   /** True when the tile's building is listed for auction (req 2). */
   upForAuction?: boolean;
   /** Marks an in-progress offensive action targeting this tile (shown to the player). */
@@ -638,7 +648,7 @@ export interface GameState {
   simulation: {
     /** Demand shifts, trends, weak signals & competitor moves. */
     marketSimulation: boolean;
-    /** SimCity-like market shocks: crashes, surges, cataclisms. */
+    /** Market shocks: crashes, surges, cataclysms. */
     cataclysms: boolean;
     /** New technologies / inventions surface over time. */
     newTech: boolean;

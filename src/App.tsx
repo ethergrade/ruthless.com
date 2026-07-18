@@ -52,7 +52,7 @@ function App() {
   const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
   const [bottomH, setBottomH] = useState(240);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [buildingDetail, setBuildingDetail] = useState<{ buildingId: string; ownerId: string } | null>(null);
+  const [buildingDetail, setBuildingDetail] = useState<{ buildingId?: string; ownerId: string; tileId: string } | null>(null);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -141,7 +141,8 @@ function App() {
     if (!tile?.controllerId) return;
     const owner = state.companies.get(tile.controllerId);
     const building = owner?.buildings.find(b => b.tileId === tileId);
-    if (building) setBuildingDetail({ buildingId: building.id, ownerId: tile.controllerId });
+    // Startup tiles (even empty shells) open a buy flow; rival buildings open detail.
+    setBuildingDetail({ buildingId: building?.id, ownerId: tile.controllerId, tileId });
   };
 
   const handleCompanySelect = (companyId: CompanyId | null) => {
@@ -268,6 +269,7 @@ function App() {
         <BuildingDetailModal
           buildingId={buildingDetail.buildingId}
           ownerCompanyId={buildingDetail.ownerId}
+          tileId={buildingDetail.tileId}
           onClose={() => setBuildingDetail(null)}
         />
       )}

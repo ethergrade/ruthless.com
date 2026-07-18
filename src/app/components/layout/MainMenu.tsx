@@ -40,7 +40,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [showSettings, setShowSettings] = useState(false);
   const [seed, setSeed] = useState('');
   const [selectedColor, setSelectedColor] = useState('#00d4aa');
-  const [disasters, setDisasters] = useState(true);
+  const [simulation, setSimulation] = useState({ marketSimulation: true, cataclysms: false, newTech: false });
   const [selectedCeo, setSelectedCeo] = useState<CEOTrait>('none');
 
   const handleStart = (statOverrides?: Partial<Record<string, number>>) => {
@@ -50,10 +50,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         companyName.trim() || undefined,
         selectedArchetype,
         selectedColor,
-        disasters,
+        undefined,
         selectedCeo,
         undefined,
         statOverrides,
+        undefined,
+        simulation,
       );
     } catch (err) {
       // initializeGame shouldn't throw, but never block the modal from closing.
@@ -64,7 +66,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 
   const handleStartScenario = (cfg: ScenarioConfig) => {
     try {
-      initializeGame(cfg.seed, cfg.name, undefined, undefined, cfg.disasters, undefined, cfg);
+      initializeGame(cfg.seed, cfg.name, undefined, undefined, undefined, undefined, cfg, undefined, undefined,
+        cfg.simulation ?? { marketSimulation: true, cataclysms: false, newTech: false });
     } catch { /* never block */ }
     setShowScenario(false);
     onStartGame();
@@ -146,8 +149,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
           setSelectedArchetype={setSelectedArchetype}
           selectedColor={selectedColor}
           setSelectedColor={setSelectedColor}
-          disasters={disasters}
-          setDisasters={setDisasters}
+          simulation={simulation}
+          setSimulation={setSimulation}
           selectedCeo={selectedCeo}
           setSelectedCeo={setSelectedCeo}
           seed={seed}
@@ -184,15 +187,15 @@ const NewGameModal: React.FC<{
   setSelectedArchetype: (a: CompanyArchetype) => void;
   selectedColor: string;
   setSelectedColor: (c: string) => void;
-  disasters: boolean;
-  setDisasters: (d: boolean) => void;
+  simulation: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean };
+  setSimulation: (s: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }) => void;
   selectedCeo: CEOTrait;
   setSelectedCeo: (c: CEOTrait) => void;
   seed: string;
   setSeed: (s: string) => void;
   onStart: (statOverrides?: Partial<Record<string, number>>) => void;
   onCancel: () => void;
-}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, disasters, setDisasters, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
+}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, simulation, setSimulation, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
   const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
 
@@ -339,7 +342,7 @@ const NewGameModal: React.FC<{
           </div>
         </div>
 
-        {/* FULL-WIDTH BOTTOM ROW: seed + color + disasters */}
+        {/* FULL-WIDTH BOTTOM ROW: seed + color + world simulation */}
         <div className="setup-bottom">
           <div className="form-group seed-field">
             <label>Random Seed (optional)</label>
@@ -368,12 +371,22 @@ const NewGameModal: React.FC<{
             </div>
           </div>
 
-          <div className="form-group disasters-field">
-            <label>Cataclismi (SimCity-like)</label>
-            <label className="toggle-row">
-              <input type="checkbox" checked={disasters} onChange={e => setDisasters(e.target.checked)} />
-              <span>Abilita borse, nuove tecnologie e cataclismi di mercato</span>
-            </label>
+          <div className="form-group sim-field">
+            <label>World Simulation</label>
+            <div className="toggle-stack">
+              <label className="toggle-row">
+                <input type="checkbox" checked={simulation.marketSimulation} onChange={e => setSimulation({ ...simulation, marketSimulation: e.target.checked })} />
+                <span>Market Simulation</span>
+              </label>
+              <label className="toggle-row">
+                <input type="checkbox" checked={simulation.cataclysms} onChange={e => setSimulation({ ...simulation, cataclysms: e.target.checked })} />
+                <span>Cataclysms</span>
+              </label>
+              <label className="toggle-row">
+                <input type="checkbox" checked={simulation.newTech} onChange={e => setSimulation({ ...simulation, newTech: e.target.checked })} />
+                <span>New Technologies</span>
+              </label>
+            </div>
           </div>
         </div>
 

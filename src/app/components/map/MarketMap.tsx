@@ -192,6 +192,20 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
           }
           // Glow intensity = market-share strength on this tile.
           glowLayer.fillStyle(col, 0.12 + t.controlStrength * 0.25).fillCircle(sx, sy - h * 0.6, 26);
+        }
+        // Startup territories: distinct amber border + a marker. "Empty" shells
+        // are blind buys (no building); promising/high carry a building + idea.
+        if (t.isStartupTile) {
+          const pot = t.startupPotential ?? 'empty';
+          const starCol = pot === 'high' ? 0xffd166 : pot === 'promising' ? 0xf4a259 : 0x8a8f9c;
+          tileLayer.lineStyle(2.5, starCol, 0.9).strokePoints(diamondPoints(sx, sy), true);
+          const star = scene.add.text(sx, sy - 6, pot === 'empty' ? '✦' : '★', {
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '16px', color: '#ffd166',
+          }).setOrigin(0.5).setDepth(6);
+          star.setShadow(0, 0, '#000', 4);
+          if (pot !== 'empty') {
+            glowLayer.fillStyle(starCol, 0.18 + (pot === 'high' ? 0.18 : 0.08)).fillCircle(sx, sy - 18, 20);
+          }
         } else if (t.productId) {
           tileLayer.fillStyle(0x00d4aa, 1).fillCircle(sx, sy - 6, 4);
         }
@@ -293,6 +307,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             txt += `Value: $${t.value.toLocaleString()}\nGrowth: ${(t.growth * 100).toFixed(1)}%\nRisk: ${(t.risk * 100).toFixed(0)}%\nControl: ${(t.controlStrength * 100).toFixed(0)}%`;
             if (ctrl) txt += `\nOwner: ${ctrl.name}`;
             if (ch) txt += `\nChallenger: ${ch.name}`;
+            if (t.isStartupTile) {
+              const p = t.startupPotential ?? 'empty';
+              txt += `\n★ STARTUP (${p === 'empty' ? 'empty shell — blind buy' : p})`;
+            }
             tipText.setText(txt);
             tipBg.clear().fillStyle(0x141420, 0.95).fillRoundedRect(0, 0, tipText.width + 20, tipText.height + 18, 6)
               .lineStyle(1, 0x00d4aa, 0.6).strokeRoundedRect(0, 0, tipText.width + 20, tipText.height + 18, 6);

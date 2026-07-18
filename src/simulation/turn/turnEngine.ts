@@ -178,15 +178,28 @@ export class TurnEngine {
       tile.controllerId = c.id;
       tile.controlStrength = this.rng.nextFloat(0.5, 0.8);
       c.controlledTiles = [tile.id];
-      const id = generateId.building();
-      c.buildings.push({
-        id, tileId: tile.id,
-        departmentIds: c.departments.slice(0, 1).map(d => d.id),
-        productIds: c.products.slice(0, 1).map(p => p.id),
-        firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
-        maxDepartments: 8,
-      });
-      tile.buildingId = id;
+      tile.isStartupTile = true;
+
+      // ~half are "empty" shells (tile only, no building) — cheap, blind buys;
+      // the rest carry a building + an idea/tech (real acquisition targets).
+      const empty = i % 2 === 1;
+      if (empty) {
+        tile.startupPotential = 'empty';
+        c.startupPotential = 'empty';
+      } else {
+        const potential = i % 4 === 0 ? 'high' : 'promising';
+        tile.startupPotential = potential;
+        c.startupPotential = potential;
+        const id = generateId.building();
+        c.buildings.push({
+          id, tileId: tile.id,
+          departmentIds: c.departments.slice(0, 1).map(d => d.id),
+          productIds: c.products.slice(0, 1).map(p => p.id),
+          firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
+          maxDepartments: 8,
+        });
+        tile.buildingId = id;
+      }
       startups.push(c);
     }
     return startups;
@@ -216,6 +229,7 @@ export class TurnEngine {
 
     this.processPlayerActions(events, newsItems);
     this.processAIActions(events, newsItems);
+    this.resolveAuctions(newsItems);
     this.resolveMarket();
     this.resolveFinancials();
     this.resolveRisks(events, newsItems);
@@ -674,7 +688,7 @@ export class TurnEngine {
         this.scoutAcquisition(company);
         break;
       case 'acquire_company':
-        this.acquireCompany(company, action.budget);
+        this.acquireCompany(company, action);
         break;
       case 'raise_capital':
         this.raiseCapital(company);
@@ -1014,10 +1028,61 @@ export class TurnEngine {
     }
   }
 
-  private acquireCompany(company: Company, _budget: number): void {
-    if (_budget < 1000000) return;
-    company.cash -= _budget;
-    company.marketInfluence += 5;
+  private acquireCompany(company: Company, action: TurnAction): void {
+    const price = action.budget;
+    if (price < 1000000) return;
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    if (!target) return;
+    if (price > company.cash) return;
+
+    // Pay out.
+    company.cash -= price;
+    target.cash += Math.round(price * 0.6);
+    // Inherit the acquired firm's revenue stream (drives valuation after recalc).
+    company.revenue += target.revenue;
+    // Fold target buildings + their tiles into the buyer (acquire tile + building).
+    target.buildings.forEach(b => {
+      if (!company.buildings.find(x => x.tileId === b.tileId)) {
+        company.buildings.push(b);
+        const t = this.state.marketTiles.get(b.tileId);
+        if (t) { t.controllerId = company.id; t.buildingId = b.id; t.isStartupTile = false; t.startupPotential = undefined; }
+        if (!company.controlledTiles.includes(b.tileId)) company.controlledTiles.push(b.tileId);
+      }
+    });
+    // Empty-shell startups: still grab the tile (no building to move).
+    target.controlledTiles.forEach(tid => {
+      const t = this.state.marketTiles.get(tid);
+      if (t && t.controllerId === target.id && !company.controlledTiles.includes(tid)) {
+        t.controllerId = company.id;
+        t.isStartupTile = false;
+        t.startupPotential = undefined;
+        company.controlledTiles.push(tid);
+      }
+    });
+    // Market-share / valuation impact (the player's quote moves up or down).
+    const share = target.marketInfluence;
+    company.marketInfluence = Math.min(100, company.marketInfluence + share * 0.8 + 3);
+    company.valuation = Math.max(1, company.valuation + target.valuation * 0.5);
+    target.marketInfluence = Math.max(0, target.marketInfluence - share * 0.5);
+    // Acquired startup's fate: absorbed (removed) once bought out.
+    if (target.isStartup) {
+      this.state.companies.delete(target.id);
+      company.acquisitions = (company.acquisitions ?? 0) + 1;
+    }
+
+    this.addNews(company.id, `${company.name} acquires ${target.name} for $${price.toLocaleString()} — market share shifts.`);
+    this.state.marketBriefing.globalEvents.push({
+      id: generateId.action(),
+      turn: this.state.turn,
+      category: 'ma',
+      kind: 'ma',
+      title: 'Acquisition',
+      description: `${company.name} acquires ${target.name} ($${price.toLocaleString()}).`,
+      impact: { marketInfluenceDelta: share * 0.8 + 3 },
+      affectedCompanies: [company.id, target.id],
+      duration: 1,
+      severity: 'high',
+    });
   }
 
   private raiseCapital(company: Company): void {
@@ -1781,6 +1846,12 @@ export class TurnEngine {
           }
         }
         // no valid winner -> relist expired, moved to survivors without bid held
+        // Startup shells that fail to attract a bid lose credibility (brand trust).
+        if (seller.isStartup) {
+          seller.brandTrust = Math.max(0, seller.brandTrust - 12);
+          seller.marketInfluence = Math.max(0, seller.marketInfluence - 4);
+          this.addNews(seller.id, `${seller.name}'s ${listing.name} went unsold at auction — credibility takes a hit.`);
+        }
         survivors.push({ ...listing, currentBid: 0, highestBidderId: null });
       } else {
         survivors.push(listing);
@@ -2150,7 +2221,7 @@ export class TurnEngine {
 
     // Cataclysms — only when the player enables them.
     if (this.state.simulation.cataclysms) {
-      // Cataclysm — SimCity-like disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
+      // Cataclysm — disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
       if (this.rng.nextBoolean(0.12)) {
         const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
         const name = this.rng.shuffle(kinds).pop()!;
