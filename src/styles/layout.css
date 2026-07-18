@@ -808,9 +808,40 @@
 .bs-low { background: linear-gradient(90deg, #ff6b35, #ff8a5c); }
 .bs-val { font-family: var(--font-mono); text-align: right; color: var(--text-primary); }
 .ceo-blurb { font-size: 10px; color: var(--text-muted); margin: 2px 0 0; font-style: italic; }
+.ceo-traits-buy { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.trait-buy { font-size: 10px; padding: 4px 8px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-secondary); border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.trait-buy.on { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,170,0.10); }
+.trait-buy:disabled { opacity: 0.35; cursor: not-allowed; }
+.trait-cost { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+.ceo-special-buy { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.ceo-special-buy .bs-row { display: grid; grid-template-columns: 92px 1fr 22px 44px; align-items: center; gap: 6px; font-size: 10px; }
+.bs-fill { height: 100%; background: linear-gradient(90deg, #00d4aa, #36e0a0); }
+.bs-fill.luck { background: linear-gradient(90deg, #ffc107, #ffd54f); }
+.bs-stepper { display: flex; gap: 2px; justify-content: flex-end; }
 .preview-stats { display: flex; flex-wrap: wrap; gap: 6px; }
 .preview-note { font-size: 12px; color: var(--text-secondary); }
 .preview-note ul { margin: 6px 0 0; padding-left: 16px; }
+
+/* ---- CEO GDR tab (BottomPanel) -------------------------------------- */
+.ceo-panel { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px; }
+.ceo-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg-secondary); }
+.ceo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ceo-role { font-weight: 800; letter-spacing: 0.06em; color: var(--accent-cyan); }
+.ceo-xp { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.ceo-special { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.special-row { display: grid; grid-template-columns: 130px 1fr 22px; align-items: center; gap: 8px; font-size: 10px; }
+.special-label { color: var(--text-secondary); }
+.special-bar { height: 6px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
+.special-fill { height: 100%; background: linear-gradient(90deg, #00d4aa, #36e0a0); }
+.special-fill.luck { background: linear-gradient(90deg, #ffc107, #ffd54f); }
+.special-val { font-family: var(--font-mono); text-align: right; color: var(--text-primary); }
+.ceo-traits { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.trait-chip { font-size: 10px; background: rgba(0,212,170,0.12); color: var(--accent-cyan); padding: 2px 8px; border-radius: 999px; }
+.perk-chip { font-size: 10px; background: rgba(155,89,182,0.15); color: #b07fd0; padding: 2px 8px; border-radius: 999px; }
+.ceo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ceo-btn { font-size: 11px; padding: 5px 10px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); border-radius: 6px; cursor: pointer; }
+.ceo-btn:hover { border-color: var(--accent-cyan); }
+.ceo-btn.danger:hover { border-color: var(--accent-red); color: var(--accent-red); }
 .preview-note li { margin: 2px 0; }
 
 .sparkline { display: block; width: 100%; height: 22px; margin-top: 4px; }
@@ -1332,5 +1363,33 @@
 .classified-lock { font-size: 22px; color: var(--text-muted); letter-spacing: 0.1em; margin-bottom: 8px; }
 .classified p { color: var(--text-secondary); font-size: 12px; }
 .classified strong { color: var(--accent-cyan); }
+
+/* ---- New Game: empire placement grid ---- */
+.empire-setup { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.empire-setup h3 { font-size: 13px; letter-spacing: 0.06em; margin: 0 0 4px; color: var(--text-secondary); }
+.setup-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 10px; }
+.empire-grid { display: grid; gap: 3px; max-width: 360px; margin-bottom: 12px; }
+.grid-cell { aspect-ratio: 1; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-secondary); border-radius: 3px; cursor: pointer; font-size: 11px; font-weight: 600; }
+.grid-cell:hover:not(:disabled) { border-color: var(--accent-cyan); }
+.grid-cell.bld { background: rgba(0,212,170,0.18); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.grid-cell.hq { background: rgba(255,193,7,0.18); border-color: #ffc107; color: #ffc107; }
+.grid-cell:disabled { opacity: 0.3; cursor: not-allowed; }
+.empire-buildings { display: grid; gap: 10px; }
+.empire-bld { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; background: var(--bg-panel); }
+.empire-bld.hq { border-color: #ffc107; }
+.eb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.eb-name { font-size: 11px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.eb-name input { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: 12px; }
+.eb-rm { font-size: 10px; background: transparent; border: 1px solid var(--border); color: var(--text-muted); border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+.eb-depts { display: flex; flex-wrap: wrap; gap: 5px; }
+.eb-dept { font-size: 10px; padding: 3px 7px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; }
+.eb-dept.on { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,170,0.12); }
+.eb-dept:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ---- Action composer: department-gated buttons ---- */
+.ac-btn.locked { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.6); }
+.ac-btn.locked:hover { background: var(--bg-elevated); }
+.ac-lock { font-size: 10px; margin-left: 4px; }
+.ac-cost { margin-left: auto; font-size: 10px; color: var(--text-muted); }
 
 

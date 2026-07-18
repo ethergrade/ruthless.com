@@ -1,4 +1,4 @@
-import type { CompanyArchetype, CEOTrait, ChiefPerk } from '../types';
+import type { CompanyArchetype, CEOTrait, ChiefPerk, CEOSkill } from '../types';
 
 /**
  * T — GDR build planner for NEW GAME.
@@ -93,6 +93,25 @@ export const CEO_TRAIT_DEFS: Record<CEOTrait, CEOTraitDef> = {
     tags: ['Baseline', 'No Bonus / Penalty'],
   },
 };
+
+/** Fallout-style S.P.E.C.I.A.L. skill keys (0..10). */
+export const CEO_SKILLS: CEOSkill[] = [
+  'strength', 'perception', 'endurance', 'charisma', 'intelligence', 'agility', 'luck',
+];
+
+/** Human-readable labels for the S.P.E.C.I.A.L. attributes. */
+export const SPECIAL_LABELS: Record<CEOSkill, string> = {
+  strength: 'S — Strength',
+  perception: 'P — Perception',
+  endurance: 'E — Endurance',
+  charisma: 'C — Charisma',
+  intelligence: 'I — Intelligence',
+  agility: 'A — Agility',
+  luck: 'L — Luck',
+};
+
+/** Token budget for the New Game CEO point-buy. */
+export const CEO_TOKEN_BUDGET = 20;
 
 /** Human-readable label for a stat key (used in the build planner UI). */
 export const STAT_LABELS: Record<keyof CompanyStats, string> = {

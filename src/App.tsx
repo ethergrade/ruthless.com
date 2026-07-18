@@ -253,6 +253,7 @@ function App() {
             tiles={Array.from(state.marketTiles.values())}
             presetType={presetActionType}
             initialDraft={editDraft}
+            initialTileId={selectedTileId ?? undefined}
             onClose={() => { setShowActionModal(false); setEditDraft(null); }}
             onAdd={handleAddAction}
             estimate={estimateAction}

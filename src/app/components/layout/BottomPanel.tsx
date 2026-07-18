@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId, ActionType } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
+import { CEO_SKILLS, SPECIAL_LABELS, PERK_LABELS, CEO_TRAIT_DEFS } from '../../../data/archetypes';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
@@ -8,7 +9,7 @@ interface BottomPanelProps {
   playerCompany: Company | undefined;
   onEdit: (action: TurnAction) => void;
   height?: number;
-  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce';
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo';
   selectedTileId?: string | null;
 }
 
@@ -20,7 +21,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   height = 220,
   selectedTileId,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo'>(defaultTab);
 
   if (!state || !playerCompany) return null;
 
@@ -49,6 +50,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         <button className={`tab ${activeTab === 'workforce' ? 'active' : ''}`} onClick={() => setActiveTab('workforce')}>
           Workforce
         </button>
+        <button className={`tab ${activeTab === 'ceo' ? 'active' : ''}`} onClick={() => setActiveTab('ceo')}>
+          CEO
+        </button>
       </div>
 
       <div className="bottom-content">
@@ -65,6 +69,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
         {activeTab === 'tech' && <TechnologyBookPanel technologies={TECHNOLOGIES} />}
         {activeTab === 'workforce' && <WorkforcePanel company={playerCompany} />}
+        {activeTab === 'ceo' && <CeoPanel company={playerCompany} onEdit={onEdit} />}
     </div>
     </div>
   );
@@ -157,10 +162,10 @@ const DepartmentsPanel: React.FC<{
           <div key={b.id} className={`building-node ${b.isHQ ? 'hq' : ''}`}>
             <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
               <span className="bu-caret">{isOpen ? '▾' : '▸'}</span>
-              <span className="bu-name">{b.isHQ ? '⚑ HQ' : '⌂ Branch'}</span>
+              <span className="bu-name">{b.name ?? (b.isHQ ? '⚑ HQ' : '⌂ Branch')}</span>
               <span className="bu-seg">{b.tileId}</span>
               <span className="bu-fw">FW {b.firewall}</span>
-              <span className="bu-count">{depts.length} dept{depts.length === 1 ? '' : 's'}</span>
+              <span className="bu-count">{depts.length}/{b.maxDepartments} dept{depts.length === 1 ? '' : 's'}</span>
             </button>
             {isOpen && (
               <div className="building-depts">
@@ -510,6 +515,76 @@ const WorkforcePanel: React.FC<{ company: Company }> = ({ company }) => {
 };
 
 /** T5 — Global market trends + weak signals. Exploit opens the Orders tab. */
+const CeoPanel: React.FC<{ company: Company; onEdit: (a: TurnAction) => void }> = ({ company, onEdit }) => {
+  if (company.ceos.length === 0) {
+    return (
+      <div className="ceo-panel">
+        <div className="empty-state">No CEO seated. Build an HQ, add an HR department, then use <b>Hire CEO</b> from the ORDERS tab to seat one.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="ceo-panel">
+      {company.ceos.map(c => {
+        const skills = CEO_SKILLS.map(s => ({ key: s, label: SPECIAL_LABELS[s], val: c.skills[s] ?? 0 }));
+        return (
+          <div key={c.id} className="ceo-card">
+            <div className="ceo-head">
+              <span className="ceo-role">{c.role.toUpperCase()}</span>
+              <span className="ceo-xp">XP {c.xp} · lvl {company.ceoLevel} · {c.specialPoints} SP</span>
+            </div>
+
+            <div className="ceo-special">
+              {skills.map(s => (
+                <div key={s.key} className="special-row">
+                  <span className="special-label">{s.label}</span>
+                  <div className="special-bar"><div className="special-fill" style={{ width: `${s.val * 10}%` }} /></div>
+                  <span className="special-val">{s.val}</span>
+                </div>
+              ))}
+              <div className="special-row">
+                <span className="special-label">L — Luck</span>
+                <div className="special-bar"><div className="special-fill luck" style={{ width: `${c.luck * 10}%` }} /></div>
+                <span className="special-val">{c.luck}</span>
+              </div>
+            </div>
+
+            <div className="ceo-traits">
+              {(c.ceoTraits ?? []).map(t => (
+                <span key={t} className="trait-chip" title={CEO_TRAIT_DEFS[t]?.blurb}>{CEO_TRAIT_DEFS[t]?.name ?? t}</span>
+              ))}
+              {c.perks.map(p => (
+                <span key={p} className="perk-chip" title={PERK_LABELS[p]}>{p.replace('_', ' ')}</span>
+              ))}
+            </div>
+
+            <div className="ceo-actions">
+              <button className="ceo-btn" onClick={() => onEdit({ ...blankAction(company.id, 'train_ceo'), executiveId: c.id })}>Train S.P.E.C.I.A.L.</button>
+              <button className="ceo-btn danger" onClick={() => onEdit({ ...blankAction(company.id, 'hire_ceo') })}>Hire New CEO</button>
+              <button className="ceo-btn danger" onClick={() => onEdit({ ...blankAction(company.id, 'hire_coo') })}>Hire COO</button>
+              {company.ceos.length > 1 && (
+                <button className="ceo-btn danger" onClick={() => onEdit({ ...blankAction(company.id, 'fire_ceo'), executiveId: c.id })}>Fire</button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/** Minimal valid TurnAction draft for opening the composer pre-filled. */
+function blankAction(companyId: string, type: ActionType): TurnAction {
+  return {
+    id: `draft_${type}_${Date.now()}`,
+    companyId,
+    type,
+    budget: 0,
+    status: 'planned',
+    priority: 1,
+  } as TurnAction;
+}
+
 export const TrendsPanel: React.FC<{
   trends: MarketTrend[];
   weakSignals: WeakSignal[];

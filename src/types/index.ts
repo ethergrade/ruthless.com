@@ -309,6 +309,8 @@ export interface ChiefExecutive extends Executive {
 export interface Building {
   id: string;
   tileId: TileId;
+  /** Player-given name (e.g. "BUILDING 1", "R&D Tower"). Falls back to HQ/Branch. */
+  name?: string;
   /** Departments housed in this building (subset of company.departments). */
   departmentIds: DepartmentId[];
   productIds: ProductId[];
@@ -324,6 +326,16 @@ export interface Building {
   maxDepartments: number;
   /** True when this building is listed for auction (req 2). */
   upForAuction?: boolean;
+}
+
+/** T: New Game placement — a building the player hand-places before rivals spawn. */
+export interface InitialBuildingSpec {
+  name?: string;
+  isHQ: boolean;
+  /** up to 3 department types housed inside this building at game start */
+  deptTypes: DepartmentType[];
+  /** placement slot index into the starting market grid (row*mw + col) */
+  slot: number;
 }
 
 export interface MarketTile {
@@ -567,6 +579,8 @@ export interface TurnAction {
   pivotSegments?: MarketSegment[];
   /** T: build_building — if true, the new building is an HQ (needs HR + hire_ceo after). */
   makeHQ?: boolean;
+  /** T: build_building — player-given name (e.g. "BUILDING 1"). */
+  buildingName?: string;
   /** T: hire_ceo / hire_coo — target HQ building id to seat the executive at. */
   hqBuildingId?: string;
   /** Generated/editable product name + category (product creation). */

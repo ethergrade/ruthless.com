@@ -20,18 +20,6 @@ import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, type CompanyStats } from '../../data/a
 /** Clamp a 0..100 capability metric. */
 const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
-/** HSL → hex, for generating unique rival shades beyond the fixed palette. */
-const hslToHex = (h: number, s: number, l: number): string => {
-  const sd = s / 100, ld = l / 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = sd * Math.min(ld, 1 - ld);
-  const f = (n: number) => {
-    const c = ld - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    return Math.round(255 * c).toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-};
-
 const COMPANY_NAMES = [
   'NexusTech', 'Apex Digital', 'Quantum Systems', 'Vertex Solutions',
   'Meridian AI', 'Sentinel Cyber', 'Axiom Cloud', 'Catalyst Labs',
@@ -55,10 +43,12 @@ const VULNERABILITIES: ExecutiveVulnerability[] = [
   'risk_averse', 'micromanager', 'delegation_issues', 'conflict_avoidant',
 ];
 
-const DEFAULT_COLORS = [
-  '#00d4aa', '#ff6b35', '#007bff', '#ffc107',
-  '#e83e8c', '#6f42c1', '#20c997', '#fd7e14',
-];
+// T: player is always cyan. Active rivals draw from 7 saturated, well-separated
+// hues. Neutral start-ups use a muted/desaturated band so they can NEVER be
+// confused with a rival (zero color ambiguity on the board).
+const PLAYER_COLOR = '#00d4aa';
+const RIVAL_COLORS = ['#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
+const STARTUP_COLORS = ['#8a94a6', '#6b7785', '#9aa7b5', '#7d8896', '#aab4c0', '#70808f', '#94a0ad'];
 
 export const createCompany = (
   rng: ReturnType<typeof createRNG>,
@@ -71,6 +61,8 @@ export const createCompany = (
   statOverrides?: Partial<CompanyStats>,
   /** T: GDR SPECIAL build for the starting CEO (Fallout-style point-buy). */
   ceoBuild?: CeoBuild,
+  /** T: distinguishes active rivals (saturated palette) from neutral start-ups (muted). */
+  kind: 'player' | 'rival' | 'startup' = isPlayer ? 'player' : 'rival',
 ): Company => {
   const companyName = name ?? rng.shuffle([...COMPANY_NAMES]).pop()!;
   const companyArchetype = archetype ?? rng.shuffle([
@@ -81,15 +73,13 @@ export const createCompany = (
   ] as CompanyArchetype[]).pop()!;
 
   const id = generateId.company();
-  // T: player is always cyan (#00d4aa); rivals draw from a palette of 8
-  // distinct colors. If more rivals/startups exist than palette slots, generate a
-  // unique HSL shade (uniform hue spread) so no two corporations share a color.
-  const paletteIdx = (colorIndex + 1) % DEFAULT_COLORS.length;
-  const color = isPlayer
-    ? '#00d4aa'
-    : (colorIndex + 1 < DEFAULT_COLORS.length
-        ? DEFAULT_COLORS[paletteIdx]
-        : hslToHex((paletteIdx * 47) % 360, 70, 55));
+  // T: player = cyan (fixed). Rivals = 7 saturated, well-separated hues.
+  // Start-ups = muted/desaturated band so they never collide with a rival color.
+  const color = kind === 'player'
+    ? PLAYER_COLOR
+    : kind === 'startup'
+      ? STARTUP_COLORS[colorIndex % STARTUP_COLORS.length]
+      : RIVAL_COLORS[colorIndex % RIVAL_COLORS.length];
 
   // CEO trait shapes the starting position (ruthless.com-inspired GDR build).
   const trait = ceoTrait ?? 'none';

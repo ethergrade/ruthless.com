@@ -297,6 +297,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         const t = screenToTile(p.worldX, p.worldY);
         onTileSelectRef.current(t ? t.id : null);
       });
+
       scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
         if (panning) {
           cam.scrollX -= (p.x - lastPX) / cam.zoom;

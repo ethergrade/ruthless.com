@@ -18,6 +18,7 @@ import type { MarketSegment,
   CyberAlert,
   CompanyId,
   ProductId,
+  DepartmentId,
   EventCategory,
   AuctionListing,
   CEOTrait,
@@ -29,6 +30,7 @@ import type { MarketSegment,
   WeakSignal,
   Idea,
   Building,
+  InitialBuildingSpec,
   ChiefExecutive,
 } from '../../types';
 import { generateId } from '../utils/ids';
@@ -49,18 +51,28 @@ export class TurnEngine {
   private ceoTrait: CEOTrait = 'none';
   private scenarioOpts: ScenarioConfig | null = null;
   private ceoBuild?: CeoBuild;
+  /** T: player's hand-placed starting empire (New Game placement flow). */
+  private initialBuildings?: InitialBuildingSpec[];
   /** Ideas actually created this turn, per company — backs the R&D capacity cap. */
   private ideasCreatedThisTurn = new Map<string, number>();
 
   // T: point-buy stat overrides for the player's starting build.
   private statOverrides?: Partial<Record<string, number>>;
 
-  constructor(seed?: number, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild) {
+  constructor(
+    seed?: number,
+    ceoTrait?: CEOTrait,
+    scenario?: ScenarioConfig,
+    statOverrides?: Partial<Record<string, number>>,
+    ceoBuild?: CeoBuild,
+    initialBuildings?: InitialBuildingSpec[],
+  ) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
     if (scenario) this.scenarioOpts = scenario;
     this.statOverrides = statOverrides;
     this.ceoBuild = ceoBuild;
+    this.initialBuildings = initialBuildings;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
@@ -92,7 +104,7 @@ export class TurnEngine {
       ['Vertex Dynamics', 'lean_specialist'],
     ];
     const aiCompanies = rivalDefs.slice(0, rivalCount).map(([name, arch], i) =>
-      createCompany(this.rng, name, arch, false, i));
+      createCompany(this.rng, name, arch, false, i, undefined, undefined, undefined, 'rival'));
 
     const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides, this.ceoBuild);
     if (so?.startCash) playerCompany.cash = so.startCash;
@@ -104,7 +116,12 @@ export class TurnEngine {
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
 
     // Give each corporation a starting HQ Building on its first controlled tile.
-    [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
+    // If the player hand-placed an empire via the New Game flow, honour that instead.
+    if (this.initialBuildings && this.initialBuildings.length > 0) {
+      this.seedPlayerBuildings(playerCompany, marketTiles, this.initialBuildings);
+    } else {
+      [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
+    }
 
     // Spawn neutral "start-up" corporations sitting on random tiles that the
     // player (or AI) can acquire via payment / public tender offer.
@@ -165,6 +182,60 @@ export class TurnEngine {
     tile.buildingId = id;
   }
 
+  /**
+   * T: New Game placement — build the player's hand-placed empire.
+   * Each spec becomes a real Building on the tile at `slot`, housing the chosen
+   * departments. Rivals still spawn afterwards (see initializeGameState).
+   */
+  private seedPlayerBuildings(
+    company: Company,
+    tiles: Map<string, MarketTile>,
+    specs: InitialBuildingSpec[],
+  ): void {
+    const allTiles = Array.from(tiles.values());
+    specs.forEach((spec, idx) => {
+      const tile = allTiles[spec.slot] ?? allTiles[idx];
+      if (!tile) return;
+      const id = generateId.building();
+      const isHQ = spec.isHQ || idx === 0;
+      const deptTypes = spec.deptTypes.slice(0, 3);
+      const deptIds: DepartmentId[] = [];
+      deptTypes.forEach(dt => {
+        const dId = generateId.department();
+        const dept: Department = {
+          id: dId,
+          type: dt,
+          level: 1,
+          capacity: 10,
+          efficiency: 0.7,
+          morale: 0.8,
+          risk: 0.2,
+          recurringCost: 50000,
+          buildingId: id,
+        };
+        company.departments.push(dept);
+        deptIds.push(dId);
+      });
+      // also register the housed departments as controlled (tile ownership)
+      company.buildings.push({
+        id,
+        tileId: tile.id,
+        name: spec.name?.trim() || (isHQ ? 'HQ' : `BUILDING ${idx + 1}`),
+        departmentIds: deptIds,
+        productIds: [],
+        firewall: isHQ ? 30 : 10,
+        physicalSecurity: isHQ ? 40 : 15,
+        hushMoney: 0,
+        isHQ,
+        ceoId: isHQ ? company.ceos[0]?.id : undefined,
+        maxDepartments: 8,
+      });
+      tile.buildingId = id;
+      tile.controllerId = company.id;
+      if (!company.controlledTiles.includes(tile.id)) company.controlledTiles.push(tile.id);
+    });
+  }
+
   /** Create neutral start-up corps on random unclaimed tiles. */
   private spawnStartups(tiles: Map<string, MarketTile>, count: number): Company[] {
     const free = Array.from(tiles.values()).filter(t => !t.controllerId);
@@ -172,7 +243,7 @@ export class TurnEngine {
     const startups: Company[] = [];
     for (let i = 0; i < count && free.length > 0; i++) {
       const tile = free.pop()!;
-      const c = createCompany(this.rng, undefined, undefined, false, 3 + i);
+      const c = createCompany(this.rng, undefined, undefined, false, i, undefined, undefined, undefined, 'startup');
       c.isStartup = true;
       c.name = generateCompanyName(this.rng.getSeed() + i * 13 + 1);
       c.cash = this.rng.nextInt(300000, 900000);
@@ -1112,11 +1183,15 @@ export class TurnEngine {
     if (!tileId) return;
     const tile = this.state.marketTiles.get(tileId);
     if (!tile) return;
+    // A tile can only hold ONE building. If it already has one (yours or a
+    // rival's) you cannot raise another on top of it — pick a different tile.
+    if (tile.buildingId) return;
     const id = generateId.building();
     const isHQ = action.makeHQ === true || company.buildings.length === 0;
     const building: Building = {
       id,
       tileId,
+      name: action.buildingName?.trim() || (isHQ ? 'HQ' : `BUILDING ${company.buildings.length + 1}`),
       departmentIds: company.departments.slice(0, 1).map(d => d.id),
       productIds: company.products.slice(0, 1).map(p => p.id),
       firewall: isHQ ? 30 : 10,

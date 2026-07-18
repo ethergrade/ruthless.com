@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware';
 import type {
   GameState, TurnAction, NewsItem, MarketBriefing,
   CompanyId, TileId, CompanyArchetype,
-  CEOTrait, ScenarioConfig, AlertItem, CeoBuild,
+  CEOTrait, ScenarioConfig, AlertItem, CeoBuild, InitialBuildingSpec,
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
@@ -23,7 +23,7 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[]) => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -60,8 +60,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[]) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined || sim) {
           const player = state.companies.get(state.playerCompanyId);
