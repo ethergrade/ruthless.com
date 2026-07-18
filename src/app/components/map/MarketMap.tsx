@@ -187,7 +187,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
           // and the player can compare competitor "mass" at a glance).
           const building = t.buildingId ? state!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
           const deptCount = building ? building.departmentIds.length : 0;
-          const h = Math.min(92, 16 + deptCount * 11); // ~27 (1 dept) .. 92 (8 depts)
+          // Base footprint (always visible) + one floor per housed department,
+          // so a freshly-built empty shell still reads on the board and mass
+          // scales with departments (player can compare rival "mass" at a glance).
+          const h = Math.min(92, 30 + deptCount * 9);
           const segs = Math.max(1, Math.min(6, deptCount + 1));
           let topY = sy - TILE_H / 2, w = 40;
           for (let s = 0; s < segs; s++) {
