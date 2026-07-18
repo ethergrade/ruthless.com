@@ -1315,6 +1315,13 @@
 .bu-count { margin-left: auto; color: var(--accent-cyan); font-family: var(--font-mono); font-size: 11px; }
 .building-depts { padding: 10px 12px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2); }
 .empty-state.small { padding: 8px; font-size: 11px; }
+.rival-territory { margin-top: 14px; border: 1px dashed #ff6b4d; border-radius: 8px; overflow: hidden; background: rgba(255,107,77,0.05); }
+.rt-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255,107,77,0.12); font-size: 11px; }
+.rt-lock { font-size: 13px; }
+.rt-title { font-weight: 800; letter-spacing: 0.06em; color: #ff6b4d; }
+.rt-hint { margin-left: auto; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.building-node.rival { border-color: rgba(255,107,77,0.4); background: rgba(255,107,77,0.04); }
+.empty-state.small.locked { color: #ff6b4d; }
 
 /* ---- Building Detail modal (map click) -------------------------------- */
 .building-detail { display: flex; flex-direction: column; gap: 12px; }

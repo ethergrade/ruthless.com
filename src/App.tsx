@@ -241,6 +241,7 @@ function App() {
         height={bottomH}
         state={state}
         playerCompany={playerCompany}
+        selectedTileId={selectedTileId}
         onEdit={handleEdit}
       />
 

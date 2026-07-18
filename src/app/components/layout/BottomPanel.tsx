@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building } from '../../../types';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
 import { Icon, IconName } from '../ui/Icon';
 
@@ -9,6 +9,7 @@ interface BottomPanelProps {
   onEdit: (action: TurnAction) => void;
   height?: number;
   defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce';
+  selectedTileId?: string | null;
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -17,6 +18,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   defaultTab = 'kpi',
   onEdit,
   height = 220,
+  selectedTileId,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce'>(defaultTab);
 
@@ -51,7 +53,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
       <div className="bottom-content">
         {activeTab === 'kpi' && <KPIPanel company={playerCompany} history={state.kpiHistory} />}
-        {activeTab === 'departments' && <DepartmentsPanel departments={playerCompany.departments} buildings={playerCompany.buildings} />}
+        {activeTab === 'departments' && <DepartmentsPanel
+          state={state}
+          departments={playerCompany.departments}
+          buildings={playerCompany.buildings}
+          playerCompanyId={playerCompany.id}
+          selectedTileId={selectedTileId}
+        />}
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
@@ -116,11 +124,28 @@ const Sparkline: React.FC<{ data: number[] }> = ({ data }) => {
   );
 };
 
-const DepartmentsPanel: React.FC<{ departments: Department[]; buildings: Building[] }> = ({
-  departments, buildings,
-}) => {
+const DepartmentsPanel: React.FC<{
+  state: GameState | null;
+  departments: Department[];
+  buildings: Building[];
+  playerCompanyId: string;
+  selectedTileId?: string | null;
+}> = ({ state, departments, buildings, playerCompanyId, selectedTileId }) => {
   const [openId, setOpenId] = useState<string | null>(null);
-  if (buildings.length === 0) return <div className="empty-state">No buildings yet. Raise one from the ORDERS tab.</div>;
+
+  // Rival Territory: when the player clicks a rival-controlled tile, surface that
+  // rival's buildings below the player's own tree (option A: no modal, just a
+  // lower section). Departments stay 🔒 CLASSIFIED unless revealed by espionage
+  // or the CEO's corporate_intelligence perk.
+  const selectedTile = selectedTileId && state ? state.marketTiles.get(selectedTileId as TileId) : undefined;
+  const rivalId = selectedTile?.controllerId;
+  const isRivalTile = Boolean(rivalId) && rivalId !== playerCompanyId;
+  const rivalCompany = isRivalTile ? state?.companies.get(rivalId!) : undefined;
+  const revealed = state?.revealedBuildings ?? [];
+  const ceoIntel = (state?.companies.get(playerCompanyId)?.ceos ?? []).some(c => c.perks?.includes('corporate_intelligence'));
+  const canSeeRivalDepts = revealed.length > 0 || ceoIntel;
+
+  if (buildings.length === 0 && !isRivalTile) return <div className="empty-state">No buildings yet. Raise one from the ORDERS tab.</div>;
   return (
     <div className="building-tree">
       {buildings.map(b => {
@@ -147,6 +172,42 @@ const DepartmentsPanel: React.FC<{ departments: Department[]; buildings: Buildin
           </div>
         );
       })}
+
+      {isRivalTile && rivalCompany && (
+        <div className="rival-territory">
+          <div className="rt-header">
+            <span className="rt-lock">🔒</span>
+            <span className="rt-title">RIVAL TERRITORY — {rivalCompany.name}</span>
+            <span className="rt-hint">{canSeeRivalDepts ? 'interior revealed' : 'interior CLASSIFIED — run Espionage / Cyber to reveal'}</span>
+          </div>
+          {rivalCompany.buildings.map(b => {
+            const depts = b.departmentIds
+              .map(id => rivalCompany.departments.find(d => d.id === id))
+              .filter((d): d is Department => Boolean(d));
+            const isRevealed = canSeeRivalDepts && (revealed.includes(b.id) || ceoIntel);
+            const isOpen = openId === b.id;
+            return (
+              <div key={b.id} className="building-node rival">
+                <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
+                  <span className="bu-caret">{isOpen ? '▾' : '▸'}</span>
+                  <span className="bu-name">{b.isHQ ? '⚑ HQ' : '⌂ Branch'}</span>
+                  <span className="bu-seg">{b.tileId}</span>
+                  <span className="bu-count">{depts.length} dept{depts.length === 1 ? '' : 's'}</span>
+                </button>
+                {isOpen && (
+                  <div className="building-depts">
+                    {!isRevealed
+                      ? <div className="empty-state small locked">🔒 CLASSIFIED — {depts.length} department(s) hidden</div>
+                      : depts.length === 0
+                        ? <div className="empty-state small">Empty — no departments housed here.</div>
+                        : <div className="departments-grid">{depts.map((d, i) => <DepartmentCard key={i} dept={d} />)}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
