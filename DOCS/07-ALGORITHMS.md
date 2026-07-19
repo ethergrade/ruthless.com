@@ -40,6 +40,15 @@ Base `0.7`, modificata da:
 ```
 Clamp finale: `max(0.05, min(0.97, round(chance*100)/100))`.
 
+Per `cyber_attack`, la probabilità mostra anche firewall e Cybersecurity Points del building bersaglio; i Compute Points impegnati aumentano l'offesa. Dopo il roll, il resolver confronta:
+
+```
+offense = compute*2 + aiCapability*.35 + livelli cyber/AI*3
+defense = firewall*.5 + cyberPoints + securityPosture*.25
+```
+
+Lo scudo cyber assorbe il danno per primo. A difesa completamente azzerata l'RNG deterministico sceglie fra furto e distruzione permanente dell'idea esposta.
+
 `strategyTilt(companyId)` misura come gioca il player (tilt offesa/difesa/crescita) dalla
 allocazione di budget delle azioni.
 

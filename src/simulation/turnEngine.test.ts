@@ -208,6 +208,158 @@ describe('R&D idea capacity and global trend timing', () => {
   });
 });
 
+describe('Compute and cybersecurity capacity', () => {
+  it('migrates legacy computer points and initializes new product/building capacity fields', () => {
+    const engine = new TurnEngine(600);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.computerPoints = 37;
+    const legacyCompany = company as unknown as { computePoints?: number; cybersecurityPoints?: number };
+    const legacyProduct = company.products[0] as unknown as { computePoints?: number; lastTurnRevenue?: number; lastTurnMargin?: number };
+    const legacyBuilding = company.buildings[0] as unknown as { cybersecurityPoints?: number };
+    delete legacyCompany.computePoints;
+    delete legacyCompany.cybersecurityPoints;
+    delete legacyProduct.computePoints;
+    delete legacyProduct.lastTurnRevenue;
+    delete legacyProduct.lastTurnMargin;
+    delete legacyBuilding.cybersecurityPoints;
+
+    engine.setState(state);
+
+    expect(company.computePoints).toBe(37);
+    expect(company.cybersecurityPoints).toBe(0);
+    expect(company.products[0].computePoints).toBe(0);
+    expect(company.buildings[0].cybersecurityPoints).toBe(0);
+  });
+
+  it('allocates compute to a product and compounds it only when the product has healthy margins', () => {
+    const engine = new TurnEngine(601);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    state.companies = new Map([[company.id, company]]);
+    company.cash = 10_000_000;
+    company.computePoints = 20;
+    company.computerPoints = 20;
+    const hq = company.buildings.find(building => building.isHQ)!;
+    const aiDepartment = {
+      ...company.departments[0], id: 'ai_capacity_test', type: 'ai_data' as const,
+      buildingId: hq.id, level: 1, efficiency: 1,
+    };
+    company.departments.push(aiDepartment);
+    hq.departmentIds.push(aiDepartment.id);
+    const product = company.products[0];
+    product.lifecycleStage = 'mature';
+    product.quality = 100;
+    product.marketFit = 100;
+    product.adopters = 0.8;
+    product.price = 50_000;
+    product.operatingCost = 1_000;
+    state.actions.push({
+      id: 'allocate_compute_test', companyId: company.id, type: 'allocate_compute',
+      targetProductId: product.id, resourcePoints: 10, budget: 0,
+      priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    expect(product.lastTurnMargin).toBeGreaterThanOrEqual(0.25);
+    expect(product.computePoints).toBeGreaterThan(10);
+    expect(company.computePoints).toBeGreaterThan(10);
+    expect(company.computerPoints).toBe(company.computePoints);
+  });
+
+  it('decays product compute when its operating margin cannot sustain the allocation', () => {
+    const engine = new TurnEngine(602);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    state.companies = new Map([[company.id, company]]);
+    const product = company.products[0];
+    product.computePoints = 20;
+    product.price = 1;
+    product.operatingCost = 1_000_000;
+
+    engine.endTurn();
+
+    expect(product.lastTurnMargin).toBeLessThan(0.05);
+    expect(product.computePoints).toBe(18);
+  });
+
+  it('assigns cybersecurity points to an owned building as a spendable resilience layer', () => {
+    const engine = new TurnEngine(603);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    state.companies = new Map([[company.id, company]]);
+    company.cybersecurityPoints = 20;
+    const building = company.buildings[0];
+    state.actions.push({
+      id: 'allocate_cyber_test', companyId: company.id, type: 'allocate_cybersecurity',
+      targetTileId: building.tileId, resourcePoints: 15, budget: 0,
+      priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    expect(building.cybersecurityPoints).toBe(15);
+    expect(company.cybersecurityPoints).toBeGreaterThanOrEqual(5);
+  });
+
+  it('preserves R&D data when assigned cyber resilience contains the attack', () => {
+    const engine = new TurnEngine(604);
+    const state = engine.getState();
+    const attacker = state.companies.get(state.playerCompanyId)!;
+    const target = [...state.companies.values()].find(company => company.id !== attacker.id)!;
+    const building = target.buildings[0];
+    const idea = { id: 'shielded_idea', name: 'Shielded Research', category: 'ai' as const, maturity: 80, breakthrough: true, companyId: target.id, createdTurn: 1 };
+    target.ideas = [idea];
+    state.inventions.push(idea);
+    building.cybersecurityPoints = 100;
+    building.firewall = 100;
+    target.securityPosture = 100;
+    attacker.computePoints = 20;
+    attacker.computerPoints = 20;
+    const invoke = (engine as unknown as { runCyberAttack: (company: typeof attacker, action: TurnAction) => void }).runCyberAttack.bind(engine);
+
+    invoke(attacker, {
+      id: 'contained_attack', companyId: attacker.id, type: 'cyber_attack',
+      targetCompanyId: target.id, targetTileId: building.tileId, resourcePoints: 10,
+      budget: 250_000, priority: 1, status: 'planned',
+    });
+
+    expect(target.ideas).toContain(idea);
+    expect(idea.maturity).toBe(80);
+    expect(building.cybersecurityPoints).toBeLessThan(100);
+  });
+
+  it('permanently steals or destroys an idea when both cyber resilience and firewall reach zero', () => {
+    const engine = new TurnEngine(605);
+    const state = engine.getState();
+    const attacker = state.companies.get(state.playerCompanyId)!;
+    const target = [...state.companies.values()].find(company => company.id !== attacker.id)!;
+    const building = target.buildings[0];
+    const idea = { id: 'critical_idea', name: 'Critical Research', category: 'quantum' as const, maturity: 95, breakthrough: true, companyId: target.id, createdTurn: 1 };
+    target.ideas = [idea];
+    state.inventions.push(idea);
+    building.cybersecurityPoints = 0;
+    building.firewall = 0;
+    target.securityPosture = 0;
+    attacker.computePoints = 100;
+    attacker.computerPoints = 100;
+    attacker.aiCapability = 100;
+    const invoke = (engine as unknown as { runCyberAttack: (company: typeof attacker, action: TurnAction) => void }).runCyberAttack.bind(engine);
+
+    invoke(attacker, {
+      id: 'critical_attack', companyId: attacker.id, type: 'cyber_attack',
+      targetCompanyId: target.id, targetTileId: building.tileId, resourcePoints: 50,
+      budget: 250_000, priority: 1, status: 'planned',
+    });
+
+    expect(target.ideas.some(candidate => candidate.id === idea.id)).toBe(false);
+    const stolen = attacker.ideas.some(candidate => candidate.id === idea.id);
+    const destroyed = !state.inventions.some(candidate => candidate.id === idea.id);
+    expect(stolen || destroyed).toBe(true);
+  });
+});
+
 describe('Building placement', () => {
   it('builds only on an empty legal tile and creates an empty building', () => {
     const engine = new TurnEngine(404);

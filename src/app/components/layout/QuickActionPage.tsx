@@ -16,8 +16,8 @@ const PAGE_META: Record<QuickPage, { eyebrow: string; title: string; description
   departments: { eyebrow: 'CORPORATE NETWORK', title: 'Departments', description: 'Operating capacity, buildings and department deployment.', actions: [{ type: 'build_department', label: 'Build department' }, { type: 'build_building', label: 'Raise building' }] },
   products: { eyebrow: 'PRODUCT WAR ROOM', title: 'Products', description: 'Ideas, launches and live product performance.', actions: [{ type: 'create_ideas', label: 'Create R&D idea' }, { type: 'launch_product', label: 'Launch product' }, { type: 'improve_product', label: 'Improve product' }] },
   executives: { eyebrow: 'EXECUTIVE OFFICE', title: 'Executives', description: 'Leadership capacity, energy and corporate command.', actions: [{ type: 'hire_executive', label: 'Hire executive' }, { type: 'train_ceo', label: 'Train CEO' }, { type: 'ceo_praise', label: 'Praise executive' }] },
-  security: { eyebrow: 'SECURITY OPERATIONS', title: 'Security', description: 'Threat posture, incidents and active defenses.', actions: [{ type: 'security_hardening', label: 'Harden security' }, { type: 'security_offline', label: 'Offline defense' }, { type: 'security_online', label: 'Online defense' }] },
-  ai: { eyebrow: 'AI & DATA COMMAND', title: 'AI & Data', description: 'Automation readiness, data capability and research output.', actions: [{ type: 'ai_automation', label: 'Deploy automation' }, { type: 'create_ideas', label: 'Create R&D idea' }] },
+  security: { eyebrow: 'SECURITY OPERATIONS', title: 'Security', description: 'Spendable resilience protects buildings, data and R&D assets.', actions: [{ type: 'allocate_cybersecurity', label: 'Allocate cyber points' }, { type: 'security_hardening', label: 'Harden security' }, { type: 'security_offline', label: 'Offline defense' }, { type: 'security_online', label: 'Generate cyber capacity' }] },
+  ai: { eyebrow: 'AI & DATA COMMAND', title: 'AI & Data', description: 'Compute capacity scales products when their economics can sustain it.', actions: [{ type: 'allocate_compute', label: 'Allocate compute' }, { type: 'ai_automation', label: 'Deploy automation' }, { type: 'create_ideas', label: 'Create R&D idea' }] },
   finance: { eyebrow: 'CASH FLOW CONTROL', title: 'Finance', description: 'Liquidity, leverage and capital operations.', actions: [{ type: 'raise_capital', label: 'Raise capital' }, { type: 'reduce_costs', label: 'Reduce costs' }, { type: 'scout_acquisition', label: 'Scout acquisition' }] },
   news: { eyebrow: 'HEADLINES / REAL TIME', title: 'Newsroom', description: 'All market stories and consequences recorded by the turn resolver.', actions: [] },
 };
@@ -36,9 +36,9 @@ export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose
   ] : page === 'executives' ? [
     ['EXECUTIVES', company.executives.length], ['ORDER LIMIT', company.executiveOrderLimit], ['CEO LEVEL', company.ceoLevel],
   ] : page === 'security' ? [
-    ['POSTURE', `${company.securityPosture.toFixed(0)}%`], ['COMPUTER POINTS', company.computerPoints], ['LIVE ALERTS', state.marketBriefing.cyberAlerts.length],
+    ['POSTURE', `${company.securityPosture.toFixed(0)}%`], ['CYBER POOL', company.cybersecurityPoints], ['ASSIGNED', company.buildings.reduce((sum, building) => sum + building.cybersecurityPoints, 0)],
   ] : page === 'ai' ? [
-    ['AI CAPABILITY', `${company.aiCapability.toFixed(0)}%`], ['AI / DATA DEPTS', company.departments.filter(department => department.type === 'ai_data').length], ['INNOVATION', `${company.innovation.toFixed(0)}%`],
+    ['COMPUTE POOL', company.computePoints], ['ASSIGNED', company.products.reduce((sum, product) => sum + product.computePoints, 0)], ['AI / DATA DEPTS', company.departments.filter(department => department.type === 'ai_data').length],
   ] : page === 'finance' ? [
     ['CASH', money(company.cash)], ['CASH FLOW', money(company.cashFlow)], ['DEBT', money(company.debt)],
   ] : [
@@ -64,8 +64,10 @@ export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose
         </div>
       ) : page === 'market' ? (
         <div className="quick-page-list">{state.trends.map(trend => <article key={trend.id}><strong>{trend.title}</strong><span>{trend.category.replace('_', ' ')} · {(trend.strength * 100).toFixed(0)}% · deadline T{trend.decisionDeadlineTurn}</span></article>)}</div>
-      ) : page === 'products' ? (
-        <div className="quick-page-list">{company.products.map(product => <article key={product.id}><strong>{product.name}</strong><span>{product.category.replace('_', ' ')} · fit {product.marketFit.toFixed(0)} · quality {product.quality.toFixed(0)}{product.trendTiming === 'late' ? ' · LATE' : ''}</span></article>)}</div>
+      ) : page === 'products' || page === 'ai' ? (
+        <div className="quick-page-list">{company.products.map(product => <article key={product.id}><strong>{product.name}</strong><span>{product.category.replace('_', ' ')} · compute {product.computePoints} · margin {(product.lastTurnMargin * 100).toFixed(0)}% · revenue {money(product.lastTurnRevenue)}{product.trendTiming === 'late' ? ' · LATE' : ''}</span></article>)}</div>
+      ) : page === 'security' ? (
+        <div className="quick-page-list">{company.buildings.map(building => <article key={building.id}><strong>{building.name || (building.isHQ ? 'Headquarters' : 'Building')}</strong><span>cyber {building.cybersecurityPoints} · firewall {building.firewall.toFixed(0)} · {building.departmentIds.length} departments</span></article>)}</div>
       ) : page === 'departments' ? (
         <div className="quick-page-list">{company.departments.map(department => <article key={department.id}><strong>{department.type.replace('_', ' ')}</strong><span>LVL {department.level} · efficiency {(department.efficiency * 100).toFixed(0)}%</span></article>)}</div>
       ) : (

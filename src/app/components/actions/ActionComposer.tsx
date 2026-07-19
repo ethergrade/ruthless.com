@@ -34,7 +34,7 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'makeHQ' | 'hqBuilding' | 'targetExecutive')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'makeHQ' | 'hqBuilding' | 'targetExecutive' | 'resourcePoints')[];
   /** the player must own a department of this type to plan the action */
   requiresDept?: DepartmentType;
 }
@@ -54,6 +54,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'sell_source', label: 'Sell Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea', 'targetCompany'], requiresDept: 'dev_engineering' },
   { type: 'pivot_product', label: 'Pivot Product', group: 'Product & R&D', baseCost: 250000, needs: ['targetProduct'], requiresDept: 'product_rd' },
   { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000, needs: ['targetProduct'], requiresDept: 'product_rd' },
+  { type: 'allocate_compute', label: 'Allocate Compute', group: 'Product & R&D', baseCost: 0, needs: ['targetProduct', 'resourcePoints'], requiresDept: 'ai_data' },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000, requiresDept: 'ai_data' },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000, requiresDept: 'sales_marketing' },
   { type: 'marketing_campaign', label: 'Marketing Campaign', group: 'Market & Sales', baseCost: 150000, needs: ['targetProduct', 'tone', 'auth'], requiresDept: 'sales_marketing' },
@@ -63,12 +64,13 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'ceo_discredit', label: 'CEO Discredits Rival (PR)', group: 'Market & Sales', baseCost: 150000, needs: ['targetCompany'] },
   { type: 'train_ceo', label: 'Train CEO (Pillar)', group: 'Corporate', baseCost: 300000, needs: ['targetExecutive', 'tone'] },
   { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000, needs: ['targetProduct'], requiresDept: 'cybersecurity' },
+  { type: 'allocate_cybersecurity', label: 'Allocate Cyber Points', group: 'Security & M&A', baseCost: 0, needs: ['targetTile', 'resourcePoints'], requiresDept: 'cybersecurity' },
   { type: 'security_offline', label: 'Physical Security', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'defend_tile', label: 'Defend Building', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000, requiresDept: 'cybersecurity' },
   { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetCompany', 'targetDept'], requiresDept: 'cybersecurity' },
-  { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'cybersecurity' },
+  { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile', 'resourcePoints'], requiresDept: 'cybersecurity' },
   { type: 'legal_action', label: 'Legal Action', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'legal_compliance' },
   { type: 'scout_acquisition', label: 'Scout Acquisition', group: 'Security & M&A', baseCost: 50000, requiresDept: 'acquisitions' },
   { type: 'acquire_company', label: 'Acquire Company', group: 'Security & M&A', baseCost: 2000000, needs: ['targetCompany'], requiresDept: 'acquisitions' },
@@ -111,7 +113,7 @@ export const ActionComposer: React.FC<Props> = ({
     ACTION_DEFS.find(a => a.type === (presetType ?? 'build_department'))?.group ?? groups[0]
   );
   const def = ACTION_DEFS.find(a => a.type === type)!;
-  const maxBudget = Math.floor(playerCompany.cash * 0.5);
+  const maxBudget = Math.max(0, Math.floor(playerCompany.cash * 0.5));
   const [budget, setBudget] = useState<number>(Math.min(def.baseCost, maxBudget) || 0);
 
   const [targetCompanyId, setTargetCompanyId] = useState<CompanyId | ''>('');
@@ -128,6 +130,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [hqBuildingId, setHqBuildingId] = useState<string>('');
   const [buildingName, setBuildingName] = useState<string>('');
   const [targetExecutiveId, setTargetExecutiveId] = useState<ExecutiveId | ''>('');
+  const [resourcePoints, setResourcePoints] = useState<number>(10);
 
   // product editor state
   const [productName, setProductName] = useState<string>('');
@@ -148,6 +151,7 @@ export const ActionComposer: React.FC<Props> = ({
     setTargetDepartmentId(initialDraft.targetDepartmentId ?? '');
     setTargetTileId(initialDraft.targetTileId ?? (initialTileId || ''));
     setTargetProductId(initialDraft.targetProductId ?? '');
+    setResourcePoints(initialDraft.resourcePoints ?? 10);
     setTone(initialDraft.tone ?? (playerCompany.voiceTone ?? 'aggressive'));
     setAuth(initialDraft.authenticity ?? (playerCompany.campaignAuthenticity ?? 'aspirational'));
     if (initialDraft.type === 'launch_product') {
@@ -178,8 +182,24 @@ export const ActionComposer: React.FC<Props> = ({
         ? chosenTile.controllerId === playerCompany.id && Boolean(chosenTile.buildingId)
       : type === 'cyber_attack'
         ? chosenTile.controllerId === targetCompanyId && Boolean(chosenTile.buildingId)
+      : type === 'allocate_cybersecurity'
+        ? chosenTile.controllerId === playerCompany.id && Boolean(chosenTile.buildingId)
       : true
   ));
+  const availableResourcePoints = type === 'allocate_cybersecurity'
+    ? playerCompany.cybersecurityPoints
+    : playerCompany.computePoints;
+  const selectedProduct = targetProductId ? playerCompany.products.find(product => product.id === targetProductId) : undefined;
+  const selectedOwnedBuilding = chosenTile?.buildingId
+    ? playerCompany.buildings.find(building => building.id === chosenTile.buildingId)
+    : undefined;
+  const targetCapacity = type === 'allocate_compute' && selectedProduct
+    ? 100 - selectedProduct.computePoints
+    : type === 'allocate_cybersecurity' && selectedOwnedBuilding
+      ? 100 - selectedOwnedBuilding.cybersecurityPoints
+      : availableResourcePoints;
+  const resourcePointsValid = !needs.includes('resourcePoints')
+    || (resourcePoints > 0 && resourcePoints <= availableResourcePoints && resourcePoints <= targetCapacity);
   const requiredTargetsValid =
     (!needs.includes('targetCompany') || !!targetCompanyId) && chosenTileValid &&
     (!needs.includes('targetDept') || (type === 'industrial_espionage' ? !!targetDepartmentId : !!targetDept)) &&
@@ -188,6 +208,7 @@ export const ActionComposer: React.FC<Props> = ({
     (!needs.includes('targetExecutive') || !!targetExecutiveId) &&
     (!needs.includes('hqBuilding') || !!hqBuildingId) &&
     (type !== 'launch_product' || !!productName.trim()) &&
+    resourcePointsValid &&
     (type !== 'auction_sell' || !!auctionAssetId);
   const canSubmit = requiredTargetsValid && budget >= def.baseCost && budget <= maxBudget;
 
@@ -197,6 +218,7 @@ export const ActionComposer: React.FC<Props> = ({
     companyId: playerCompany.id,
     budget,
     priority: 1,
+    resourcePoints: needs.includes('resourcePoints') ? resourcePoints : undefined,
     targetCompanyId: targetCompanyId || undefined,
     targetDept: needs.includes('targetDept') ? targetDept : undefined,
     targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
@@ -223,6 +245,7 @@ export const ActionComposer: React.FC<Props> = ({
       companyId: playerCompany.id,
       budget,
       priority: 1,
+      resourcePoints: needs.includes('resourcePoints') ? resourcePoints : undefined,
       targetCompanyId: targetCompanyId || undefined,
       targetDept: needs.includes('targetDept') ? targetDept : undefined,
       targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
@@ -251,6 +274,8 @@ export const ActionComposer: React.FC<Props> = ({
     const d = ACTION_DEFS.find(a => a.type === t)!;
     setGroup(d.group);
     setBudget(Math.min(d.baseCost, maxBudget) || 0);
+    const pool = t === 'allocate_cybersecurity' ? playerCompany.cybersecurityPoints : playerCompany.computePoints;
+    setResourcePoints(Math.max(1, Math.min(10, pool)));
   };
 
   return (
@@ -341,7 +366,8 @@ export const ActionComposer: React.FC<Props> = ({
           const isSeize = type === 'build_building';
           const isPhysicalDefense = type === 'security_offline';
           const isSabotage = type === 'sabotage_building';
-          const isDefendBuilding = type === 'defend_tile';
+          const isCyberAllocation = type === 'allocate_cybersecurity';
+          const isDefendBuilding = type === 'defend_tile' || isCyberAllocation;
           const isCyberAttack = type === 'cyber_attack';
           const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action'].includes(type);
           const slotCount = getBuildingUsedSlots;
@@ -387,7 +413,7 @@ export const ActionComposer: React.FC<Props> = ({
             : isSabotage
               ? 'Pick an OPPONENT BUILDING — corporation and building names are shown in the selector'
             : isDefendBuilding
-              ? 'Pick one of YOUR BUILDINGS to reinforce firewall and physical security'
+              ? isCyberAllocation ? 'Assign Cybersecurity Points to one of YOUR BUILDINGS' : 'Pick one of YOUR BUILDINGS to reinforce firewall and physical security'
             : isCyberAttack
               ? `Pick a building belonging to ${companies.find(company => company.id === targetCompanyId)?.name || 'the selected target corporation'}`
             : isOffensive
@@ -433,7 +459,7 @@ export const ActionComposer: React.FC<Props> = ({
               )}
               {!isOwn && <>
               <label>{isSabotage ? 'Sabotage Target Building'
-                : isDefendBuilding ? 'Building to Defend'
+                : isDefendBuilding ? isCyberAllocation ? 'Building to Protect' : 'Building to Defend'
                 : isCyberAttack ? 'Target Corporation Building'
                 : isOffensive ? 'Target Tile (rival building / territory)'
                 : isPhysicalDefense ? 'Your Building'
@@ -466,7 +492,7 @@ export const ActionComposer: React.FC<Props> = ({
                     <optgroup label="YOUR BUILDINGS — DEFENSIVE TARGETS">
                       {playerBuildings.map(({ building }) => (
                         <option key={building.id} value={building.tileId}>
-                          {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · firewall {building.firewall.toFixed(0)} · physical {building.physicalSecurity.toFixed(0)}
+                          {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · cyber {building.cybersecurityPoints.toFixed(0)} · firewall {building.firewall.toFixed(0)}
                         </option>
                       ))}
                     </optgroup>
@@ -494,7 +520,7 @@ export const ActionComposer: React.FC<Props> = ({
                   : targetTileId.replace('tile_', '').toUpperCase()}</b></div>
               )}
               {isSabotage && <span className="ac-hint">Your buildings remain visible for orientation but are disabled. Map pick highlights only opponent buildings.</span>}
-              {isDefendBuilding && <span className="ac-hint">The order reinforces only the selected building. Empty territory cannot be defended with this action.</span>}
+              {isDefendBuilding && <span className="ac-hint">{isCyberAllocation ? 'Assigned points form the first resilience layer and are depleted before R&D data can be lost.' : 'The order reinforces only the selected building. Empty territory cannot be defended with this action.'}</span>}
               {isCyberAttack && <span className="ac-hint">Every listed structure is a building of the selected target corporation. Tile identifiers are intentionally hidden.</span>}
               </>}
               {isSeize && <span className="ac-hint">New buildings open with 0 departments and 0 products. Staff them with later orders.</span>}
@@ -663,9 +689,39 @@ export const ActionComposer: React.FC<Props> = ({
             <select value={targetProductId} onChange={e => setTargetProductId(e.target.value as ProductId)}>
               <option value="">— select product —</option>
               {playerCompany.products.map(p => (
-                <option key={p.id} value={p.id}>{p.name} · {p.category.toUpperCase()}</option>
+                <option key={p.id} value={p.id}>{p.name} · {p.category.toUpperCase()} · compute {p.computePoints} · margin {(p.lastTurnMargin * 100).toFixed(0)}%</option>
               ))}
             </select>
+          </div>
+        )}
+
+        {needs.includes('resourcePoints') && (
+          <div className="ac-field">
+            <label>{type === 'allocate_cybersecurity' ? 'Cybersecurity Points' : 'Compute Points'}</label>
+            <div className="ac-budget">
+              <input
+                type="number"
+                value={resourcePoints}
+                onChange={event => setResourcePoints(Math.max(0, Math.min(availableResourcePoints, Number.parseInt(event.target.value, 10) || 0)))}
+                min={1}
+                max={Math.max(1, Math.min(availableResourcePoints, targetCapacity))}
+                step={1}
+              />
+              <span>/ {availableResourcePoints} available · {Math.max(0, targetCapacity)} target capacity</span>
+            </div>
+            <input
+              type="range"
+              value={Math.min(resourcePoints, Math.max(1, Math.min(availableResourcePoints, targetCapacity)))}
+              onChange={event => setResourcePoints(Number.parseInt(event.target.value, 10))}
+              min={1}
+              max={Math.max(1, Math.min(availableResourcePoints, targetCapacity))}
+              step={1}
+            />
+            <span className="ac-hint">{type === 'allocate_compute'
+              ? 'Compute raises product throughput and operating cost. At ≥25% margin it compounds; below 5% it decays.'
+              : type === 'allocate_cybersecurity'
+                ? 'Cyber points absorb attacks before firewalls, R&D maturity, compute and ideas are exposed.'
+                : 'Compute committed here is consumed by the offensive operation.'}</span>
           </div>
         )}
 
@@ -727,7 +783,7 @@ export const ActionComposer: React.FC<Props> = ({
         )}
 
         {/* budget */}
-        <div className="ac-field">
+        {!['allocate_compute', 'allocate_cybersecurity'].includes(type) && <div className="ac-field">
           <label>Budget Allocation</label>
           <div className="ac-budget">
             <input
@@ -748,7 +804,7 @@ export const ActionComposer: React.FC<Props> = ({
             max={maxBudget}
             step={50000}
           />
-        </div>
+        </div>}
 
         {/* T: Acquire offer slider — the offer controls acceptance (risk). The target
             only accepts at/above a valuation-based floor; show the live status. */}

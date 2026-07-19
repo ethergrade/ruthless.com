@@ -325,8 +325,8 @@ const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ produ
           </div>
           <div className="product-financials">
             <span>Price: ${product.price.toLocaleString()}</span>
-            <span>Cost: ${product.operatingCost.toLocaleString()}</span>
-            <span>Margin: {(((product.price - product.operatingCost) / product.price) * 100).toFixed(0)}%</span>
+            <span>Compute: {product.computePoints}</span>
+            <span>Margin: {(product.lastTurnMargin * 100).toFixed(0)}%</span>
           </div>
           <div className="product-lifecycle">
             <span className={`lifecycle-badge ${product.lifecycleStage}`}>{product.lifecycleStage.toUpperCase()} · v{product.version}</span>

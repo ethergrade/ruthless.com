@@ -16,6 +16,18 @@ Ogni `Company` ha (tra gli altri):
 | `buildings: Building[]`, `departments: Department[]` | Asset |
 | `kind` | `'player' | 'rival' | 'startup'` |
 | `ceos: CEO[]`, `ceoBuild?: CeoBuild`, `skills?: Partial<Record<CEOSkill,number>>` | CEO GDR |
+| `computePoints` | Capacità non allocata generata da AI & Data / DEV; alimenta prodotti e cyber-attacchi |
+| `cybersecurityPoints` | Resilienza non allocata generata da Cybersecurity; viene assegnata agli edifici |
+
+## Compute e cybersecurity
+
+- AI & Data genera `8 × livello × efficienza` Compute Points/turno; DEV ne genera 3.
+- `allocate_compute` sposta compute su un prodotto (massimo 100): aumenta throughput fino al 50%, ma ogni punto aggiunge costo operativo.
+- Con margine prodotto `≥25%` il compute assegnato cresce fino al 15%/turno; sotto il 5% decade del 10%.
+- Cybersecurity genera `8 × livello × efficienza` Cybersecurity Points/turno; `security_online` aggiunge capacità tramite investimento.
+- `allocate_cybersecurity` crea lo scudo del singolo edificio (massimo 100). Lo scudo viene consumato prima di firewall, compute prodotto, efficienza R&D e maturità delle idee.
+- Solo quando cyber points e firewall dell'edificio arrivano entrambi a zero un attacco critico può rubare o distruggere permanentemente un'idea.
+- `securityPosture` resta l'indicatore sintetico 0..100; non è una valuta spendibile.
 
 ## Dipartimenti (`Department`)
 
@@ -33,7 +45,7 @@ al successo delle azioni rilevanti (`isDepartmentRelevant`).
 
 - Ogni company ha edifici su tile. L'**HQ** è `isHQ: true` e conta 1 slot in più.
 - `maxDepartments: 8` per edificio.
-- `firewall`, `physicalSecurity`, `hushMoney` — difese.
+- `cybersecurityPoints`, `firewall`, `physicalSecurity`, `hushMoney` — resilienza e difese.
 - `build_department` aggiunge dipartimenti a un edificio esistente con slot liberi.
 - `build_building` costruisce un nuovo edificio su una tile libera (richiede dipartimento pertinente).
 

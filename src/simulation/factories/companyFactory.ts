@@ -144,7 +144,11 @@ export const createCompany = (
     voiceTone: isPlayer ? 'aggressive' : undefined,
     campaignAuthenticity: isPlayer ? 'aspirational' : undefined,
     buildings: [],
-    computerPoints: 0,
+    // Capacity starts from the operating network, so both player and AI enter
+    // the market under the same rules instead of receiving hidden resources.
+    computerPoints: departments.filter(department => department.type === 'ai_data').length * 20,
+    computePoints: departments.filter(department => department.type === 'ai_data').length * 20,
+    cybersecurityPoints: departments.filter(department => department.type === 'cybersecurity').length * 20,
     legalPoints: 0,
     scandal: 0,
     risk: 0.2,
@@ -269,6 +273,9 @@ const createStartingProducts = (rng: ReturnType<typeof createRNG>, archetype: Co
       marketFit: rng.nextInt(40, 70),
       price: rng.nextInt(5000, 50000),
       operatingCost: rng.nextInt(1000, 10000),
+      computePoints: 0,
+      lastTurnRevenue: 0,
+      lastTurnMargin: 0,
       technicalDebt: rng.nextInt(10, 30),
       trust: rng.nextInt(50, 80),
       targetSegments: segments,

@@ -12,6 +12,7 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 | `build_building` | Nuovo edificio su tile libera (richiede dipartimento pertinente) |
 | `launch_product` | Lancia un prodotto |
 | `improve_product` | Migliora un prodotto esistente |
+| `allocate_compute` | Assegna Compute Points a un prodotto; rendimento e crescita dipendono dal margine |
 | `expand_market` | Espande la quota di mercato |
 | `marketing_campaign` | Campagna marketing (+brand trust/awareness) |
 | `hire_executive` | Assume un executive |
@@ -42,10 +43,11 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 |--------|---------|
 | `industrial_espionage` | Ruba idea/cash/evidence a un rivale (luck riduce caught%) |
 | `cyber_attack` | Hack rivale: data run / virus / breach |
+| `allocate_cybersecurity` | Assegna Cybersecurity Points a un proprio edificio |
 | `security_offline` | Sicurezza fisica: guardie, lockdown, difesa da sabotaggio |
 | `sabotage_building` | Sabotaggio fisico: incendia un edificio rivale |
 | `defend_tile` | Rinforza firewall + sicurezza fisica di un proprio tile |
-| `security_online` | Difesa cyber: firewall, sweep, password |
+| `security_online` | Difesa cyber: genera capacità, rinforza firewall, sweep e password |
 | `legal_action` | Causa / brevetto / disputa |
 | `legal_sue` | Causa vs rivale (danni + colpo di valutazione) |
 | `legal_patent` | Blocca una categoria tech a un rivale |

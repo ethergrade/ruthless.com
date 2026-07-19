@@ -114,15 +114,27 @@ export class TurnEngine {
     const legacyMode: GameMode = state.mode ?? 'scenario';
     const legacyLimit = state.maxTurns ?? 20;
     const defaults = this.defaultModeRules(legacyMode, legacyLimit);
-    state.companies.forEach(company => company.buildings.forEach((building, index) => {
-      if (!building.name?.trim()) building.name = building.isHQ ? `${company.name} Headquarters` : `${company.name} Building ${index + 1}`;
-      const tile = state.marketTiles.get(building.tileId);
-      if (tile && tile.controllerId === company.id) tile.buildingId = building.id;
-      building.departmentIds.forEach(departmentId => {
-        const department = company.departments.find(candidate => candidate.id === departmentId);
-        if (department) department.buildingId = building.id;
+    state.companies.forEach(company => {
+      const migratedCompute = Math.max(0, company.computePoints ?? company.computerPoints ?? 0);
+      company.computePoints = migratedCompute;
+      company.computerPoints = migratedCompute;
+      company.cybersecurityPoints = Math.max(0, company.cybersecurityPoints ?? 0);
+      company.products.forEach(product => {
+        product.computePoints = Math.max(0, Math.min(100, product.computePoints ?? 0));
+        product.lastTurnRevenue = product.lastTurnRevenue ?? 0;
+        product.lastTurnMargin = Math.max(-1, Math.min(1, product.lastTurnMargin ?? 0));
       });
-    }));
+      company.buildings.forEach((building, index) => {
+        building.cybersecurityPoints = Math.max(0, Math.min(100, building.cybersecurityPoints ?? 0));
+        if (!building.name?.trim()) building.name = building.isHQ ? `${company.name} Headquarters` : `${company.name} Building ${index + 1}`;
+        const tile = state.marketTiles.get(building.tileId);
+        if (tile && tile.controllerId === company.id) tile.buildingId = building.id;
+        building.departmentIds.forEach(departmentId => {
+          const department = company.departments.find(candidate => candidate.id === departmentId);
+          if (department) department.buildingId = building.id;
+        });
+      });
+    });
     return {
       ...state,
       mode: legacyMode,
@@ -333,6 +345,7 @@ export class TurnEngine {
         productIds: isHQ ? company.products.map(product => product.id) : [],
         firewall: isHQ && company.archetype === 'security_fortress' ? 40 : isHQ ? 20 : 10,
         physicalSecurity: isHQ ? 30 : 15,
+        cybersecurityPoints: 0,
         hushMoney: 0,
         isHQ,
         ceoId: isHQ ? company.ceos[0]?.id : undefined,
@@ -390,6 +403,7 @@ export class TurnEngine {
         productIds: [],
         firewall: isHQ ? 30 : 10,
         physicalSecurity: isHQ ? 40 : 15,
+        cybersecurityPoints: 0,
         hushMoney: 0,
         isHQ,
         ceoId: isHQ ? company.ceos[0]?.id : undefined,
@@ -432,6 +446,7 @@ export class TurnEngine {
     player.buildings.push({
       id, tileId: tile.id, name: spec.name?.trim() || (isHQ ? 'HQ' : `BUILDING ${state.pendingBuildings.length + 1}`),
       departmentIds: deptIds, productIds: [], firewall: isHQ ? 30 : 10, physicalSecurity: isHQ ? 40 : 15,
+      cybersecurityPoints: 0,
       hushMoney: 0, isHQ, ceoId: isHQ ? player.ceos[0]?.id : undefined, maxDepartments: 8,
     });
     tile.buildingId = id;
@@ -489,7 +504,7 @@ export class TurnEngine {
           id, tileId: tile.id, name: `${c.name} Headquarters`,
           departmentIds: c.departments.slice(0, 1).map(d => d.id),
           productIds: c.products.slice(0, 1).map(p => p.id),
-          firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
+          firewall: 10, physicalSecurity: 10, cybersecurityPoints: 0, hushMoney: 0, isHQ: true,
           maxDepartments: 8,
         });
         c.departments.slice(0, 1).forEach(department => { department.buildingId = id; });
@@ -536,6 +551,7 @@ export class TurnEngine {
     this.resolveAuctions(newsItems);
     this.resolveMarket();
     this.resolveFinancials();
+    this.resolveOperationalCapacity();
     this.resolveRisks(events, newsItems);
     this.autoAggression();
     this.applySharkMarket();
@@ -729,12 +745,28 @@ export class TurnEngine {
         action.targetDepartmentId = department.id;
       }
       if (actionType === 'cyber_attack') {
+        if (company.computePoints < 1 || !company.departments.some(department => department.type === 'cybersecurity')) continue;
         const targets = [...this.state.companies.values()].filter(target => target.id !== company.id && target.buildings.length > 0);
         const target = this.rng.shuffle(targets).pop();
         const building = target ? this.rng.shuffle([...target.buildings]).pop() : undefined;
         if (!target || !building) continue;
         action.targetCompanyId = target.id;
         action.targetTileId = building.tileId;
+        action.resourcePoints = Math.min(company.computePoints, this.rng.nextInt(8, 20));
+      }
+      if (actionType === 'allocate_compute') {
+        if (!company.departments.some(department => department.type === 'ai_data')) continue;
+        const product = [...company.products].sort((a, b) => a.computePoints - b.computePoints)[0];
+        if (!product || company.computePoints < 1) continue;
+        action.targetProductId = product.id;
+        action.resourcePoints = Math.min(company.computePoints, this.rng.nextInt(5, 15));
+      }
+      if (actionType === 'allocate_cybersecurity') {
+        if (!company.departments.some(department => department.type === 'cybersecurity')) continue;
+        const building = [...company.buildings].sort((a, b) => a.cybersecurityPoints - b.cybersecurityPoints)[0];
+        if (!building || company.cybersecurityPoints < 1) continue;
+        action.targetTileId = building.tileId;
+        action.resourcePoints = Math.min(company.cybersecurityPoints, this.rng.nextInt(5, 15));
       }
       if (actionType === 'build_department') {
         const building = company.buildings.find(candidate => getBuildingFreeSlots(candidate) > 0);
@@ -753,7 +785,7 @@ export class TurnEngine {
       hypergrowth_platform: {
         build_department: 20, launch_product: 25, improve_product: 15,
         expand_market: 20, marketing_campaign: 10, hire_executive: 5,
-        security_hardening: 2, ai_automation: 3, launch_consulting_practice: 1,
+        security_hardening: 2, allocate_compute: 8, allocate_cybersecurity: 3, ai_automation: 3, launch_consulting_practice: 1,
         scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1,
         build_building: 8, industrial_espionage: 4, cyber_attack: 3, security_offline: 2,
         security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -761,7 +793,7 @@ export class TurnEngine {
       security_fortress: {
         build_department: 15, launch_product: 10, improve_product: 15,
         expand_market: 5, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 25, ai_automation: 5, launch_consulting_practice: 5,
+        security_hardening: 25, allocate_compute: 3, allocate_cybersecurity: 14, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5,
         build_building: 5, industrial_espionage: 3, cyber_attack: 4, security_offline: 8,
         security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0, auction_bid: 0,
@@ -769,7 +801,7 @@ export class TurnEngine {
       acquisition_machine: {
         build_department: 10, launch_product: 10, improve_product: 10,
         expand_market: 10, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 5, ai_automation: 5, launch_consulting_practice: 5,
+        security_hardening: 5, allocate_compute: 4, allocate_cybersecurity: 5, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5,
         build_building: 6, industrial_espionage: 4, cyber_attack: 3, security_offline: 3,
         security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0, auction_bid: 0,
@@ -777,7 +809,7 @@ export class TurnEngine {
       lean_specialist: {
         build_department: 10, launch_product: 15, improve_product: 20,
         expand_market: 10, marketing_campaign: 10, hire_executive: 10,
-        security_hardening: 10, ai_automation: 10, launch_consulting_practice: 15,
+        security_hardening: 10, allocate_compute: 10, allocate_cybersecurity: 8, ai_automation: 10, launch_consulting_practice: 15,
         scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10,
         build_building: 4, industrial_espionage: 5, cyber_attack: 4, security_offline: 4,
         security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -805,6 +837,8 @@ export class TurnEngine {
       marketing_campaign: 150000,
       hire_executive: 400000,
       security_hardening: 200000,
+      allocate_compute: 0,
+      allocate_cybersecurity: 0,
       ai_automation: 250000,
       launch_consulting_practice: 150000,
       scout_acquisition: 50000,
@@ -909,6 +943,9 @@ export class TurnEngine {
       }
     }
     if (action.type === 'cyber_attack') {
+      if (!company.departments.some(department => department.type === 'cybersecurity')) {
+        return { success: false, message: 'Cyber Attack requires a Cybersecurity department', effects: {}, risksTriggered: [] };
+      }
       const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
       const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
       const building = tile?.buildingId ? target?.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
@@ -918,9 +955,34 @@ export class TurnEngine {
       if (!tile || tile.controllerId !== target.id || !building) {
         return { success: false, message: 'Select a building belonging to the target corporation', effects: {}, risksTriggered: [] };
       }
+      const spend = Math.floor(action.resourcePoints ?? Math.min(20, company.computePoints));
+      if (spend < 1 || spend > company.computePoints) {
+        return { success: false, message: 'Cyber Attack requires available Compute Points', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'allocate_compute') {
+      if (!company.departments.some(department => department.type === 'ai_data')) {
+        return { success: false, message: 'Compute allocation requires an AI & Data department', effects: {}, risksTriggered: [] };
+      }
+      const product = action.targetProductId ? company.products.find(candidate => candidate.id === action.targetProductId) : undefined;
+      const points = Math.floor(action.resourcePoints ?? 0);
+      if (!product) return { success: false, message: 'Select one of your launched products', effects: {}, risksTriggered: [] };
+      if (points < 1 || points > company.computePoints) return { success: false, message: 'Not enough unallocated Compute Points', effects: {}, risksTriggered: [] };
+      if (product.computePoints + points > 100) return { success: false, message: 'Product compute capacity cannot exceed 100', effects: {}, risksTriggered: [] };
+    }
+    if (action.type === 'allocate_cybersecurity') {
+      if (!company.departments.some(department => department.type === 'cybersecurity')) {
+        return { success: false, message: 'Cyber allocation requires a Cybersecurity department', effects: {}, risksTriggered: [] };
+      }
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const building = tile?.buildingId ? company.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+      const points = Math.floor(action.resourcePoints ?? 0);
+      if (!building) return { success: false, message: 'Select one of your buildings', effects: {}, risksTriggered: [] };
+      if (points < 1 || points > company.cybersecurityPoints) return { success: false, message: 'Not enough unallocated Cybersecurity Points', effects: {}, risksTriggered: [] };
+      if (building.cybersecurityPoints + points > 100) return { success: false, message: 'Building cyber resilience cannot exceed 100', effects: {}, risksTriggered: [] };
     }
 
-    if (action.budget > company.cash * 0.5) {
+    if (action.budget > Math.max(0, company.cash * 0.5)) {
       return { success: false, message: 'Insufficient funds', effects: {}, risksTriggered: [] };
     }
 
@@ -937,7 +999,7 @@ export class TurnEngine {
     }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
@@ -974,6 +1036,8 @@ export class TurnEngine {
       marketing_campaign: 150000,
       hire_executive: 400000,
       security_hardening: 200000,
+      allocate_compute: 0,
+      allocate_cybersecurity: 0,
       ai_automation: 250000,
       launch_consulting_practice: 150000,
       scout_acquisition: 50000,
@@ -1022,6 +1086,8 @@ export class TurnEngine {
       marketing_campaign: ['sales_marketing'],
       hire_executive: ['people_culture', 'corporate_strategy'],
       security_hardening: ['cybersecurity', 'ai_data'],
+      allocate_compute: ['ai_data', 'dev_engineering'],
+      allocate_cybersecurity: ['cybersecurity'],
       ai_automation: ['ai_data', 'product_rd'],
       launch_consulting_practice: ['consulting_services', 'sales_marketing'],
       scout_acquisition: ['acquisitions', 'finance_investor'],
@@ -1097,6 +1163,12 @@ export class TurnEngine {
         break;
       case 'security_hardening':
         this.hardenSecurity(company, action.budget, action.targetProductId);
+        break;
+      case 'allocate_compute':
+        this.allocateCompute(company, action);
+        break;
+      case 'allocate_cybersecurity':
+        this.allocateCybersecurity(company, action);
         break;
       case 'ai_automation':
         this.automateAI(company, action.budget);
@@ -1297,6 +1369,9 @@ export class TurnEngine {
       marketFit: 40 + Math.round(trendBonus * 30) + (idea ? 8 : 0),
       price: 10000,
       operatingCost: 5000,
+      computePoints: 0,
+      lastTurnRevenue: 0,
+      lastTurnMargin: 0,
       technicalDebt: 10,
       trust: 50 + (idea ? 6 : 0),
       targetSegments: trend ? [trend.sector] : ['enterprise_cluster', 'high_growth'],
@@ -1317,6 +1392,15 @@ export class TurnEngine {
       product.adopters = Math.min(product.adopters, 0.04);
     }
     company.products.push(product);
+    // Keep product ownership spatially coherent: cyber incidents target the
+    // building that actually hosts the R&D department responsible for it.
+    const ownerDepartment = company.departments.find(department => department.type === 'product_rd' && !department.productId)
+      ?? company.departments.find(department => department.type === 'product_rd');
+    if (ownerDepartment && !ownerDepartment.productId) ownerDepartment.productId = product.id;
+    const ownerBuilding = ownerDepartment?.buildingId
+      ? company.buildings.find(building => building.id === ownerDepartment.buildingId)
+      : company.buildings.find(building => building.isHQ);
+    if (ownerBuilding && !ownerBuilding.productIds.includes(product.id)) ownerBuilding.productIds.push(product.id);
 
     // Consume the idea: it has been brought into production.
     if (idea) {
@@ -1412,6 +1496,24 @@ export class TurnEngine {
       : company.products;
     const perProduct = _budget / 60000;
     products.forEach(p => { p.security = Math.min(100, p.security + perProduct); });
+  }
+
+  private allocateCompute(company: Company, action: TurnAction): void {
+    const product = action.targetProductId ? company.products.find(candidate => candidate.id === action.targetProductId) : undefined;
+    const points = Math.floor(action.resourcePoints ?? 0);
+    if (!product || points < 1 || points > company.computePoints) return;
+    company.computePoints -= points;
+    company.computerPoints = company.computePoints;
+    product.computePoints = Math.min(100, product.computePoints + points);
+  }
+
+  private allocateCybersecurity(company: Company, action: TurnAction): void {
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    const building = tile?.buildingId ? company.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+    const points = Math.floor(action.resourcePoints ?? 0);
+    if (!building || points < 1 || points > company.cybersecurityPoints) return;
+    company.cybersecurityPoints -= points;
+    building.cybersecurityPoints = Math.min(100, building.cybersecurityPoints + points);
   }
 
   private automateAI(company: Company, _budget: number): void {
@@ -1541,6 +1643,7 @@ export class TurnEngine {
       productIds: [],
       firewall: isHQ ? 30 : 10,
       physicalSecurity: isHQ ? 40 : 15,
+      cybersecurityPoints: 0,
       hushMoney: 0,
       isHQ,
       maxDepartments: 8,
@@ -1587,44 +1690,76 @@ export class TurnEngine {
     }
   }
 
-  /** Cyber attack: hack a rival (data run / virus / breach) using computer points. Can target a rival tile. */
+  /** Cyber attack: compute is the offensive resource; the building's assigned
+   * cyber points absorb data/R&D loss before its firewall and research assets. */
   private runCyberAttack(company: Company, action: TurnAction): void {
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
-    // Tile-targeted attack: hit the building sitting on an enemy-owned tile.
-    if (tile && tile.controllerId && tile.controllerId !== company.id) {
-      const owner = this.state.companies.get(tile.controllerId);
-      const building = owner?.buildings.find(b => b.tileId === tile.id);
-      if (building) {
-        const spend = Math.min(company.computerPoints, Math.max(100, Math.round(action.budget / 1000)));
-        company.computerPoints -= spend;
-        const breach = spend > building.firewall;
-        if (breach) {
-          building.firewall = Math.max(0, building.firewall - 25);
-          building.physicalSecurity = Math.max(0, building.physicalSecurity - 10);
-          if (owner) { owner.securityPosture = Math.max(0, owner.securityPosture - 4); owner.brandTrust = Math.max(0, owner.brandTrust - 2); }
-          company.innovation = Math.min(100, company.innovation + 2);
-          // Breach reveals the building interior (departments) to the attacker.
-          if (!this.state.revealedBuildings.includes(building.id)) {
-            this.state.revealedBuildings.push(building.id);
-          }
-        } else {
-          company.scandal = Math.min(100, company.scandal + 5);
-        }
-      }
-      tile.pendingAction = { type: 'cyber_attack', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+    const building = tile?.buildingId ? target?.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+    if (!target || !tile || !building || tile.controllerId !== target.id) return;
+
+    const spend = Math.max(1, Math.min(company.computePoints, Math.floor(action.resourcePoints ?? 20)));
+    company.computePoints -= spend;
+    company.computerPoints = company.computePoints;
+
+    const assignedDefenseBefore = building.cybersecurityPoints;
+    const defensiveStrength = building.firewall * 0.5 + assignedDefenseBefore + target.securityPosture * 0.25;
+    const offensiveDepartments = company.departments.filter(department =>
+      department.type === 'ai_data' || department.type === 'cybersecurity');
+    const offensiveStrength = spend * 2 + company.aiCapability * 0.35
+      + offensiveDepartments.reduce((sum, department) => sum + department.level * 3, 0);
+    const absorbed = Math.min(building.cybersecurityPoints, Math.max(1, Math.ceil(offensiveStrength * 0.6)));
+    building.cybersecurityPoints = Math.max(0, building.cybersecurityPoints - absorbed);
+    building.firewall = Math.max(0, building.firewall - Math.max(4, Math.round((offensiveStrength - absorbed) / 5)));
+    const breach = offensiveStrength > defensiveStrength;
+
+    tile.pendingAction = { type: 'cyber_attack', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
+    if (!breach) {
+      company.scandal = Math.min(100, company.scandal + 5);
+      this.addNews(target.id, `${target.name}'s cyber resilience contained an attack on ${building.name || 'a corporate building'}.`);
       return;
     }
-    if (!target) return;
-    const spend = Math.min(company.computerPoints, Math.max(100, Math.round(action.budget / 1000)));
-    company.computerPoints -= spend;
-    const breach = spend > target.buildings.reduce((s, b) => s + b.firewall, 0);
-    if (breach) {
-      target.securityPosture = Math.max(0, target.securityPosture - 6);
-      target.brandTrust = Math.max(0, target.brandTrust - 3);
-      company.innovation = Math.min(100, company.innovation + 2);
+
+    target.securityPosture = Math.max(0, target.securityPosture - 6);
+    target.brandTrust = Math.max(0, target.brandTrust - 3);
+    company.innovation = Math.min(100, company.innovation + 2);
+    if (!this.state.revealedBuildings.includes(building.id)) this.state.revealedBuildings.push(building.id);
+
+    const researchDepartments = target.departments.filter(department =>
+      building.departmentIds.includes(department.id)
+      && ['product_rd', 'ai_data', 'dev_engineering'].includes(department.type));
+    const mitigation = Math.min(0.9, assignedDefenseBefore / Math.max(1, offensiveStrength));
+    researchDepartments.forEach(department => {
+      department.efficiency = Math.max(0.3, department.efficiency - 0.12 * (1 - mitigation));
+      department.disruptedUntilTurn = Math.max(department.disruptedUntilTurn ?? 0, this.state.turn + 1);
+    });
+    const exposedProducts = building.productIds.length > 0
+      ? target.products.filter(product => building.productIds.includes(product.id))
+      : researchDepartments.length > 0 ? target.products : [];
+    exposedProducts.forEach(product => {
+      const computeLoss = Math.ceil(product.computePoints * 0.25 * (1 - mitigation));
+      product.computePoints = Math.max(0, product.computePoints - computeLoss);
+      product.trust = Math.max(0, product.trust - Math.ceil(8 * (1 - mitigation)));
+    });
+
+    const criticalExposure = building.cybersecurityPoints <= 0 && building.firewall <= 0;
+    const exposedIdea = criticalExposure && researchDepartments.length > 0 && target.ideas.length > 0
+      ? this.rng.shuffle([...target.ideas]).pop()
+      : undefined;
+    if (exposedIdea) {
+      target.ideas = target.ideas.filter(idea => idea.id !== exposedIdea.id);
+      if (this.rng.nextBoolean(0.5)) {
+        const stolen = { ...exposedIdea, companyId: company.id };
+        company.ideas.push(stolen);
+        this.state.inventions = this.state.inventions.map(idea => idea.id === stolen.id ? stolen : idea);
+        this.addNews(target.id, `CRITICAL BREACH: ${company.name} stole ${exposedIdea.name} from ${target.name}'s undefended R&D network.`);
+      } else {
+        this.state.inventions = this.state.inventions.filter(idea => idea.id !== exposedIdea.id);
+        this.addNews(target.id, `CRITICAL DATA LOSS: ${exposedIdea.name} was permanently destroyed inside ${building.name || target.name}.`);
+      }
     } else {
-      company.scandal = Math.min(100, company.scandal + 5);
+      target.ideas.forEach(idea => { idea.maturity = Math.max(0, idea.maturity - Math.ceil(12 * (1 - mitigation))); });
+      this.addNews(target.id, `${company.name} breached ${building.name || target.name}; cyber resilience limited the R&D and data loss.`);
     }
   }
 
@@ -1703,19 +1838,15 @@ export class TurnEngine {
       const target = this.rng.shuffle(rivals).pop()!;
       const building = this.rng.shuffle(target.buildings).pop();
       if (!building) return;
-      // Spend computer/legal points as the covert weapon.
-      const spend = Math.min(attacker.computerPoints + 200, 300);
-      attacker.computerPoints = Math.max(0, attacker.computerPoints - spend);
-      const breached = spend > building.firewall;
-      if (breached) {
-        building.firewall = Math.max(0, building.firewall - 18);
-        building.physicalSecurity = Math.max(0, building.physicalSecurity - 8);
-        target.securityPosture = Math.max(0, target.securityPosture - 3);
-        attacker.innovation = Math.min(100, attacker.innovation + 1);
-        if (!this.state.revealedBuildings.includes(building.id)) {
-          this.state.revealedBuildings.push(building.id);
-        }
-      }
+      // Covert aggression uses the same finite compute pool and resolver as a
+      // planned order. No hidden +200 bonus and no bypass around cyber shields.
+      if (attacker.computePoints < 1) return;
+      this.runCyberAttack(attacker, {
+        id: generateId.action(), companyId: attacker.id, type: 'cyber_attack',
+        targetCompanyId: target.id, targetTileId: building.tileId,
+        resourcePoints: Math.min(10, attacker.computePoints), budget: 0,
+        priority: 0, status: 'planned',
+      });
     });
   }
 
@@ -2073,7 +2204,7 @@ export class TurnEngine {
 
   /** Online (cyber) defense: firewall, virus sweep, change passwords. */
   private runSecurityOnline(company: Company, action: TurnAction): void {
-    company.computerPoints += Math.round(action.budget / 2000);
+    company.cybersecurityPoints = Math.min(500, company.cybersecurityPoints + Math.round(action.budget / 10000));
     company.buildings.forEach(b => { b.firewall = Math.min(100, b.firewall + 8); });
     company.securityPosture = Math.min(100, company.securityPosture + action.budget / 12000);
   }
@@ -2339,6 +2470,7 @@ export class TurnEngine {
   estimateSuccess(action: TurnAction): number {
     const company = this.state.companies.get(action.companyId);
     if (!company) return 0;
+    if (action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity') return 1;
     let chance = 0.7;
 
     const relevantDept = company.departments.find(d => this.isDepartmentRelevant(d.type, action.type));
@@ -2362,7 +2494,13 @@ export class TurnEngine {
     if (isOffensive) chance -= avgRivalStrength / 400;
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     if (target) {
-      if (action.type === 'cyber_attack') chance -= target.securityPosture / 300;
+      if (action.type === 'cyber_attack') {
+        const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+        const building = tile?.buildingId ? target.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+        chance -= target.securityPosture / 300;
+        if (building) chance -= building.cybersecurityPoints / 250 + building.firewall / 500;
+        chance += Math.min(0.2, (action.resourcePoints ?? 0) / 100);
+      }
       if (action.type === 'industrial_espionage') chance -= target.securityPosture / 400;
       if (action.type === 'legal_action') chance += (company.legalPoints - target.marketInfluence) / 600;
       if (action.type === 'public_tender_offer') chance += (action.offerPrice ?? 0) / (target.valuation * 3);
@@ -2439,9 +2577,16 @@ export class TurnEngine {
         rp.category === p.category && rp.targetSegments.some(s => p.targetSegments.includes(s))));
       const blueOcean = hasCompetitor ? 1 : 1.25;
 
+      const computeMultiplier = 1 + Math.min(0.5, p.computePoints / 200);
       const penetration = p.adopters * p.version * blueOcean;
       const units = Math.max(0, (company.marketInfluence + p.marketFit) * 0.5 * penetration * stageMul);
-      return sum + units * p.price * qualityMul * fitMul;
+      const revenue = units * p.price * qualityMul * fitMul * computeMultiplier;
+      const computeCost = p.computePoints * 1000;
+      p.lastTurnRevenue = Math.round(revenue);
+      p.lastTurnMargin = revenue > 0
+        ? Math.max(-1, Math.min(1, (revenue - p.operatingCost - computeCost) / revenue))
+        : -1;
+      return sum + revenue;
     }, 0);
 
     // Revenue from controlled market territory (resolved each turn in resolveMarket,
@@ -2452,7 +2597,7 @@ export class TurnEngine {
     }, 0);
 
     const deptCost = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
-    const productCost = company.products.reduce((sum, p) => sum + p.operatingCost, 0);
+    const productCost = company.products.reduce((sum, p) => sum + p.operatingCost + p.computePoints * 1000, 0);
 
     let operatingCosts = Math.round(deptCost + productCost);
     // CEO perks (GDR build): cost_cutter trims recurring costs; high_leverage
@@ -2507,27 +2652,81 @@ export class TurnEngine {
     });
   }
 
+  /** Renewable operational capacity. Departments create the pools; profitable
+   * products compound assigned compute, while weak margins make it decay. */
+  private resolveOperationalCapacity(): void {
+    this.state.companies.forEach(company => {
+      const activeDepartments = company.departments.filter(department =>
+        !department.disruptedUntilTurn || department.disruptedUntilTurn < this.state.turn);
+      const generatedCompute = activeDepartments.reduce((sum, department) => {
+        if (department.type === 'ai_data') return sum + Math.max(1, Math.round(8 * department.level * department.efficiency));
+        if (department.type === 'dev_engineering') return sum + Math.max(1, Math.round(3 * department.level * department.efficiency));
+        return sum;
+      }, 0);
+      const generatedCyber = activeDepartments.reduce((sum, department) =>
+        department.type === 'cybersecurity'
+          ? sum + Math.max(1, Math.round(8 * department.level * department.efficiency))
+          : sum, 0);
+
+      company.computePoints = Math.min(500, company.computePoints + generatedCompute);
+      company.cybersecurityPoints = Math.min(500, company.cybersecurityPoints + generatedCyber);
+      company.computerPoints = company.computePoints;
+
+      company.products.forEach(product => {
+        if (product.computePoints <= 0) return;
+        if (product.lastTurnMargin >= 0.25) {
+          const growthRate = Math.min(0.15, product.lastTurnMargin * 0.25);
+          product.computePoints = Math.min(100, product.computePoints + Math.max(1, Math.floor(product.computePoints * growthRate)));
+        } else if (product.lastTurnMargin < 0.05) {
+          product.computePoints = Math.max(0, product.computePoints - Math.max(1, Math.ceil(product.computePoints * 0.1)));
+        }
+      });
+
+      company.departments.forEach(department => {
+        if (department.disruptedUntilTurn && department.disruptedUntilTurn < this.state.turn) {
+          department.disruptedUntilTurn = undefined;
+        }
+      });
+    });
+  }
+
   private resolveRisks(_events: GameEvent[], _newsItems: NewsItem[]): void {
     this.state.companies.forEach(company => {
-      if (company.securityPosture < 30 && this.rng.nextBoolean(0.1)) {
+      const assignedCyber = company.buildings.reduce((sum, building) => sum + building.cybersecurityPoints, 0);
+      const incidentChance = 0.1 * (1 - Math.min(0.8, assignedCyber / 200));
+      if (company.securityPosture < 30 && this.rng.nextBoolean(incidentChance)) {
         this.triggerCyberIncident(company, _events, _newsItems);
       }
     });
   }
 
   private triggerCyberIncident(company: Company, events: GameEvent[], newsItems: NewsItem[]): void {
-    const impact = this.rng.nextFloat(0.1, 0.3);
-    company.cash *= (1 - impact);
-    company.brandTrust = Math.max(0, company.brandTrust - 20);
-    company.securityPosture = Math.max(10, company.securityPosture - 10);
+    const building = [...company.buildings].sort((a, b) => b.cybersecurityPoints - a.cybersecurityPoints)[0];
+    const resilience = building
+      ? Math.min(0.9, (building.cybersecurityPoints + building.firewall * 0.5) / 100)
+      : 0;
+    const impact = this.rng.nextFloat(0.1, 0.3) * (1 - resilience * 0.8);
+    const cashLoss = company.cash * impact;
+    company.cash -= cashLoss;
+    company.brandTrust = Math.max(0, company.brandTrust - 20 * (1 - resilience));
+    company.securityPosture = Math.max(10, company.securityPosture - 10 * (1 - resilience));
+    if (building) {
+      building.cybersecurityPoints = Math.max(0, building.cybersecurityPoints - Math.ceil(10 + impact * 20));
+      const researchIds = new Set(building.departmentIds);
+      company.departments.filter(department => researchIds.has(department.id) && ['product_rd', 'ai_data', 'dev_engineering'].includes(department.type)).forEach(department => {
+        department.efficiency = Math.max(0.3, department.efficiency - 0.08 * (1 - resilience));
+        department.disruptedUntilTurn = Math.max(department.disruptedUntilTurn ?? 0, this.state.turn + 1);
+      });
+      company.ideas.forEach(idea => { idea.maturity = Math.max(0, idea.maturity - Math.ceil(8 * (1 - resilience))); });
+    }
 
     const event: GameEvent = {
       id: generateId.action(),
       turn: this.state.turn,
       category: 'cyber',
       title: 'Cybersecurity Incident',
-      description: `${company.name} suffered a security breach`,
-      impact: { cash: -company.cash * impact, brandTrust: -20, securityPosture: -10 },
+      description: `${company.name} suffered a security breach${resilience > 0 ? '; assigned cyber capacity contained the loss' : ''}`,
+      impact: { cash: -cashLoss, brandTrust: -20 * (1 - resilience), securityPosture: -10 * (1 - resilience) },
       affectedCompanies: [company.id],
       duration: 3,
       severity: 'high' as const,
