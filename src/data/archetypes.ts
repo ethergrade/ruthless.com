@@ -40,6 +40,15 @@ export const ARCHETYPE_STATS: Record<CompanyArchetype, CompanyStats> = {
   },
 };
 
+/** T — Organization perks granted to the company by its chosen ARCHETYPE
+ *  (distinct from the CEO's own trait perks; shown separately in New Game). */
+export const ARCHETYPE_PERKS: Record<CompanyArchetype, ChiefPerk[]> = {
+  lean_specialist: ['cost_cutter'],
+  hypergrowth_platform: ['market_savant'],
+  security_fortress: ['iron_will'],
+  acquisition_machine: ['talent_magnet'],
+};
+
 export interface CEOTraitDef {
   id: CEOTrait;
   name: string;

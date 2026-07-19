@@ -4,7 +4,7 @@ import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import { SettingsModal } from './SettingsModal';
 import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec } from '../../../types';
-import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_SKILLS, SPECIAL_LABELS, CEO_TOKEN_BUDGET, type CompanyStats } from '../../../data/archetypes';
+import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_SKILLS, SPECIAL_LABELS, CEO_TOKEN_BUDGET, ARCHETYPE_PERKS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
@@ -221,7 +221,6 @@ const NewGameModal: React.FC<{
   const CEO_TRAIT_COST = 4;
   const [ceoTraits, setCeoTraits] = useState<CEOTrait[]>(['none']);
   const [ceoSkills, setCeoSkills] = useState<Partial<Record<CEOSkill, number>>>({});
-  const [ceoLuck, setCeoLuck] = useState<number>(0);
   const toggleCeoTrait = (t: CEOTrait) => {
     setCeoTraits(prev => {
       if (t === 'none') return ['none'];
@@ -240,12 +239,11 @@ const NewGameModal: React.FC<{
   };
   const usedCeoTokens =
     ceoTraits.filter(t => t !== 'none').length * CEO_TRAIT_COST +
-    Object.values(ceoSkills).reduce<number>((s, v) => s + (v ?? 0), 0) +
-    ceoLuck;
+    Object.values(ceoSkills).reduce<number>((s, v) => s + (v ?? 0), 0);
   const ceoBuild: CeoBuild = {
     traits: ceoTraits,
     skills: ceoSkills,
-    luck: ceoLuck,
+    luck: ceoSkills.luck ?? 0,
     specialPoints: 1,
   };
 
@@ -351,13 +349,23 @@ const NewGameModal: React.FC<{
                 })}
               </div>
 
+              <div className="preview-section-label">Organization Perks — {archetype.name}</div>
+              <div className="preview-stats">
+                {ARCHETYPE_PERKS[selectedArchetype].length === 0 && (
+                  <span className="stat">Baseline — no perks</span>
+                )}
+                {ARCHETYPE_PERKS[selectedArchetype].map((p, i) => (
+                  <span key={i} className="stat org">{PERK_LABELS[p]}</span>
+                ))}
+              </div>
+
               <div className="preview-section-label">CEO Perks — {CEO_TRAIT_DEFS[selectedCeo].name}</div>
               <div className="preview-stats">
                 {CEO_TRAIT_DEFS[selectedCeo].perks.length === 0 && (
                   <span className="stat">Baseline — no perks</span>
                 )}
                 {CEO_TRAIT_DEFS[selectedCeo].perks.map((p, i) => (
-                  <span key={i} className="stat positive">{PERK_LABELS[p]}</span>
+                  <span key={i} className="stat ceo">{PERK_LABELS[p]}</span>
                 ))}
               </div>
               <p className="ceo-blurb">{CEO_TRAIT_DEFS[selectedCeo].blurb}</p>
@@ -400,15 +408,6 @@ const NewGameModal: React.FC<{
                     </div>
                   );
                 })}
-                <div className="bs-row">
-                  <span className="bs-label">L — Luck</span>
-                  <div className="bs-bar"><div className="bs-fill luck" style={{ width: `${ceoLuck * 10}%` }} /></div>
-                  <span className="bs-val">{ceoLuck}</span>
-                  <span className="bs-stepper">
-                    <button type="button" className="bs-btn" disabled={ceoLuck <= 0} onClick={() => setCeoLuck(Math.max(0, ceoLuck - 1))}>−</button>
-                    <button type="button" className="bs-btn" disabled={usedCeoTokens >= CEO_TOKEN_BUDGET} onClick={() => setCeoLuck(Math.min(10, ceoLuck + 1))}>+</button>
-                  </span>
-                </div>
               </div>
 
               <div className="preview-note">

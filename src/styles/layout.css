@@ -749,6 +749,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
+  align-items: stretch;
 }
 .archetype-card {
   text-align: left;
@@ -757,7 +758,11 @@
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: all var(--transition-fast, 150ms ease);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
+.archetype-card .archetype-stats { margin-top: auto; }
 .archetype-card.selected { box-shadow: 0 0 0 2px var(--accent-cyan); }
 .archetype-header { padding: 5px 8px; }
 .archetype-name { font-weight: 700; font-size: 12px; color: var(--bg-primary); }
@@ -775,6 +780,8 @@
 .stat.positive { color: var(--accent-green); }
 .stat.negative { color: var(--accent-red); }
 .stat.neutral { color: var(--text-secondary); }
+.stat.org { color: #00d4aa; border-color: rgba(0, 212, 170, 0.4); background: rgba(0, 212, 170, 0.08); }
+.stat.ceo { color: #ffb347; border-color: rgba(255, 179, 71, 0.4); background: rgba(255, 179, 71, 0.08); }
 
 .archetype-preview {
   display: flex;
