@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type {
-  GameState, TurnAction, NewsItem, MarketBriefing,
+  GameState, TurnAction, NewsItem, MarketBriefing, MarketTile,
   CompanyId, TileId, CompanyArchetype,
   CEOTrait, ScenarioConfig, AlertItem, CeoBuild, InitialBuildingSpec,
 } from '../types';
@@ -23,10 +23,12 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number) => void;
   /** T: real-map placement — drop a player building on a real tile, or finish placement (spawn rivals). */
   placeBuilding: (spec: InitialBuildingSpec) => void;
   finishPlacement: () => void;
+  /** T — infinite map: stream tiles around a grid cell on demand. */
+  explore: (cx: number, cy: number, radius?: number) => void;
   setState: (state: GameState) => void;
   endTurn: () => void;
   addAction: (action: Omit<TurnAction, 'id' | 'status'>) => void;
@@ -63,8 +65,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings, realMapPlacement);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings, realMapPlacement, mapSeed);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined || sim) {
           const player = state.companies.get(state.playerCompanyId);
@@ -94,6 +96,14 @@ export const useGameStore = create<GameStore>()(
         if (!engine || !state || state.phase !== 'placement') return;
         engine.finishPlacement();
         set({ state: engine.getState() });
+      },
+
+      // T — infinite map: stream tiles around a grid cell on demand (camera pan).
+      explore: (cx: number, cy: number, radius = 10) => {
+        const { engine, state } = get();
+        if (!engine || !state) return;
+        const fresh = engine.explore(cx, cy, radius);
+        if (fresh.length) set({ state: engine.getState() });
       },
 
       setState: (newState) => set({ state: newState }),
@@ -201,9 +211,10 @@ export const useGameStore = create<GameStore>()(
         const state = MiniDB.loadAuto();
         if (!state) return false;
         try {
-          const engine = new TurnEngine(state.seed);
+          const engine = new TurnEngine(state.seed, undefined, undefined, undefined, undefined, undefined, false, state.mapSeed);
           engine.setState(state);
-          set({ state, engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+          engine.rehydrateWorld(); // regenerate explored tiles from mapSeed, overlay saved diff
+          set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {
@@ -215,7 +226,13 @@ export const useGameStore = create<GameStore>()(
       saveGame: (slot = 'manual') => {
         const { state } = get();
         if (!state) return false;
-        MiniDB.save(slot, state);
+        // T: diff-serialize — keep only modified tiles + the full coord index; the
+        // rest regenerate deterministically from mapSeed on load (light saves).
+        const notable = new Map(state.marketTiles);
+        const diffTiles = new Map<TileId, MarketTile>();
+        notable.forEach((t) => { if (t.controllerId || t.isStartupTile || t.buildingId) diffTiles.set(t.id, t); });
+        const diffState: GameState = { ...state, marketTiles: diffTiles, tileIndex: state.tileIndex };
+        MiniDB.save(slot, diffState);
         get().addNotification('Game saved', '');
         return true;
       },
@@ -224,9 +241,10 @@ export const useGameStore = create<GameStore>()(
         const state = MiniDB.load(slot);
         if (!state) return false;
         try {
-          const engine = new TurnEngine(state.seed);
+          const engine = new TurnEngine(state.seed, undefined, undefined, undefined, undefined, undefined, false, state.mapSeed);
           engine.setState(state);
-          set({ state, engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+          engine.rehydrateWorld(); // regenerate explored tiles from mapSeed, overlay saved diff
+          set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {

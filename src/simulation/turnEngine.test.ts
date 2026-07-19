@@ -23,7 +23,7 @@ describe('TurnEngine construction', () => {
     const engine = new TurnEngine(123);
     const s = engine.getState();
     expect(s.companies.size).toBe(8);
-    expect(s.marketTiles.size).toBe(64);
+    expect(s.marketTiles.size).toBe(81); // 9x9 region (radius 4 around origin) for the infinite map
     expect(s.turn).toBe(1);
     expect(s.playerCompanyId).toBeTruthy();
   });

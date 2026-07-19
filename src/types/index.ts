@@ -675,6 +675,10 @@ export interface GameState {
   isGameOver: boolean;
   victoryType?: VictoryType;
   seed: number;
+  /** T — deterministic world seed used to lazily (re)generate infinite map chunks. */
+  mapSeed: number;
+  /** T — O(1) spatial index "x,y" -> TileId for viewport culling & tile picking. */
+  tileIndex: Record<string, TileId>;
   /** Active global market trends (T5): demanded category x sector. */
   trends: MarketTrend[];
   /** Early weak signals hinting at emerging trends (T5). */

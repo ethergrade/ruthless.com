@@ -19,6 +19,10 @@ interface Props {
   initialTileId?: string | null;
   onClose: () => void;
   onAdd: (action: Omit<import('../../../types').TurnAction, 'id' | 'status'>) => void;
+  /** T: action targeting — request the map to enter pick-a-tile mode. */
+  onRequestTargeting?: (ts: import('../../components/map/MarketMap').TargetingState | null) => void;
+  /** T: currently active targeting (so the composer can show/clear it). */
+  targeting?: import('../../components/map/MarketMap').TargetingState | null;
   /** Live success-estimate 0..1 for the currently configured action (req 4). */
   estimate?: (action: Omit<import('../../../types').TurnAction, 'id' | 'status'>) => number;
 }
@@ -95,7 +99,7 @@ const DEPARTMENT_TYPE_OPTIONS: { value: DepartmentType; label: string }[] = [
 ];
 
 export const ActionComposer: React.FC<Props> = ({
-  playerCompany, companies, tiles, presetType, initialDraft, initialTileId, onClose, onAdd, estimate,
+  playerCompany, companies, tiles, presetType, initialDraft, initialTileId, onClose, onAdd, estimate, onRequestTargeting, targeting,
 }) => {
   const groups = Array.from(new Set(ACTION_DEFS.map(a => a.group)));
   const ownedDeptTypes = new Set<DepartmentType>(playerCompany.departments.map(d => d.type));
@@ -156,7 +160,6 @@ export const ActionComposer: React.FC<Props> = ({
 
   const rivals = companies.filter(c => c.id !== playerCompany.id);
   // Build actions only allow the player's own controlled tiles (req T3).
-  const ownedTiles = tiles.filter(t => t.controllerId === playerCompany.id);
   const needs = def.needs ?? [];
   const canSubmit = budget > 0 || def.baseCost === 0 ||
     (type === 'launch_product' && !!productName) ||
@@ -274,32 +277,62 @@ export const ActionComposer: React.FC<Props> = ({
         )}
 
         {/* target tile for building / department / espionage / cyber / sabotage */}
-        {needs.includes('targetTile') && (
-          <div className="ac-field">
-            <label>{type === 'industrial_espionage' || type === 'cyber_attack' || type === 'sabotage_building' || type === 'legal_action' || type === 'security_offline' || type === 'defend_tile'
-              ? 'Target Tile (rival building / territory)'
-              : 'Build On Tile (your controlled tile)'}</label>
-            <select value={targetTileId} onChange={e => {
-              const tid = e.target.value as TileId | '';
+        {needs.includes('targetTile') && (() => {
+          const isOwn = type === 'build_department';
+          const isSeize = type === 'build_building';
+          const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action', 'security_offline', 'defend_tile'].includes(type);
+          const validTile = (t: MarketTile): boolean => {
+            if (isOwn) return !!t.controllerId && t.controllerId === playerCompany.id && !t.buildingId;
+            if (isOffensive) return !!t.controllerId && t.controllerId !== playerCompany.id;
+            if (isSeize) return !t.controllerId || t.controllerId !== playerCompany.id; // free or rival (seize)
+            return true;
+          };
+          const hint = isOwn
+            ? 'Click one of YOUR controlled, unbuilt tiles to house the department'
+            : isOffensive
+              ? 'Click a RIVAL-controlled tile to target'
+              : isSeize
+                ? 'Click any tile (free or rival) to drop a new building'
+                : 'Click a tile on the map';
+          const startTargeting = () => onRequestTargeting?.({
+            isValid: validTile,
+            onPick: (tid) => {
               setTargetTileId(tid);
               const t = tiles.find(x => x.id === tid);
-              if (t && t.controllerId && t.controllerId !== playerCompany.id) {
-                setTargetCompanyId(t.controllerId);
-              }
-            }}>
-              <option value="">— select tile —</option>
-              {(type === 'build_department'
-                ? ownedTiles
-                : type === 'build_building'
-                  ? tiles  // a new building may go on ANY tile (free or rival) to seize/block territory
-                  : tiles).map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}{t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ' · (free)'}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+              if (t?.controllerId && t.controllerId !== playerCompany.id) setTargetCompanyId(t.controllerId);
+              onRequestTargeting?.(null);
+            },
+            hint: `🎯 ${hint}`,
+          });
+          return (
+            <div className="ac-field">
+              <label>{isOffensive ? 'Target Tile (rival building / territory)'
+                : isOwn ? 'Build On Tile (your controlled tile)'
+                : isSeize ? 'Build On Tile (free or rival)' : 'Target Tile'}</label>
+              <div className="ac-tile-pick">
+                <select value={targetTileId} onChange={e => {
+                  const tid = e.target.value as TileId | '';
+                  setTargetTileId(tid);
+                  const t = tiles.find(x => x.id === tid);
+                  if (t?.controllerId && t.controllerId !== playerCompany.id) setTargetCompanyId(t.controllerId);
+                }}>
+                  <option value="">— select tile —</option>
+                  {tiles.filter(validTile).map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}{t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ' · (free)'}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className={`btn btn-secondary ac-pick-btn ${targeting ? 'active' : ''}`} onClick={() => targeting ? onRequestTargeting?.(null) : startTargeting()}>
+                  {targeting ? 'Cancel pick' : 'Pick on map'}
+                </button>
+              </div>
+              {targetTileId && (
+                <div className="ac-tile-chosen">Selected: <b>{targetTileId.replace('tile_', '').toUpperCase()}</b></div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* department type to build */}
         {needs.includes('departmentType') && (

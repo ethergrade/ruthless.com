@@ -34,6 +34,7 @@ function App() {
     estimateAction,
     placeBuilding,
     finishPlacement,
+    explore,
   } = useGameStore();
   const { musicEnabled, setMusicEnabled } = useSettings();
 
@@ -51,6 +52,8 @@ function App() {
   const [showActionModal, setShowActionModal] = useState(false);
   const [presetActionType, setPresetActionType] = useState<ActionType | null>(null);
   const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
+  // T: action targeting — pick a tile directly from the board.
+  const [targeting, setTargeting] = useState<import('./app/components/map/MarketMap').TargetingState | null>(null);
   const [bottomH, setBottomH] = useState(240);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
@@ -237,6 +240,8 @@ function App() {
             selectedTileId={selectedTileId}
             onTileSelect={handleTileSelect}
             onPlaceTile={state?.phase === 'placement' ? handlePlaceTile : undefined}
+            targeting={targeting}
+            onExplore={explore}
           />
           <SelectedTilePanel
             tile={state && selectedTileId ? state.marketTiles.get(selectedTileId) || null : null}
@@ -316,6 +321,8 @@ function App() {
             onClose={() => { setShowActionModal(false); setEditDraft(null); }}
             onAdd={handleAddAction}
             estimate={estimateAction}
+            onRequestTargeting={setTargeting}
+            targeting={targeting}
           />
         </Modal>
       )}

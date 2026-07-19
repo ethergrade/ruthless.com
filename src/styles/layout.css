@@ -1396,7 +1396,11 @@
 /* ---- Acquire offer slider status ---- */
 .ac-offer-status { margin-top: 6px; font-size: 11px; font-weight: 600; }
 .ac-offer-status.ok { color: var(--accent-cyan); }
-.ac-offer-status.bad { color: #ff6b6b; }
+.ac-tile-pick { display: flex; gap: 6px; align-items: center; }
+.ac-tile-pick select { flex: 1; }
+.ac-pick-btn.active { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,170,0.12); }
+.ac-tile-chosen { margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+.ac-tile-chosen b { color: var(--accent-cyan); }
 
 /* ---- Real-map placement overlay ---- */
 .placement-overlay {
@@ -1426,4 +1430,9 @@
 .placement-status { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text); margin-bottom: 10px; }
 .placement-done { width: 100%; }
 
-
+.map-targeting-banner {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 40;
+  background: rgba(0,212,170,0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);
+  border-radius: 8px; padding: 8px 16px; font-size: 12px; font-weight: 600; pointer-events: none;
+  box-shadow: 0 0 20px rgba(0,212,170,0.25);
+}

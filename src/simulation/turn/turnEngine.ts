@@ -4,6 +4,7 @@ import type { MarketSegment,
   GameState,
   Company,
   MarketTile,
+  TileId,
   Product,
   ProductCategory,
   Department,
@@ -35,7 +36,7 @@ import type { MarketSegment,
   ChiefExecutive,
 } from '../../types';
 import { generateId } from '../utils/ids';
-import { createMarketMap } from '../factories/marketFactory';
+import { createMarketMap, generateChunk, buildTileIndex, createTile } from '../factories/marketFactory';
 import { createCompany } from '../factories/companyFactory';
 import { generateCompanyName } from '../../data/generators';
 
@@ -71,6 +72,7 @@ export class TurnEngine {
     ceoBuild?: CeoBuild,
     initialBuildings?: InitialBuildingSpec[],
     realMapPlacement = false,
+    mapSeed?: number,
   ) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
@@ -79,9 +81,13 @@ export class TurnEngine {
     this.ceoBuild = ceoBuild;
     this.initialBuildings = initialBuildings;
     this.realMapPlacement = realMapPlacement;
+    this.mapSeed = mapSeed ?? seed ?? 1;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
+
+  /** T — deterministic world seed (infinite map). */
+  private mapSeed: number;
 
   getState(): GameState {
     return this.state;
@@ -115,7 +121,8 @@ export class TurnEngine {
     const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides, this.ceoBuild);
     if (so?.startCash) playerCompany.cash = so.startCash;
     playerCompany.ceoBuild = this.ceoBuild;
-    const marketTiles = createMarketMap(this.rng, mw, mh);
+    const marketTiles = createMarketMap(this.rng, mw, mh, this.mapSeed);
+    const tileIndex = buildTileIndex(marketTiles);
     this.assignStartingTerritories(marketTiles, [playerCompany, ...aiCompanies]);
 
     const companies = new Map<CompanyId, Company>();
@@ -162,6 +169,8 @@ export class TurnEngine {
       simulation: { marketSimulation: false, cataclysms: false, newTech: false },
       isGameOver: false,
       seed: this.rng.getSeed(),
+      mapSeed: this.mapSeed,
+      tileIndex,
       trends: this.generateMarketTrends(2),
       weakSignals: this.generateWeakSignals(2),
       alerts: [],
@@ -172,7 +181,40 @@ export class TurnEngine {
     };
   }
 
-  /** Place an HQ building for a company on its first controlled tile. */
+  /** T — infinite map: lazily stream a square region of tiles around (cx,cy) so the
+   *  world extends on demand. Deterministic: same coords + mapSeed => same tiles.
+   *  Returns the list of freshly generated tile ids (for UI/invalidation). */
+  ensureRegion(cx: number, cy: number, radius = 8): TileId[] {
+    generateChunk(this.mapSeed, this.state.marketTiles, this.state.tileIndex, cx, cy, radius);
+    const fresh: TileId[] = [];
+    this.state.marketTiles.forEach(t => { if ((t.x - cx) ** 2 + (t.y - cy) ** 2 <= radius * radius && !this.knownTiles.has(t.id)) { fresh.push(t.id); } });
+    return fresh;
+  }
+
+  /** T — player-driven exploration (called by the map when the camera pans far). */
+  explore(cx: number, cy: number, radius = 10): TileId[] {
+    return this.ensureRegion(cx, cy, radius);
+  }
+
+  /** T — after loading a diff-serialized save, regenerate every explored tile from
+   *  the deterministic mapSeed (identical to when saved) and overlay the saved
+   *  (modified) tiles. Leaves marketTiles complete + tileIndex consistent. */
+  rehydrateWorld(): void {
+    const idx = this.state.tileIndex;
+    // regenerate all explored coordinates deterministically
+    for (const key of Object.keys(idx)) {
+      const [x, y] = key.split(',').map(Number);
+      if (!this.state.marketTiles.has(idx[key])) {
+        const t = createTile(this.mapSeed, x, y);
+        this.state.marketTiles.set(t.id, t);
+        // keep the saved id mapping in the index
+        this.state.tileIndex[`${x},${y}`] = t.id;
+      }
+    }
+  }
+
+  /** T — tiles the player/AI has ever interacted with (for save-diff & culling). */
+  private knownTiles = new Set<TileId>();
   private seedCompanyBuilding(company: Company, tiles: Map<string, MarketTile>): void {
     const tileId = company.controlledTiles[0];
     if (!tileId) return;
