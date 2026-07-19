@@ -250,20 +250,21 @@ const NewGameModal: React.FC<{
   return (
     <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
       <div className="new-game-modal">
+        <div className="setup-name-row">
+          <div className="form-group" style={{ flex: 1 }}>
+            <label>Company Name</label>
+            <input
+              type="text"
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              placeholder="Enter company name"
+              maxLength={24}
+            />
+          </div>
+        </div>
         <div className="setup-top">
-          {/* LEFT COLUMN: company name + archetype */}
+          {/* LEFT COLUMN: archetype */}
           <div className="setup-col">
-            <div className="form-group">
-              <label>Company Name</label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={e => setCompanyName(e.target.value)}
-                placeholder="Enter company name"
-                maxLength={24}
-              />
-            </div>
-
             <div className="form-group">
               <label>Starting Archetype</label>
               <div className="archetype-selector">
