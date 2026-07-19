@@ -127,7 +127,7 @@ export class TurnEngine {
     playerCompany.ceoBuild = this.ceoBuild;
     const marketTiles = createMarketMap(this.rng, mw, mh, this.mapSeed);
     const tileIndex = buildTileIndex(marketTiles);
-    this.assignStartingTerritories(marketTiles, [playerCompany, ...aiCompanies]);
+    this.assignStartingTerritories(marketTiles, this.realMapPlacement ? aiCompanies : [playerCompany, ...aiCompanies]);
 
     const companies = new Map<CompanyId, Company>();
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
@@ -334,6 +334,9 @@ export class TurnEngine {
     if (!tile.controllerId) tile.controllerId = player.id;
     if (!player.controlledTiles.includes(tile.id)) player.controlledTiles.push(tile.id);
     state.pendingBuildings.push({ ...spec, isHQ, tileId: tile.id });
+    // T: once the player has dropped all 3 buildings, auto-finish placement —
+    // spawn rivals / start the game without waiting for a manual DONE button.
+    if (state.pendingBuildings.length >= 3) this.finishPlacement();
   }
 
   /** T: finish the real-map placement — rivals/startups become visible, game begins. */
