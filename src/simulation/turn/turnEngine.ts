@@ -127,19 +127,24 @@ export class TurnEngine {
     playerCompany.ceoBuild = this.ceoBuild;
     const marketTiles = createMarketMap(this.rng, mw, mh, this.mapSeed);
     const tileIndex = buildTileIndex(marketTiles);
-    this.assignStartingTerritories(marketTiles, this.realMapPlacement ? aiCompanies : [playerCompany, ...aiCompanies]);
+    // T: in real-map placement rivals get NO territories at init — their tiles
+    // must stay free so the player can drop buildings anywhere, and they spawn
+    // only in finishPlacement() (after the 3rd building). Outside placement the
+    // usual starting territories are assigned to player + rivals.
+    this.assignStartingTerritories(marketTiles, this.realMapPlacement ? [] : [playerCompany, ...aiCompanies]);
 
     const companies = new Map<CompanyId, Company>();
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
 
     // T: in real-map placement the player drops their own buildings live on the
-    // board (with departments pre-distributed from the New Game setup). So we seed
-    // only the rivals/startups here — they stay hidden until placement finishes.
+    // In real-map placement the player drops their own buildings live on the
+    // board (with departments pre-distributed from the New Game setup). Rivals are
+    // NOT seeded here — they spawn only when finishPlacement() runs (after the
+    // player's 3 buildings are placed), so their tiles stay free during placement
+    // and they appear the instant the game begins.
     if (this.initialBuildings && this.initialBuildings.length > 0 && !this.realMapPlacement) {
       this.seedPlayerBuildings(playerCompany, marketTiles, this.initialBuildings);
-    } else if (this.realMapPlacement) {
-      aiCompanies.forEach(c => this.seedCompanyBuilding(c, marketTiles));
-    } else {
+    } else if (!this.realMapPlacement) {
       [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
     }
 
@@ -339,9 +344,16 @@ export class TurnEngine {
     if (state.pendingBuildings.length >= 3) this.finishPlacement();
   }
 
-  /** T: finish the real-map placement — rivals/startups become visible, game begins. */
+  /** T: finish the real-map placement — spawn rivals on free tiles, game begins. */
   finishPlacement(): void {
     if (this.state.phase !== 'placement') return;
+    // T: rivals were NOT seeded at init (their tiles must stay free during
+    // placement). Spawn them now, on tiles the player has not claimed.
+    const rivals = Array.from(this.state.companies.values()).filter(
+      c => c.id !== this.state.playerCompanyId && c.controlledTiles.length === 0
+    );
+    this.assignStartingTerritories(this.state.marketTiles, rivals);
+    rivals.forEach(c => this.seedCompanyBuilding(c, this.state.marketTiles));
     this.state.phase = 'playing';
   }
 
@@ -391,7 +403,9 @@ export class TurnEngine {
     tiles: Map<string, MarketTile>,
     companies: Company[]
   ): void {
-    const unassignedTiles = Array.from(tiles.values());
+    // T: only hand out tiles that are still free — the player may have already
+    // claimed some during real-map placement.
+    const unassignedTiles = Array.from(tiles.values()).filter(t => !t.controllerId);
     this.rng.shuffle(unassignedTiles);
 
     companies.forEach((company, i) => {
@@ -406,6 +420,12 @@ export class TurnEngine {
   }
 
   endTurn(): TurnResult {
+    // T: in real-map placement you cannot take turns until your 3 buildings are
+    // placed — otherwise the game would advance while rivals are still hidden.
+    if (this.state.phase === 'placement') {
+      if (this.state.pendingBuildings.length >= 3) this.finishPlacement();
+      else return { newState: this.state, events: [], newsItems: [], marketBriefing: this.state.marketBriefing };
+    }
     const events: GameEvent[] = [];
     const newsItems: NewsItem[] = [];
     this.ideasCreatedThisTurn.clear(); // reset per-turn R&D idea capacity

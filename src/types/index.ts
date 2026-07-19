@@ -200,6 +200,8 @@ export interface Company {
   id: CompanyId;
   name: string;
   color: string;
+  /** T: distinguishes the human player, AI rivals, and neutral start-ups. */
+  kind: 'player' | 'rival' | 'startup';
   cash: number;
   debt: number;
   valuation: number;

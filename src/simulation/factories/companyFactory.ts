@@ -140,6 +140,7 @@ export const createCompany = (
     ceoLevel: 1,
     controlledTiles: [],
     isPlayer,
+    kind,
     voiceTone: isPlayer ? 'aggressive' : undefined,
     campaignAuthenticity: isPlayer ? 'aspirational' : undefined,
     buildings: [],

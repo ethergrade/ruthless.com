@@ -343,50 +343,8 @@ const NewGameModal: React.FC<{
                 })}
               </div>
 
-              {/* T: New Game — pre-distribute up to 8 departments across 3 starting buildings */}
-              <div className="preview-section-label">
-                Starting Buildings — drop on map later
-                <span className={`token-budget ${initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS ? 'full' : ''}`}>
-                  {MAX_DEPTS - initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0)} / {MAX_DEPTS} departments
-                </span>
-              </div>
-              <div className="setup-buildings">
-                {initialBuildings.map((b, bi) => (
-                  <div key={bi} className={`setup-building ${b.isHQ ? 'hq' : ''}`}>
-                    <div className="sb-head">
-                      <span className="sb-name">{b.isHQ ? 'HQ' : `Building ${bi + 1}`}</span>
-                      <span className="sb-count">{b.deptTypes.length} dept{b.deptTypes.length === 1 ? '' : 's'}</span>
-                    </div>
-                    <div className="sb-depts">
-                      {(['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'corporate_strategy', 'dev_engineering'] as DepartmentType[]).map(dt => {
-                        const on = b.deptTypes.includes(dt);
-                        return (
-                          <button
-                            key={dt}
-                            type="button"
-                            className={`sb-dept ${on ? 'on' : ''}`}
-                            disabled={!on && initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS}
-                            onClick={() => toggleDept(bi, dt)}
-                          >
-                            {dt.replace('_', ' ')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          </div>
 
-              <div className="preview-section-label">Organization Perks — {archetype.name}</div>
-              <div className="preview-stats">
-                {ARCHETYPE_PERKS[selectedArchetype].length === 0 && (
-                  <span className="stat">Baseline — no perks</span>
-                )}
-                {ARCHETYPE_PERKS[selectedArchetype].map((p, i) => (
-                  <span key={i} className="stat org">{PERK_LABELS[p]}</span>
-                ))}
-              </div>
-            </div>
           </div>
 
           {/* COLUMN 2: CEO trait choice + GDR CEO build underneath */}
@@ -475,6 +433,61 @@ const NewGameModal: React.FC<{
                   <li>2 Starting Products</li>
                   <li>3 Starting Tiles</li>
                 </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* LOWER ROW: Starting Buildings (pre-distributed depts) + Organization Perks, side by side */}
+        <div className="setup-lower">
+          <div className="setup-col">
+            <div className="setup-details" style={{ borderColor: archetype.color }}>
+              {/* T: New Game — pre-distribute up to 8 departments across 3 starting buildings */}
+              <div className="preview-section-label">
+                Starting Buildings — drop on map later
+                <span className={`token-budget ${initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS ? 'full' : ''}`}>
+                  {MAX_DEPTS - initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0)} / {MAX_DEPTS} departments
+                </span>
+              </div>
+              <div className="setup-buildings">
+                {initialBuildings.map((b, bi) => (
+                  <div key={bi} className={`setup-building ${b.isHQ ? 'hq' : ''}`}>
+                    <div className="sb-head">
+                      <span className="sb-name">{b.isHQ ? 'HQ' : `Building ${bi + 1}`}</span>
+                      <span className="sb-count">{b.deptTypes.length} dept{b.deptTypes.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="sb-depts">
+                      {(['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'corporate_strategy', 'dev_engineering'] as DepartmentType[]).map(dt => {
+                        const on = b.deptTypes.includes(dt);
+                        return (
+                          <button
+                            key={dt}
+                            type="button"
+                            className={`sb-dept ${on ? 'on' : ''}`}
+                            disabled={!on && initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS}
+                            onClick={() => toggleDept(bi, dt)}
+                          >
+                            {dt.replace('_', ' ')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="setup-col">
+            <div className="setup-details" style={{ borderColor: archetype.color }}>
+              <div className="preview-section-label">Organization Perks — {archetype.name}</div>
+              <div className="preview-stats">
+                {ARCHETYPE_PERKS[selectedArchetype].length === 0 && (
+                  <span className="stat">Baseline — no perks</span>
+                )}
+                {ARCHETYPE_PERKS[selectedArchetype].map((p, i) => (
+                  <span key={i} className="stat org">{PERK_LABELS[p]}</span>
+                ))}
               </div>
             </div>
           </div>
