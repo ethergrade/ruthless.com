@@ -197,10 +197,17 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         // visible world rect -> grid range
         const tl = cam.getWorldPoint(0, 0);
         const br = cam.getWorldPoint(scene.scale.width, scene.scale.height);
-        const gxMin = Math.floor(((tl.x / (TILE_W / 2)) + (tl.y / (TILE_H / 2))) / 2) - 2;
-        const gxMax = Math.ceil(((br.x / (TILE_W / 2)) + (br.y / (TILE_H / 2))) / 2) + 2;
-        const gyMin = Math.floor(((br.y / (TILE_H / 2)) - (br.x / (TILE_W / 2))) / 2) - 2;
-        const gyMax = Math.ceil(((tl.y / (TILE_H / 2)) - (tl.x / (TILE_W / 2))) / 2) + 2;
+        const tr = cam.getWorldPoint(scene.scale.width, 0);
+        const bl = cam.getWorldPoint(0, scene.scale.height);
+        // T: project ALL 4 corners (iso inverse maps opposite corners to opposite
+        // extents of gx/gy) and take min/max so the cull range always covers the
+        // viewport regardless of camera rotation.
+        const toGX = (w: Phaser.Math.Vector2) => (w.x / (TILE_W / 2) + w.y / (TILE_H / 2)) / 2;
+        const toGY = (w: Phaser.Math.Vector2) => (w.y / (TILE_H / 2) - w.x / (TILE_W / 2)) / 2;
+        const gxMin = Math.floor(Math.min(toGX(tl), toGX(tr), toGX(br), toGX(bl))) - 2;
+        const gxMax = Math.ceil(Math.max(toGX(tl), toGX(tr), toGX(br), toGX(bl))) + 2;
+        const gyMin = Math.floor(Math.min(toGY(tl), toGY(tr), toGY(br), toGY(bl))) - 2;
+        const gyMax = Math.ceil(Math.max(toGY(tl), toGY(tr), toGY(br), toGY(bl))) + 2;
 
         // T: light infinite grid — draw empty diamond outlines across the visible
         // range so the world reads as boundless even before tiles are generated.
