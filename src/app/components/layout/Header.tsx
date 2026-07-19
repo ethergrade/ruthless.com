@@ -57,6 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, o
           <KPIMini label="INFLUENCE" value={playerCompany.marketInfluence} format="percent" />
           <KPIMini label="TRUST" value={playerCompany.brandTrust} format="percent" />
           <KPIMini label="SECURITY" value={playerCompany.securityPosture} format="percent" />
+          <KPIMini label="PROGRESS" value={playerCompany.powerScore ?? 0} format="percent" />
         </div>
 
         {alerts.length > 0 && (

@@ -149,7 +149,7 @@ export class TurnEngine {
       .forEach(p => products.set(p.id, p));
     [...aiCompanies, ...startups].forEach(c => companies.set(c.id, c));
 
-    return {
+    const result: GameState = {
       turn: 1,
       maxTurns: 20,
       playerCompanyId: playerCompany.id,
@@ -179,6 +179,10 @@ export class TurnEngine {
       phase: this.realMapPlacement ? 'placement' : 'playing',
       pendingBuildings: this.realMapPlacement ? [] : (this.initialBuildings ?? []),
     };
+    // T: seed composite power scores so the UI/progress is meaningful from turn 1.
+    this.state = result;
+    result.companies.forEach(c => { c.powerScore = this.computePowerScore(c); });
+    return result;
   }
 
   /** T — infinite map: lazily stream a square region of tiles around (cx,cy) so the
@@ -447,6 +451,8 @@ export class TurnEngine {
       const p = this.state.companies.get(this.state.playerCompanyId);
       if (p) p.ceoLevel += 1;
     }
+    // T: recompute composite power score for every company (drives victory + UI).
+    this.state.companies.forEach(c => { c.powerScore = this.computePowerScore(c); });
     this.checkVictoryConditions();
 
     // Persist this turn's news into the feed (P3: news must actually appear).
@@ -2347,12 +2353,60 @@ export class TurnEngine {
     }
   }
 
+  /** T — composite Company Power Score (0..100). Weighs the real levers the player
+   *  can move through orders: relative market share, valuation, CEO S.P.E.C.I.A.L.,
+   *  active trends the company is positioned in, weak signals it has exploited via
+   *  products, brand trust / security, and cash health. Pure end-turn idling cannot
+   *  raise this — every term depends on actions or on assets gained through play. */
+  private computePowerScore(company: Company): number {
+    const all = Array.from(this.state.companies.values());
+    const totalMI = all.reduce((s, c) => s + c.marketInfluence, 0) || 1;
+    const shareRel = company.marketInfluence / totalMI; // 0..1 (relative, not absolute)
+    const valuationScore = Math.max(0, Math.min(1, Math.log10(Math.max(1e6, company.valuation) / 1e6) / Math.log10(500)));
+
+    const ceo = company.ceos[0];
+    const skillKeys: CEOSkill[] = ['strength', 'perception', 'endurance', 'charisma', 'intelligence', 'agility'];
+    const skillVals = [...skillKeys.map(k => ceo?.skills?.[k] ?? 0), ceo?.luck ?? 0];
+    const ceoScore = skillVals.reduce((s, v) => s + v, 0) / (skillVals.length * 10); // 0..1
+
+    const activeTrends = this.state.trends.filter(t => t.strength > 0);
+    const ownedSegs = new Set(
+      Array.from(this.state.marketTiles.values()).filter(t => t.controllerId === company.id).map(t => t.segment),
+    );
+    const trendHits = activeTrends.filter(t => ownedSegs.has(t.sector)).length;
+    const trendScore = Math.min(1, trendHits / Math.max(1, activeTrends.length));
+
+    const activeSignals = this.state.weakSignals.filter(w => w.expiresTurn > this.state.turn);
+    const prodCats = new Set(company.products.map(p => p.category));
+    const signalHits = activeSignals.filter(w => prodCats.has(w.relatedCategory)).length;
+    const signalScore = Math.min(1, signalHits / Math.max(1, activeSignals.length));
+
+    const trustSec = (company.brandTrust / 100) * 0.5 + (company.securityPosture / 100) * 0.5;
+    const cashHealth = company.cash > 0 ? 1 : 0.4;
+
+    const score =
+      shareRel * 40 +
+      valuationScore * 18 +
+      ceoScore * 12 +
+      trendScore * 10 +
+      signalScore * 8 +
+      trustSec * 10 +
+      cashHealth * 2;
+    return Math.round(Math.max(0, Math.min(100, score)));
+  }
+
   private checkVictoryConditions(): void {
     const player = this.state.companies.get(this.state.playerCompanyId);
     if (!player) return;
+    const all = Array.from(this.state.companies.values());
+    const totalMI = all.reduce((s, c) => s + c.marketInfluence, 0) || 1;
+    const shareRel = player.marketInfluence / totalMI;
+    const power = player.powerScore ?? this.computePowerScore(player);
 
-    // Victory: dominant market share AND healthy trust AND solid security.
-    if (player.marketInfluence >= 45 && player.brandTrust >= 60 && player.securityPosture >= 60) {
+    // Victory: real dominance — high composite power AND meaningful relative share
+    // AND solvent. Idling (end-turn with no orders) leaves power far below 70 and
+    // shareRel below 0.30, so it can never trigger this.
+    if (power >= 70 && shareRel >= 0.30 && player.cash > 0) {
       this.state.isGameOver = true;
       this.state.victoryType = 'market_dominance';
       return;
@@ -2365,13 +2419,13 @@ export class TurnEngine {
       return;
     }
 
-    // End of campaign: decide winner by market influence.
+    // End of campaign: winner is the highest-power company, but only if it actually
+    // achieved dominance (power >= 50). Below that, nobody "won" — idling loses.
     if (this.state.turn >= this.state.maxTurns) {
+      const ranked = [...all].sort((a, b) => (b.powerScore ?? 0) - (a.powerScore ?? 0));
+      const leader = ranked[0];
       this.state.isGameOver = true;
-      const leader = Array.from(this.state.companies.values()).sort(
-        (a, b) => b.marketInfluence - a.marketInfluence
-      )[0];
-      this.state.victoryType = leader.id === this.state.playerCompanyId
+      this.state.victoryType = (leader.id === this.state.playerCompanyId && (leader.powerScore ?? 0) >= 50)
         ? 'market_dominance'
         : undefined;
     }

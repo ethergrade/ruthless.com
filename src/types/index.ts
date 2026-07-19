@@ -206,6 +206,9 @@ export interface Company {
   revenue: number;
   operatingCosts: number;
   cashFlow: number;
+  /** T: composite Company Power Score (0..100) driving victory + progress UI.
+   *  Weighs market share, valuation, CEO SPECIAL, trends, weak signals, trust/security, cash. */
+  powerScore?: number;
   marketInfluence: number;
   brandTrust: number;
   securityPosture: number;
