@@ -1019,17 +1019,19 @@ export class TurnEngine {
       const b = company.buildings.find(b => b.tileId === action.targetTileId);
       if (b) buildingId = b.id;
     }
-    // T: enforce the ruthless.com rule — max 8 departments per building.
+    // T: enforce the ruthless.com rule — max 8 departments per building. The HQ
+    // itself occupies 1 slot, so an HQ can hold at most 7 real departments.
+    const slotCount = (b: Building) => b.departmentIds.length + (b.isHQ ? 1 : 0);
     if (buildingId) {
       const b = company.buildings.find(x => x.id === buildingId);
-      if (b && b.departmentIds.length >= b.maxDepartments) {
+      if (b && slotCount(b) >= b.maxDepartments) {
         // Find any building with capacity, else bail (player must build a new building).
-        const room = company.buildings.find(x => x.departmentIds.length < x.maxDepartments);
+        const room = company.buildings.find(x => slotCount(x) < x.maxDepartments);
         if (!room) return;
         buildingId = room.id;
       }
     } else {
-      const room = company.buildings.find(x => x.departmentIds.length < x.maxDepartments);
+      const room = company.buildings.find(x => slotCount(x) < x.maxDepartments);
       if (room) buildingId = room.id;
     }
 

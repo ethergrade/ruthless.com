@@ -282,13 +282,26 @@ export const ActionComposer: React.FC<Props> = ({
           const isSeize = type === 'build_building';
           const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action', 'security_offline', 'defend_tile'].includes(type);
           const validTile = (t: MarketTile): boolean => {
-            if (isOwn) return !!t.controllerId && t.controllerId === playerCompany.id && !t.buildingId;
+            // T: build_department targets one of the player's tiles — a building tile
+            // (to add a dept to an existing building) or an empty owned tile.
+            if (isOwn) return !!t.controllerId && t.controllerId === playerCompany.id;
             if (isOffensive) return !!t.controllerId && t.controllerId !== playerCompany.id;
             if (isSeize) return !t.controllerId || t.controllerId !== playerCompany.id; // free or rival (seize)
             return true;
           };
+          // T: building picker — choose an existing building with free slots.
+          const slotCount = (b: { departmentIds: unknown[]; isHQ?: boolean }) =>
+            b.departmentIds.length + (b.isHQ ? 1 : 0);
+          const ownBuildings = isOwn
+            ? playerCompany.buildings
+                .filter(b => slotCount(b) < b.maxDepartments)
+                .sort((a, b) => (a.isHQ ? -1 : 0) - (b.isHQ ? -1 : 0))
+            : [];
+          const selectedBuilding = isOwn && targetTileId
+            ? playerCompany.buildings.find(b => b.tileId === targetTileId)
+            : undefined;
           const hint = isOwn
-            ? 'Click one of YOUR controlled, unbuilt tiles to house the department'
+            ? 'Pick one of YOUR buildings (or click it on the map) to house the new department'
             : isOffensive
               ? 'Click a RIVAL-controlled tile to target'
               : isSeize
@@ -306,8 +319,24 @@ export const ActionComposer: React.FC<Props> = ({
           });
           return (
             <div className="ac-field">
+              {isOwn && (
+                <div className="ac-field">
+                  <label>Building (with free slots)</label>
+                  <select value={selectedBuilding?.id ?? ''} onChange={e => {
+                    const b = playerCompany.buildings.find(x => x.id === e.target.value);
+                    if (b) setTargetTileId(b.tileId);
+                  }}>
+                    <option value="">— choose a building —</option>
+                    {ownBuildings.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} · {slotCount(b)}/{b.maxDepartments} slots
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <label>{isOffensive ? 'Target Tile (rival building / territory)'
-                : isOwn ? 'Build On Tile (your controlled tile)'
+                : isOwn ? 'Building Tile'
                 : isSeize ? 'Build On Tile (free or rival)' : 'Target Tile'}</label>
               <div className="ac-tile-pick">
                 <select value={targetTileId} onChange={e => {
