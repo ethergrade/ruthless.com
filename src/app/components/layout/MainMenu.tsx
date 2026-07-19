@@ -3,13 +3,14 @@ import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import { SettingsModal } from './SettingsModal';
-import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec } from '../../../types';
+import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec, DepartmentType } from '../../../types';
 import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_SKILLS, SPECIAL_LABELS, CEO_TOKEN_BUDGET, ARCHETYPE_PERKS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
 import type { CompanyArchetype, CEOTrait } from '../../../types';
 
+// T: New Game — player pre-distributes up to 8 departments across 3 starting buildings.
 interface MainMenuProps {
   onStartGame: () => void;
   onLoadGame: () => void;
@@ -56,7 +57,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         statOverrides,
         ceoBuild,
         simulation,
-        undefined,        // initialBuildings (modal-grid path retired — real-map placement used instead)
+        _initialBuildings,
         realMapPlacement, // T: player drops buildings live on the board
       );
     } catch (err) {
@@ -250,6 +251,26 @@ const NewGameModal: React.FC<{
     specialPoints: 1,
   };
 
+  // T: New Game — player pre-distributes up to 8 departments across 3 starting
+  // buildings (HQ + 2 branches). Dropped live on the board during placement.
+  const [initialBuildings, setInitialBuildings] = useState<InitialBuildingSpec[]>([
+    { isHQ: true, deptTypes: [] },
+    { isHQ: false, deptTypes: [] },
+    { isHQ: false, deptTypes: [] },
+  ]);
+  const MAX_DEPTS = 8;
+  const toggleDept = (bIdx: number, dt: DepartmentType) => {
+    setInitialBuildings(prev => {
+      const total = prev.reduce((s, b) => s + b.deptTypes.length, 0);
+      const next = prev.map(b => ({ ...b, deptTypes: [...b.deptTypes] }));
+      const list = next[bIdx].deptTypes;
+      const at = list.indexOf(dt);
+      if (at >= 0) list.splice(at, 1);
+      else if (total < MAX_DEPTS) list.push(dt);
+      return next;
+    });
+  };
+
   return (
     <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
       <div className="new-game-modal">
@@ -318,6 +339,40 @@ const NewGameModal: React.FC<{
                     </div>
                   );
                 })}
+              </div>
+
+              {/* T: New Game — pre-distribute up to 8 departments across 3 starting buildings */}
+              <div className="preview-section-label">
+                Starting Buildings — drop on map later
+                <span className={`token-budget ${initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS ? 'full' : ''}`}>
+                  {MAX_DEPTS - initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0)} / {MAX_DEPTS} departments
+                </span>
+              </div>
+              <div className="setup-buildings">
+                {initialBuildings.map((b, bi) => (
+                  <div key={bi} className={`setup-building ${b.isHQ ? 'hq' : ''}`}>
+                    <div className="sb-head">
+                      <span className="sb-name">{b.isHQ ? 'HQ' : `Building ${bi + 1}`}</span>
+                      <span className="sb-count">{b.deptTypes.length} dept{b.deptTypes.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="sb-depts">
+                      {(['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'corporate_strategy', 'dev_engineering'] as DepartmentType[]).map(dt => {
+                        const on = b.deptTypes.includes(dt);
+                        return (
+                          <button
+                            key={dt}
+                            type="button"
+                            className={`sb-dept ${on ? 'on' : ''}`}
+                            disabled={!on && initialBuildings.reduce((s, b) => s + b.deptTypes.length, 0) >= MAX_DEPTS}
+                            onClick={() => toggleDept(bi, dt)}
+                          >
+                            {dt.replace('_', ' ')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="preview-section-label">Organization Perks — {archetype.name}</div>
@@ -473,7 +528,7 @@ const NewGameModal: React.FC<{
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET}>
+          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild, initialBuildings)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET}>
             START GAME
           </button>
         </div>

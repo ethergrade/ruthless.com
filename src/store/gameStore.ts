@@ -14,6 +14,7 @@ import { useSettings } from './settings';
 interface GameStore {
   state: GameState | null;
   engine: TurnEngine | null;
+  initialBuildings: InitialBuildingSpec[];
   selectedTileId: TileId | null;
   selectedCompanyId: CompanyId | null;
   ui: {
@@ -61,6 +62,7 @@ export const useGameStore = create<GameStore>()(
     (set, get) => ({
       state: null,
       engine: null,
+      initialBuildings: [] as InitialBuildingSpec[],
       selectedTileId: null,
       selectedCompanyId: null,
       ui: initialUI,
@@ -81,7 +83,7 @@ export const useGameStore = create<GameStore>()(
             engine.setState(state);
           }
         }
-        set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+        set({ state: engine.getState(), engine, initialBuildings: initialBuildings ?? [], selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
       },
 
       placeBuilding: (spec: InitialBuildingSpec) => {
@@ -214,7 +216,7 @@ export const useGameStore = create<GameStore>()(
           const engine = new TurnEngine(state.seed, undefined, undefined, undefined, undefined, undefined, false, state.mapSeed);
           engine.setState(state);
           engine.rehydrateWorld(); // regenerate explored tiles from mapSeed, overlay saved diff
-          set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+          set({ state: engine.getState(), engine, initialBuildings: get().initialBuildings, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {
@@ -244,7 +246,7 @@ export const useGameStore = create<GameStore>()(
           const engine = new TurnEngine(state.seed, undefined, undefined, undefined, undefined, undefined, false, state.mapSeed);
           engine.setState(state);
           engine.rehydrateWorld(); // regenerate explored tiles from mapSeed, overlay saved diff
-          set({ state: engine.getState(), engine, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
+          set({ state: engine.getState(), engine, initialBuildings: get().initialBuildings, selectedTileId: null, selectedCompanyId: state.playerCompanyId, ui: initialUI });
           get().addNotification('Game loaded', '');
           return true;
         } catch {

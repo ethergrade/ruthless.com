@@ -102,6 +102,7 @@ function drawBuilding(
 export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect, onPlaceTile, targeting, onExplore }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const gameCreatedRef = useRef(false);
   const selectedTileIdRef = useRef(selectedTileId);
   const onTileSelectRef = useRef(onTileSelect);
   const onPlaceTileRef = useRef(onPlaceTile);
@@ -110,6 +111,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
   const hoverTileRef = useRef<string | null>(null);
   const camRef = useRef<Phaser.Cameras.Scene2D.Camera | null>(null);
   const camStateRef = useRef<{ zoom: number; rotation: number; scrollX: number; scrollY: number } | null>(null);
+  // T: live state ref so drawWorld (created once) always reads the CURRENT state —
+  // rivals must appear the instant finishPlacement flips phase to 'playing'.
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   useEffect(() => { selectedTileIdRef.current = selectedTileId; }, [selectedTileId]);
   useEffect(() => { onTileSelectRef.current = onTileSelect; }, [onTileSelect]);
@@ -133,9 +138,12 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
     }
   }, [state, state?.turn, state?.phase]);
 
-  // Rebuild the Phaser scene only when a new game state object is created.
+  // Rebuild the Phaser scene only ONCE (when state first becomes available).
+  // drawWorld reads stateRef live, so no per-turn rebuild is needed — rivals appear
+  // the instant finishPlacement flips phase to 'playing' without recreating the scene.
   useEffect(() => {
-    if (!containerRef.current || !state) return;
+    if (!containerRef.current || !state || gameCreatedRef.current) return;
+    gameCreatedRef.current = true;
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
@@ -165,7 +173,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       const H = scene.scale.height || containerRef.current!.clientHeight;
 
       const companyColors = new Map<string, number>();
-      state!.companies.forEach((c) =>
+      stateRef.current!.companies.forEach((c) =>
         companyColors.set(c.id, Phaser.Display.Color.HexStringToColor(c.color).color));
 
       /* ---- backdrops: static screen frame + world floor grid ----------- */
@@ -193,7 +201,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       const glowLayer = scene.add.graphics().setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
       const overlay = scene.add.graphics().setDepth(5);
 
-      const hideRivals = state?.phase === 'placement';
+      const hideRivals = stateRef.current?.phase === 'placement';
 
       /* ---- inverse projection + O(1) tile pick via spatial index ------- */
       const screenToTile = (wx: number, wy: number): MarketTile | null => {
@@ -201,11 +209,11 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         const iy = wy / (TILE_H / 2);
         const gx = Math.round((ix + iy) / 2);
         const gy = Math.round((iy - ix) / 2);
-        const id = state!.tileIndex[`${gx},${gy}`];
-        if (id) return state!.marketTiles.get(id) ?? null;
+        const id = stateRef.current!.tileIndex[`${gx},${gy}`];
+        if (id) return stateRef.current!.marketTiles.get(id) ?? null;
         // T: infinite map — materialize the tile on demand if it was never seen.
         onExploreRef.current?.(gx, gy, 2);
-        return state!.marketTiles.get(state!.tileIndex[`${gx},${gy}`] ?? '') ?? null;
+        return stateRef.current!.marketTiles.get(stateRef.current!.tileIndex[`${gx},${gy}`] ?? '') ?? null;
       };
 
       const toWorld = (t: MarketTile) => ({
@@ -247,14 +255,14 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
         // territory lines (cheap, only for owned tiles)
         const byCompany = new Map<string, MarketTile[]>();
-        state!.marketTiles.forEach((t) => {
+        stateRef.current!.marketTiles.forEach((t) => {
           if (t.controllerId) {
             if (!byCompany.has(t.controllerId)) byCompany.set(t.controllerId, []);
             byCompany.get(t.controllerId)!.push(t);
           }
         });
         byCompany.forEach((list, cid) => {
-          if (hideRivals && cid !== state!.playerCompanyId) return;
+          if (hideRivals && cid !== stateRef.current!.playerCompanyId) return;
           const col = companyColors.get(cid) || 0x00d4aa;
           linesLayer.lineStyle(1.5, col, 0.18);
           const cxavg = list.reduce((s, t) => s + toWorld(t).x, 0) / list.length;
@@ -266,16 +274,16 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         });
 
         const tgt = targetingRef.current;
-        state!.marketTiles.forEach((t) => {
+        stateRef.current!.marketTiles.forEach((t) => {
           if (t.x < gxMin || t.x > gxMax || t.y < gyMin || t.y > gyMax) return; // cull
           const c = toWorld(t);
           const sx = c.x, sy = c.y;
-          const ownedByPlayer = !!t.controllerId && t.controllerId === state!.playerCompanyId;
+          const ownedByPlayer = !!t.controllerId && t.controllerId === stateRef.current!.playerCompanyId;
           const owned = hideRivals ? ownedByPlayer : !!t.controllerId;
           const contested = owned && t.challengerId && t.challengerId !== t.controllerId;
           const fill = owned
             ? contested ? 0x241433
-              : (t.controllerId === state!.playerCompanyId ? 0x0c2a24 : 0x1a1320)
+              : (t.controllerId === stateRef.current!.playerCompanyId ? 0x0c2a24 : 0x1a1320)
             : 0x0d0f1a;
           const segCol = Phaser.Display.Color.HexStringToColor(SEGMENT_COLORS[t.segment]).color;
           tileLayer.fillStyle(fill, 1).fillPoints(diamondPoints(sx, sy), true);
@@ -288,7 +296,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
           // T: real-map placement — free tiles glow as valid drop targets so the
           // player can clearly see WHERE to drop each building.
-          if (state!.phase === 'placement' && !t.buildingId && !t.controllerId) {
+          if (stateRef.current!.phase === 'placement' && !t.buildingId && !t.controllerId) {
             tileLayer.fillStyle(0x00d4aa, 0.12).fillPoints(diamondPoints(sx, sy), true);
             tileLayer.lineStyle(3, 0x00d4aa, 0.95).strokePoints(diamondPoints(sx, sy), true);
             // ghost building preview on the hovered free tile (shows WHAT will drop)
@@ -300,7 +308,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
           if (owned) {
             const col = companyColors.get(t.controllerId!) || 0x00d4aa;
-            const building = t.buildingId ? state!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
+            const building = t.buildingId ? stateRef.current!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
             const deptCount = building ? building.departmentIds.length : 0;
             drawBuilding(tileLayer, glowLayer, sx, sy, deptCount, col);
           } else if (t.isStartupTile && !t.buildingId && !hideRivals) {
@@ -321,7 +329,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             tileLayer.fillStyle(0x00d4aa, 1).fillCircle(sx, sy - 6, 4);
           }
           if (t.pendingAction) {
-            const paCol = t.pendingAction.byCompanyId === state!.playerCompanyId ? 0x00ffa3 : 0xff5c5c;
+            const paCol = t.pendingAction.byCompanyId === stateRef.current!.playerCompanyId ? 0x00ffa3 : 0xff5c5c;
             glowLayer.fillStyle(paCol, 0.5).fillCircle(sx, sy - 40, 12);
             overlay.lineStyle(2, paCol, 0.9).strokeCircle(sx, sy - 40, 9);
             const pulse = scene.add.text(sx, sy - 40, '!', {
@@ -333,7 +341,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
         // selection / hover ring
         const ring = (id: string, color: number) => {
-          const t = state!.marketTiles.get(id);
+          const t = stateRef.current!.marketTiles.get(id);
           if (!t) return;
           const c = toWorld(t);
           overlay.lineStyle(2.5, color, 0.9).strokePoints(diamondPoints(c.x, c.y), true);
@@ -413,8 +421,8 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         if (id !== hoverId) {
           hoverId = id;
           if (id) {
-            const ctrl = t!.controllerId ? state!.companies.get(t!.controllerId) : null;
-            const ch = t!.challengerId ? state!.companies.get(t!.challengerId) : null;
+            const ctrl = t!.controllerId ? stateRef.current!.companies.get(t!.controllerId) : null;
+            const ch = t!.challengerId ? stateRef.current!.companies.get(t!.challengerId) : null;
             let txt = `${t!.id.replace('tile_', '').toUpperCase()}\nSegment: ${t!.segment.replace('_', ' ')}\n`;
             txt += `Value: $${t!.value.toLocaleString()}\nGrowth: ${(t!.growth * 100).toFixed(1)}%\nRisk: ${(t!.risk * 100).toFixed(0)}%\nControl: ${(t!.controlStrength * 100).toFixed(0)}%`;
             if (ctrl) txt += `\nOwner: ${ctrl.name}`;
@@ -458,8 +466,14 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
       const game = new Phaser.Game(config);
       gameRef.current = game;
-      return () => { game.destroy(true); gameRef.current = null; };
-  }, [state]);
+  }, [state]); // recreate guarded by gameCreatedRef; no per-turn rebuild
+
+  // T: destroy the Phaser game only when this component truly unmounts.
+  useEffect(() => () => {
+    gameRef.current?.destroy(true);
+    gameRef.current = null;
+    gameCreatedRef.current = false;
+  }, []);
 
   return (
     <div className="market-map-wrap">

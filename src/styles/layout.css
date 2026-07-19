@@ -1439,13 +1439,28 @@
 }
 .placement-panel h2 { margin: 0 0 6px; font-size: 14px; color: var(--accent-cyan); letter-spacing: 0.5px; }
 .placement-hint { margin: 0 0 10px; font-size: 11px; color: var(--text-muted); line-height: 1.4; }
-.placement-depts { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
-.placement-depts .eb-dept {
-  font-size: 10px; padding: 3px 7px; border-radius: 5px; cursor: pointer;
-  background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border);
-}
-.placement-depts .eb-dept.on { background: var(--accent-cyan); color: #04130f; border-color: var(--accent-cyan); }
-.placement-depts .eb-dept:disabled { opacity: 0.35; cursor: not-allowed; }
+/* T: New Game — pre-distribute up to 8 departments across 3 starting buildings */
+.setup-buildings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.setup-building { border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--bg-elevated); }
+.setup-building.hq { border-color: var(--accent-cyan); }
+.sb-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.sb-name { font-size: 11px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
+.setup-building.hq .sb-name { color: var(--accent-cyan); }
+.sb-count { font-size: 10px; color: var(--text-muted); }
+.sb-depts { display: flex; flex-wrap: wrap; gap: 5px; }
+.sb-dept { font-size: 10px; padding: 3px 7px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; }
+.sb-dept.on { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,212,170,0.12); }
+.sb-dept:disabled { opacity: 0.35; cursor: not-allowed; }
+/* T: EMPIRE SETUP — the 3 buildings queued for real-map placement */
+.placement-buildings { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.pb-card { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 8px; font-size: 11px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-elevated); color: var(--text-muted); }
+.pb-card.hq { border-color: var(--accent-cyan); }
+.pb-card.placed { opacity: 0.55; border-color: var(--accent-cyan); }
+.pb-name { font-weight: 600; color: var(--text); }
+.pb-card.hq .pb-name { color: var(--accent-cyan); }
+.pb-depts { font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-status { text-align: right; color: var(--accent-cyan); font-size: 10px; }
+.pb-card.pending .pb-status { color: var(--text-muted); }
 .placement-status { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text); margin-bottom: 10px; }
 .placement-done { width: 100%; }
 

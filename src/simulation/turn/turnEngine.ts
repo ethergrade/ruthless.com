@@ -119,6 +119,10 @@ export class TurnEngine {
       createCompany(this.rng, name, arch, false, i, undefined, undefined, undefined, 'rival'));
 
     const playerCompany = createCompany(this.rng, 'PlayerCorp', undefined, true, 0, this.ceoTrait, this.statOverrides, this.ceoBuild);
+    // T: in real-map placement with pre-distributed buildings, the player's
+    // departments come from the New Game setup (via placePlayerBuilding) — so
+    // drop the factory-default departments to avoid duplicates (11 instead of 8).
+    if (this.realMapPlacement && this.initialBuildings?.length) playerCompany.departments = [];
     if (so?.startCash) playerCompany.cash = so.startCash;
     playerCompany.ceoBuild = this.ceoBuild;
     const marketTiles = createMarketMap(this.rng, mw, mh, this.mapSeed);
@@ -128,11 +132,10 @@ export class TurnEngine {
     const companies = new Map<CompanyId, Company>();
     [playerCompany, ...aiCompanies].forEach(c => companies.set(c.id, c));
 
-    // Give each corporation a starting HQ Building on its first controlled tile.
-    // In real-map placement mode the player drops their own buildings live on the
-    // board, so we seed only the rivals/startups here (they stay hidden until the
-    // player finishes placement and the phase flips to 'playing').
-    if (this.initialBuildings && this.initialBuildings.length > 0) {
+    // T: in real-map placement the player drops their own buildings live on the
+    // board (with departments pre-distributed from the New Game setup). So we seed
+    // only the rivals/startups here — they stay hidden until placement finishes.
+    if (this.initialBuildings && this.initialBuildings.length > 0 && !this.realMapPlacement) {
       this.seedPlayerBuildings(playerCompany, marketTiles, this.initialBuildings);
     } else if (this.realMapPlacement) {
       aiCompanies.forEach(c => this.seedCompanyBuilding(c, marketTiles));
@@ -309,7 +312,9 @@ export class TurnEngine {
     if (!tile || tile.buildingId) return;
     const id = generateId.building();
     const isHQ = spec.isHQ || state.pendingBuildings.length === 0;
-    const deptTypes = spec.deptTypes.slice(0, 3);
+    // T: player pre-distributes up to 8 departments across the 3 buildings in the
+    // New Game setup; per-building cap stays maxDepartments (8). No slice(0,3).
+    const deptTypes = spec.deptTypes;
     const deptIds: DepartmentId[] = [];
     deptTypes.forEach(dt => {
       const dId = generateId.department();
