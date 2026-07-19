@@ -3,6 +3,7 @@ import type { Company, NewsItem, Department, Product, TurnAction, GameState, Mar
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
 import { CEO_PILLARS, PILLAR_LABELS, PERK_LABELS, PERK_PILLAR_THRESHOLD, CEO_TRAIT_DEFS } from '../../../data/archetypes';
 import { Icon, IconName } from '../ui/Icon';
+import { useGameStore } from '../../../store/gameStore';
 
 interface BottomPanelProps {
   state: GameState | null;
@@ -374,7 +375,10 @@ const CapabilitiesPanel: React.FC<{ company: Company }> = ({ company }) => {
   );
 };
 
-export const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
+export const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => {
+  const companies = useGameStore(s => s.state?.companies);
+  const companyName = (id?: string) => (id ? (companies?.get(id as never)?.name ?? id) : undefined);
+  return (
   <div className="news-feed">
     {news.length === 0 ? (
       <div className="empty-state">No news this turn</div>
@@ -384,12 +388,13 @@ export const NewsPanel: React.FC<{ news: NewsItem[] }> = ({ news }) => (
           <span className="news-turn">T{item.turn}</span>
           <span className="news-headline">{item.headline}</span>
           <span className="news-body">{item.body}</span>
-          {item.companyId && <span className="news-company">{item.companyId}</span>}
+          {item.companyId && <span className="news-company">{companyName(item.companyId)}</span>}
         </div>
       ))
     )}
   </div>
 );
+};
 
 const OrdersPanel: React.FC<{
   actions: TurnAction[];
