@@ -6,6 +6,12 @@ import { SEGMENT_COLORS, SEGMENT_LABELS } from '../../../data/generators';
 const TILE_W = 96;
 const TILE_H = 48;
 
+/** T: iso grid -> world coords. Kept module-level so camera framing can reuse it. */
+const tileToWorld = (gx: number, gy: number) => ({
+  x: (gx - gy) * (TILE_W / 2),
+  y: (gx + gy) * (TILE_H / 2),
+});
+
 /** T: targeting mode — when an action needs a tile, the map highlights valid
  *  tiles and reports the picked tile id instead of just selecting it. */
 export interface TargetingState {
@@ -102,6 +108,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
   const targetingRef = useRef(targeting);
   const onExploreRef = useRef(onExplore);
   const hoverTileRef = useRef<string | null>(null);
+  const camRef = useRef<Phaser.Cameras.Scene2D.Camera | null>(null);
   const camStateRef = useRef<{ zoom: number; rotation: number; scrollX: number; scrollY: number } | null>(null);
 
   useEffect(() => { selectedTileIdRef.current = selectedTileId; }, [selectedTileId]);
@@ -109,6 +116,22 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
   useEffect(() => { onPlaceTileRef.current = onPlaceTile; }, [onPlaceTile]);
   useEffect(() => { targetingRef.current = targeting; }, [targeting]);
   useEffect(() => { onExploreRef.current = onExplore; }, [onExplore]);
+
+  // T: after every turn (and on first mount) keep the view framed on the player's
+  // HQ so the camera never drifts away from the home base between end turns.
+  useEffect(() => {
+    const cam = camRef.current;
+    if (!cam || !state) return;
+    const player = state.companies.get(state.playerCompanyId);
+    const hq = player?.buildings.find(b => b.isHQ);
+    if (hq) {
+      const t = state.marketTiles.get(hq.tileId);
+      if (t) {
+        const w = tileToWorld(t.x, t.y);
+        cam.centerOn(w.x, w.y);
+      }
+    }
+  }, [state, state?.turn, state?.phase]);
 
   // Rebuild the Phaser scene only when a new game state object is created.
   useEffect(() => {
@@ -329,6 +352,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
       /* ---- camera: fit / restore + controls ---------------------------- */
       const cam = scene.cameras.main;
+      camRef.current = cam;
       scene.input.mouse?.disableContextMenu();
       const camState = { zoom: 1, rot: 0, scrollX: 0, scrollY: 0 };
       const setCamZoom = (z: number) => { cam.setZoom(z); camState.zoom = z; };
