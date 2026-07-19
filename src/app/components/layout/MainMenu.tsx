@@ -212,7 +212,10 @@ const NewGameModal: React.FC<{
     setStatOverrides(prev => {
       const cur = prev[key] ?? 0;
       const next = Math.max(-20, Math.min(100, cur + delta));
-      const nextUsed = usedTokens - (cur ?? 0) + next;
+      // T: compute the spend from the CURRENT (prev) state, not the stale
+      // closure `usedTokens` — otherwise rapid clicks bypass the 100 budget.
+      const curUsed = Object.values(prev).reduce<number>((s, v) => s + (v ?? 0), 0);
+      const nextUsed = curUsed - (cur ?? 0) + next;
       if (nextUsed > TOKEN_BUDGET) return prev; // would exceed budget
       const copy = { ...prev };
       if (next === 0) delete copy[key]; else copy[key] = next;
