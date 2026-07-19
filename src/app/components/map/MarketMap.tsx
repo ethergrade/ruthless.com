@@ -382,8 +382,11 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       scene.input.keyboard!.addCapture('SPACE');
       const keyQ = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
       const keyE = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-      keyQ.on('down', () => { setCamRot(camState.rot - Phaser.Math.DegToRad(90)); syncCamState(); });
-      keyE.on('down', () => { setCamRot(camState.rot + Phaser.Math.DegToRad(90)); syncCamState(); });
+      // Phaser's screen-space camera rotation uses the opposite visual direction
+      // from the previous controls. Q rotates the board on the inverse axis; E
+      // performs the matching reverse rotation.
+      keyQ.on('down', () => { setCamRot(camState.rot + Phaser.Math.DegToRad(90)); syncCamState(); });
+      keyE.on('down', () => { setCamRot(camState.rot - Phaser.Math.DegToRad(90)); syncCamState(); });
 
       let panning = false, lastPX = 0, lastPY = 0, hoverId: string | null = null;
       scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
