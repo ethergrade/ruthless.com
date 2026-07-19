@@ -203,12 +203,15 @@ const NewGameModal: React.FC<{
 
   // T: point-buy token system for editable starting stats (GDR character build).
   const TOKEN_BUDGET = 100;
+  // T: per-trait override cap — keeps one stat from dominating the whole 100-token
+  // pool. Shown next to each trait so the player sees why +/- stop.
+  const STAT_OVERRIDE_CAP = 30;
   const [statOverrides, setStatOverrides] = useState<Partial<Record<string, number>>>({});
   const usedTokens = Object.values(statOverrides).reduce<number>((s, v) => s + (v ?? 0), 0);
   const adjustStat = (key: string, delta: number) => {
     setStatOverrides(prev => {
       const cur = prev[key] ?? 0;
-      const next = Math.max(-20, Math.min(40, cur + delta));
+      const next = Math.max(-20, Math.min(STAT_OVERRIDE_CAP, cur + delta));
       const nextUsed = usedTokens - (cur ?? 0) + next;
       if (nextUsed > TOKEN_BUDGET) return prev; // would exceed budget
       const copy = { ...prev };
@@ -308,9 +311,9 @@ const NewGameModal: React.FC<{
                       <span className={`bs-bar bs-${tone}`} style={{ width: `${v}%` }} />
                       <span className="bs-val">{v}</span>
                       <span className="bs-stepper">
-                        <button type="button" className="bs-btn" disabled={usedTokens >= TOKEN_BUDGET && ov <= 0} onClick={() => adjustStat(k, -1)}>−</button>
-                        <span className="bs-ov">{ov > 0 ? `+${ov}` : ov < 0 ? ov : '·'}</span>
-                        <button type="button" className="bs-btn" disabled={usedTokens >= TOKEN_BUDGET && ov >= 0} onClick={() => adjustStat(k, +1)}>+</button>
+                        <button type="button" className="bs-btn" disabled={ov <= -20} onClick={() => adjustStat(k, -1)}>−</button>
+                        <span className="bs-ov">{ov > 0 ? `+${ov}/${STAT_OVERRIDE_CAP}` : ov < 0 ? ov : '·'}</span>
+                        <button type="button" className="bs-btn" disabled={ov >= STAT_OVERRIDE_CAP || usedTokens >= TOKEN_BUDGET} onClick={() => adjustStat(k, +1)}>+</button>
                       </span>
                     </div>
                   );
