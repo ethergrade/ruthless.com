@@ -8,7 +8,7 @@ import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
   spinProductName,
 } from '../../../data/generators';
-import { CEO_SKILLS, SPECIAL_LABELS } from '../../../data/archetypes';
+import { CEO_PILLARS, PILLAR_LABELS } from '../../../data/archetypes';
 
 interface Props {
   playerCompany: Company;
@@ -60,7 +60,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'ceo_social', label: 'CEO Social Post', group: 'Market & Sales', baseCost: 100000, needs: ['tone', 'auth'] },
   { type: 'ceo_praise', label: 'CEO Praises Rival (PR)', group: 'Market & Sales', baseCost: 150000, needs: ['targetCompany'] },
   { type: 'ceo_discredit', label: 'CEO Discredits Rival (PR)', group: 'Market & Sales', baseCost: 150000, needs: ['targetCompany'] },
-  { type: 'train_ceo', label: 'Train CEO (S.P.E.C.I.A.L.)', group: 'Corporate', baseCost: 300000, needs: ['targetExecutive', 'tone'] },
+  { type: 'train_ceo', label: 'Train CEO (Pillar)', group: 'Corporate', baseCost: 300000, needs: ['targetExecutive', 'tone'] },
   { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000, needs: ['targetProduct'], requiresDept: 'cybersecurity' },
   { type: 'security_offline', label: 'Physical Security', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
@@ -373,7 +373,7 @@ export const ActionComposer: React.FC<Props> = ({
           </div>
         )}
 
-        {/* CEO to train (S.P.E.C.I.A.L.) */}
+        {/* CEO to train (executive pillar) */}
         {needs.includes('targetExecutive') && (
           <div className="ac-field">
             <label>CEO to Train</label>
@@ -386,13 +386,13 @@ export const ActionComposer: React.FC<Props> = ({
           </div>
         )}
 
-        {/* S.P.E.C.I.A.L. skill picker (reuses the tone field as the skill key) */}
+        {/* Executive pillar picker (reuses the tone field as the pillar key) */}
         {needs.includes('tone') && type === 'train_ceo' && (
           <div className="ac-field">
-            <label>S.P.E.C.I.A.L. Attribute to Train</label>
+            <label>Executive Pillar to Train</label>
             <select value={tone} onChange={e => setTone(e.target.value as VoiceTone)}>
-              {CEO_SKILLS.map(s => (
-                <option key={s} value={s}>{SPECIAL_LABELS[s]}</option>
+              {CEO_PILLARS.map(s => (
+                <option key={s} value={s}>{PILLAR_LABELS[s]}</option>
               ))}
             </select>
           </div>

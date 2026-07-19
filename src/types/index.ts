@@ -135,7 +135,7 @@ export type ActionType =
   // --- CEO GDR: market-moving PR, training & firing ---
   | 'ceo_praise'             // CEO PR: publicly praise a rival (diplomatic market nudge)
   | 'ceo_discredit'          // CEO PR: trash-talk / discredit a rival to move the market
-  | 'train_ceo'              // Train a CEO's S.P.E.C.I.A.L. attribute (spend budget/special pts)
+  | 'train_ceo'              // Train a CEO's executive pillar (spend budget/special pts)
   | 'fire_ceo'               // Remove a seated CEO (frees the HQ, -1 order)
   // --- Legal & Compliance (ruthless.com-inspired) ---
   | 'legal_sue'              // File a lawsuit vs a rival (damages + valuation hit)
@@ -207,7 +207,7 @@ export interface Company {
   operatingCosts: number;
   cashFlow: number;
   /** T: composite Company Power Score (0..100) driving victory + progress UI.
-   *  Weighs market share, valuation, CEO SPECIAL, trends, weak signals, trust/security, cash. */
+   *  Weighs market share, valuation, CEO executive pillars, trends, weak signals, trust/security, cash. */
   powerScore?: number;
   marketInfluence: number;
   brandTrust: number;
@@ -242,6 +242,8 @@ export interface Company {
   legalPoints: number;
   /** Scandal level 0..100 (drives stock/trust hits). */
   scandal: number;
+  /** T — Crisis-risk 0..1 (higher = worse). Lowered by the CEO's Resilience pillar. */
+  risk: number;
   /** True for AI corps that are "start-ups" available for acquisition. */
   isStartup?: boolean;
   /** Acquisition appeal for a startup (empty shell vs promising/high). */
@@ -297,7 +299,7 @@ export interface ChiefExecutive extends Executive {
   xp: number;
   /** Perks unlocked by XP or granted by the CEO trait at hire. */
   perks: ChiefPerk[];
-  /** T — Fallout-style S.P.E.C.I.A.L. attributes (0..10). */
+  /** T — Executive pillars (0..10), e.g. Vision / Network / Analytics ... */
   skills: Partial<Record<CEOSkill, number>>;
   /** T — Luck pillar (mirrors skills.luck; separate for clarity). */
   luck: number;
@@ -515,26 +517,28 @@ export type ExecutiveTrait =
   | 'political_capital';
 
 /**
- * T — Fallout-style S.P.E.C.I.A.L. attribute set for CEOs (0..10 each).
- * Luck is the 7th pillar; it softly biases success rolls, crisis survival
- * and scandal recovery. Charisma drives CEO social / negotiation; Perception
- * drives espionage/cyber awareness; Endurance drives crisis resilience, etc.
+ * T — Executive pillar attribute set for CEOs (0..10 each). The ruthless.com
+ * re-theme of the old S.P.E.C.I.A.L. clone: Vision / Network / Analytics /
+ * Charisma / Strategy / Operations / Resilience (+ Luck). Each pillar drives a
+ * global company metric via applyCeoPillarMods (market pull, brand, cost
+ * discipline, crisis survival) — not just the CEO's own action bonus.
  */
 export type CEOSkill =
-  | 'strength'      // physical/operational grit
-  | 'perception'    // espionage / cyber awareness
-  | 'endurance'     // crisis resilience / scandal recovery
-  | 'charisma'      // CEO social, negotiation, talent magnet
-  | 'intelligence'  // strategy, R&D, fast learning
-  | 'agility'       // speed of execution / orders
+  | 'vision'        // market foresight / anticipation of trends
+  | 'network'       // reach, partnerships, talent pipeline
+  | 'analytics'     // R&D, data, precision of action
+  | 'charisma'      // negotiation, PR, talent magnetism
+  | 'strategy'      // build efficiency, expansion, cost discipline
+  | 'operations'    // execution speed, operating-cost control
+  | 'resilience'    // crisis survival, scandal recovery
   | 'luck';         // soft random bonus across the board
 
 /** A GDR "character build" for the starting CEO (point-buy at new game). */
 export interface CeoBuild {
   /** One or more trait ids (multi-select within the token budget). */
   traits: CEOTrait[];
-  /** S.P.E.C.I.A.L. attributes (0..10). */
-  skills: Partial<Record<CEOSkill, number>>;
+  /** Executive pillar attributes (0..10). */
+  skills?: Partial<Record<CEOSkill, number>>;
   /** Luck is also tracked separately for clarity (mirrors skills.luck). */
   luck: number;
   /** Special action points regenerated per turn (gated by traits/perks). */

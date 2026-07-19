@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId, ActionType } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
-import { CEO_SKILLS, SPECIAL_LABELS, PERK_LABELS, PERK_SPECIAL_THRESHOLD, CEO_TRAIT_DEFS } from '../../../data/archetypes';
+import { CEO_PILLARS, PILLAR_LABELS, PERK_LABELS, PERK_PILLAR_THRESHOLD, CEO_TRAIT_DEFS } from '../../../data/archetypes';
 import { Icon, IconName } from '../ui/Icon';
 
 interface BottomPanelProps {
@@ -571,7 +571,7 @@ const CeoPanel: React.FC<{ company: Company; onEdit: (a: TurnAction) => void }> 
   return (
     <div className="ceo-panel">
       {company.ceos.map(c => {
-        const skills = CEO_SKILLS.map(s => ({ key: s, label: SPECIAL_LABELS[s], val: c.skills[s] ?? 0 }));
+        const skills = CEO_PILLARS.map(s => ({ key: s, label: PILLAR_LABELS[s], val: c.skills[s] ?? 0 }));
         return (
           <div key={c.id} className="ceo-card">
             <div className="ceo-head">
@@ -601,11 +601,11 @@ const CeoPanel: React.FC<{ company: Company; onEdit: (a: TurnAction) => void }> 
               {c.perks.map(p => (
                 <span key={p} className="perk-chip" title={PERK_LABELS[p]}>{p.replace('_', ' ')}</span>
               ))}
-              {/* T: lockable perks — show the path to earn them by growing S.P.E.C.I.A.L. */}
-              {(Object.keys(PERK_SPECIAL_THRESHOLD) as (keyof typeof PERK_SPECIAL_THRESHOLD)[])
+              {/* T: lockable perks — show the path to earn them by growing an executive pillar */}
+              {(Object.keys(PERK_PILLAR_THRESHOLD) as (keyof typeof PERK_PILLAR_THRESHOLD)[])
                 .filter(pk => !c.perks.includes(pk))
                 .map(pk => {
-                  const t = PERK_SPECIAL_THRESHOLD[pk]!;
+                  const t = PERK_PILLAR_THRESHOLD[pk]!;
                   const cur = c.skills[t.skill] ?? 0;
                   return (
                     <span key={pk} className="perk-chip locked" title={`${PERK_LABELS[pk]} — needs ${t.skill} ${t.min} (have ${cur})`}>
@@ -616,7 +616,7 @@ const CeoPanel: React.FC<{ company: Company; onEdit: (a: TurnAction) => void }> 
             </div>
 
             <div className="ceo-actions">
-              <button className="ceo-btn" onClick={() => onEdit({ ...blankAction(company.id, 'train_ceo'), executiveId: c.id })}>Train S.P.E.C.I.A.L.</button>
+              <button className="ceo-btn" onClick={() => onEdit({ ...blankAction(company.id, 'train_ceo'), executiveId: c.id })}>Train Pillar</button>
               <button className="ceo-btn danger" onClick={() => onEdit({ ...blankAction(company.id, 'hire_ceo') })}>Hire New CEO</button>
               <button className="ceo-btn danger" onClick={() => onEdit({ ...blankAction(company.id, 'hire_coo') })}>Hire COO</button>
               {company.ceos.length > 1 && (

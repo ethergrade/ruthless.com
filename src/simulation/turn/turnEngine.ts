@@ -1,5 +1,5 @@
 import { createRNG } from '../utils/rng';
-import { ACTION_SPECIAL_PILLAR, unlockPerksForCeo, PERK_LABELS } from '../../data/archetypes';
+import { ACTION_PILLAR, unlockPerksForCeo, PERK_LABELS } from '../../data/archetypes';
 import type { MarketSegment,
   GameState,
   Company,
@@ -448,14 +448,17 @@ export class TurnEngine {
     // so special CEO moves (praise / discredit / train) are a renewable resource.
     const p0 = this.state.companies.get(this.state.playerCompanyId);
     if (p0 && p0.ceos[0]) {
-      const agility = p0.ceos[0].skills.agility ?? 5;
-      p0.ceos[0].specialPoints = 1 + Math.floor(agility / 4); // 1..3
+      const operations = p0.ceos[0].skills.operations ?? 5;
+      p0.ceos[0].specialPoints = 1 + Math.floor(operations / 4); // 1..3
     }
     // CEO gains experience over time (drives Initiative bonus scaling).
     if (this.state.turn % 4 === 0) {
       const p = this.state.companies.get(this.state.playerCompanyId);
       if (p) p.ceoLevel += 1;
     }
+    // T: apply CEO executive-pillar modifiers to the company's global metrics
+    // (ruthless.com re-theme — pillars drive economy, not just CEO actions).
+    this.state.companies.forEach(c => this.applyCeoPillarMods(c));
     // T: recompute composite power score for every company (drives victory + UI).
     this.state.companies.forEach(c => { c.powerScore = this.computePowerScore(c); });
     this.checkVictoryConditions();
@@ -516,7 +519,7 @@ export class TurnEngine {
         const ceo = playerCompany?.ceos[0];
         if (ceo && playerCompany) {
           ceo.xp += 10;
-          const pillar = ACTION_SPECIAL_PILLAR[action.type];
+          const pillar = ACTION_PILLAR[action.type];
           if (pillar) {
             ceo.skills[pillar] = Math.min(10, (ceo.skills[pillar] ?? 5) + 1);
           }
@@ -1919,7 +1922,7 @@ export class TurnEngine {
       xp: 0,
       perks: [],
       // T — GDR SPECIAL defaults for a hired chief (player may train later).
-      skills: { intelligence: 5, charisma: 5, endurance: 5, luck: 5, strength: 4, perception: 4, agility: 4 },
+      skills: { analytics: 5, charisma: 5, resilience: 5, luck: 5, vision: 4, network: 4, strategy: 4, operations: 4 },
       luck: 5,
       ceoTraits: [role === 'ceo' ? 'initiative' : 'none'],
       specialPoints: 1,
@@ -2189,6 +2192,10 @@ export class TurnEngine {
     const budgetRatio = action.budget / this.getActionBaseCost(action.type);
     chance += Math.min(0.2, (budgetRatio - 1) * 0.1);
 
+    // T: Luck pillar — fortune softly biases every action's success (max +0.10).
+    const luck = company.ceos[0]?.luck ?? 5;
+    chance += luck / 100;
+
     return Math.max(0.05, Math.min(0.97, Math.round(chance * 100) / 100));
   }
 
@@ -2360,11 +2367,45 @@ export class TurnEngine {
     }
   }
 
+  /** T — apply the CEO's executive-pillar modifiers to the company's GLOBAL
+   *  metrics. This is what makes the GDR build matter for the whole economy,
+   *  not just for the CEO's own action bonus.
+   *  - vision        → marketInfluence (foresight / positioning)
+   *  - charisma      → brandTrust (negotiation / PR gravity)
+   *  - network       → marketInfluence (reach, partnerships)
+   *  - strategy      → operating costs down (build efficiency / discipline)
+   *  - operations    → operating costs down (execution / cost control)
+   *  - resilience    → risk down (crisis survival)
+   *  - analytics     → feeds computePowerScore (precision) — handled there
+   *  - luck          → handled in event/crisis rolls
+   *  Capped so a maxed pillar is strong but not game-breaking. */
+  private applyCeoPillarMods(company: Company): void {
+    const ceo = company.ceos[0];
+    if (!ceo) return;
+    const s = ceo.skills;
+    const vision = s.vision ?? 0;
+    const charisma = s.charisma ?? 0;
+    const network = s.network ?? 0;
+    const strategy = s.strategy ?? 0;
+    const operations = s.operations ?? 0;
+    const resilience = s.resilience ?? 0;
+
+    // Market pull (vision + network), capped at +12 influence/turn.
+    company.marketInfluence = Math.min(100, company.marketInfluence + (vision + network) * 0.6);
+    // Brand gravity (charisma).
+    company.brandTrust = Math.min(100, company.brandTrust + charisma * 0.4);
+    // Operating-cost discipline: strategy + operations each shave up to 20% (cap 35%).
+    const costMult = Math.max(0.65, 1 - (strategy + operations) * 0.02);
+    company.operatingCosts = Math.round(company.operatingCosts * costMult);
+    company.risk = Math.max(0, Math.min(1, company.risk - resilience * 0.01));
+  }
+
   /** T — composite Company Power Score (0..100). Weighs the real levers the player
-   *  can move through orders: relative market share, valuation, CEO S.P.E.C.I.A.L.,
-   *  active trends the company is positioned in, weak signals it has exploited via
-   *  products, brand trust / security, and cash health. Pure end-turn idling cannot
-   *  raise this — every term depends on actions or on assets gained through play. */
+   *  can move through orders: relative market share, valuation, CEO executive
+   *  pillars, active trends the company is positioned in, weak signals it has
+   *  exploited via products, brand trust / security, and cash health. Pure
+   *  end-turn idling cannot raise this — every term depends on actions or on
+   *  assets gained through play. */
   private computePowerScore(company: Company): number {
     const all = Array.from(this.state.companies.values());
     const totalMI = all.reduce((s, c) => s + c.marketInfluence, 0) || 1;
@@ -2372,9 +2413,13 @@ export class TurnEngine {
     const valuationScore = Math.max(0, Math.min(1, Math.log10(Math.max(1e6, company.valuation) / 1e6) / Math.log10(500)));
 
     const ceo = company.ceos[0];
-    const skillKeys: CEOSkill[] = ['strength', 'perception', 'endurance', 'charisma', 'intelligence', 'agility'];
+    const skillKeys: CEOSkill[] = ['vision', 'network', 'analytics', 'charisma', 'strategy', 'operations', 'resilience'];
     const skillVals = [...skillKeys.map(k => ceo?.skills?.[k] ?? 0), ceo?.luck ?? 0];
-    const ceoScore = skillVals.reduce((s, v) => s + v, 0) / (skillVals.length * 10); // 0..1
+    // Analytics (precision) is weighted 2x — it is the discipline that makes
+    // every other pillar pay off. Luck still counts once.
+    const analytics = ceo?.skills?.analytics ?? 0;
+    const baseSum = skillVals.reduce((s, v) => s + v, 0);
+    const ceoScore = (baseSum + analytics) / ((skillVals.length + 1) * 10); // 0..1
 
     const activeTrends = this.state.trends.filter(t => t.strength > 0);
     const ownedSegs = new Set(
@@ -2524,10 +2569,13 @@ export class TurnEngine {
       });
     }
 
-    // Cataclysms — only when the player enables them.
+    // Cataclysms — only when the player enables them. The CEO's Luck pillar
+    // (fortune) softly lowers the odds of a market-wide disaster striking.
     if (this.state.simulation.cataclysms) {
-      // Cataclysm — disaster hitting a random owned tile (control loss + building/dept damage + cash hit).
-      if (this.rng.nextBoolean(0.12)) {
+      const player = this.state.companies.get(this.state.playerCompanyId);
+      const luck = player?.ceos[0]?.luck ?? 5;
+      const odds = Math.max(0.04, 0.12 * (1 - luck / 100)); // luck 10 -> 0.108
+      if (this.rng.nextBoolean(odds)) {
         const kinds = ['Cyber Blackout', 'Regulatory Crackdown', 'Supply Chain Collapse', 'Data Center Outage'];
         const name = this.rng.shuffle(kinds).pop()!;
         globalEvents.push({

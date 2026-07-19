@@ -146,6 +146,7 @@ export const createCompany = (
     computerPoints: 0,
     legalPoints: 0,
     scandal: 0,
+    risk: 0.2,
     ideas: [],
     // T: building & department GDR — seed initial HQ + CEO roster + workforce.
     ceos: isPlayer ? [{
@@ -165,7 +166,7 @@ export const createCompany = (
       xp: 0,
       perks: [...traitDef.perks],
       // T — GDR SPECIAL build (Fallout-style).
-      skills: ceoBuild?.skills ?? { intelligence: 5, charisma: 5, endurance: 5, luck: 5, strength: 4, perception: 4, agility: 4 },
+      skills: ceoBuild?.skills ?? { analytics: 5, charisma: 5, resilience: 5, luck: 5, vision: 4, network: 4, strategy: 4, operations: 4 },
       luck: ceoBuild?.luck ?? 5,
       ceoTraits: ceoBuild?.traits?.length ? ceoBuild.traits : [trait],
       specialPoints: ceoBuild?.specialPoints ?? 1,

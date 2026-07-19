@@ -4,7 +4,7 @@ import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import { SettingsModal } from './SettingsModal';
 import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec, DepartmentType } from '../../../types';
-import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_SKILLS, SPECIAL_LABELS, CEO_TOKEN_BUDGET, ARCHETYPE_PERKS, type CompanyStats } from '../../../data/archetypes';
+import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_PILLARS, PILLAR_LABELS, CEO_TOKEN_BUDGET, ARCHETYPE_PERKS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/ui/Icon';
@@ -220,7 +220,7 @@ const NewGameModal: React.FC<{
     });
   };
 
-  // T — CEO GDR point-buy (Fallout S.P.E.C.I.A.L.). 20 tokens across traits + attributes.
+  // T — CEO GDR point-buy (executive pillars). 20 tokens across traits + attributes.
   const CEO_TRAIT_COST = 4;
   const [ceoTraits, setCeoTraits] = useState<CEOTrait[]>(['none']);
   const [ceoSkills, setCeoSkills] = useState<Partial<Record<CEOSkill, number>>>({});
@@ -425,7 +425,7 @@ const NewGameModal: React.FC<{
               <p className="ceo-blurb">{CEO_TRAIT_DEFS[selectedCeo].blurb}</p>
 
               <div className="preview-section-label">
-                CEO Character Build (S.P.E.C.I.A.L.)
+                CEO Character Build (Executive Pillars)
                 <span className={`token-budget ${usedCeoTokens > CEO_TOKEN_BUDGET ? 'full' : ''}`}>
                   {CEO_TOKEN_BUDGET - usedCeoTokens} / {CEO_TOKEN_BUDGET} tokens
                 </span>
@@ -447,11 +447,11 @@ const NewGameModal: React.FC<{
               </div>
 
               <div className="ceo-special-buy">
-                {CEO_SKILLS.map(s => {
+                {CEO_PILLARS.map(s => {
                   const v = ceoSkills[s] ?? 0;
                   return (
                     <div key={s} className="bs-row">
-                      <span className="bs-label">{SPECIAL_LABELS[s]}</span>
+                      <span className="bs-label">{PILLAR_LABELS[s]}</span>
                       <div className="bs-bar"><div className="bs-fill" style={{ width: `${v * 10}%` }} /></div>
                       <span className="bs-val">{v}</span>
                       <span className="bs-stepper">
