@@ -101,6 +101,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
   const onPlaceTileRef = useRef(onPlaceTile);
   const targetingRef = useRef(targeting);
   const onExploreRef = useRef(onExplore);
+  const hoverTileRef = useRef<string | null>(null);
   const camStateRef = useRef<{ zoom: number; rotation: number; scrollX: number; scrollY: number } | null>(null);
 
   useEffect(() => { selectedTileIdRef.current = selectedTileId; }, [selectedTileId]);
@@ -262,6 +263,18 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             tileLayer.lineStyle(3, 0x00ffa3, 0.9).strokePoints(diamondPoints(sx, sy), true);
           }
 
+          // T: real-map placement — free tiles glow as valid drop targets so the
+          // player can clearly see WHERE to drop each building.
+          if (state!.phase === 'placement' && !t.buildingId && !t.controllerId) {
+            tileLayer.fillStyle(0x00d4aa, 0.12).fillPoints(diamondPoints(sx, sy), true);
+            tileLayer.lineStyle(3, 0x00d4aa, 0.95).strokePoints(diamondPoints(sx, sy), true);
+            // ghost building preview on the hovered free tile (shows WHAT will drop)
+            if (hoverTileRef.current === t.id) {
+              drawBuilding(tileLayer, glowLayer, sx, sy, 0, 0x00d4aa);
+              tileLayer.lineStyle(2, 0x00ffa3, 1).strokePoints(diamondPoints(sx, sy), true);
+            }
+          }
+
           if (owned) {
             const col = companyColors.get(t.controllerId!) || 0x00d4aa;
             const building = t.buildingId ? state!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
@@ -372,6 +385,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         }
         const t = screenToTile(p.worldX, p.worldY);
         const id = t?.id || null;
+        hoverTileRef.current = id;
         if (id !== hoverId) {
           hoverId = id;
           if (id) {

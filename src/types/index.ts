@@ -334,7 +334,8 @@ export interface Building {
 /** T: New Game placement — a building the player hand-places before rivals spawn. */
 export interface InitialBuildingSpec {
   name?: string;
-  isHQ: boolean;
+  /** T: optional; placePlayerBuilding derives HQ from pendingBuildings order if omitted. */
+  isHQ?: boolean;
   /** up to 3 department types housed inside this building at game start */
   deptTypes: DepartmentType[];
   /** placement slot index into the starting market grid (row*mw + col) */
