@@ -263,7 +263,7 @@ const NewGameModal: React.FC<{
           </div>
         </div>
         <div className="setup-top">
-          {/* LEFT COLUMN: archetype */}
+          {/* COLUMN 1: archetype choice + corporation traits underneath */}
           <div className="setup-col">
             <div className="form-group">
               <label>Starting Archetype</label>
@@ -288,43 +288,10 @@ const NewGameModal: React.FC<{
                 ))}
               </div>
             </div>
-          </div>
 
-          {/* RIGHT COLUMN: CEO trait + preview */}
-          <div className="setup-col">
-            <div className="form-group">
-              <label>Starting CEO Trait</label>
-              <div className="archetype-selector">
-                {CEOS.map(c => (
-                  <button
-                    key={c.id}
-                    className={`archetype-card ${selectedCeo === c.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedCeo(c.id)}
-                    style={{ borderColor: selectedCeo === c.id ? '#00d4aa' : undefined }}
-                  >
-                    <div className="archetype-header" style={{ background: selectedCeo === c.id ? '#00d4aa' : '#2a2f3e' }}>
-                      <span className="archetype-name">{c.name}</span>
-                    </div>
-                    <p className="archetype-desc">{c.desc}</p>
-                    <div className="archetype-stats">
-                      {c.stats.map((s, i) => (
-                        <span key={i} className={`stat ${s.startsWith('+') ? 'positive' : s.startsWith('-') ? 'negative' : ''}`}>{s}</span>
-                      ))}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* THIRD COLUMN: selected archetype preview (GDR build planner) */}
-          <div className="setup-col preview-col">
-            <div className="archetype-preview" style={{ borderColor: archetype.color }}>
-              <h3>{archetype.name}</h3>
-              <p>{archetype.desc}</p>
-
+            <div className="setup-details" style={{ borderColor: archetype.color }}>
               <div className="preview-section-label">
-                Initial Build Stats
+                Corporation Traits
                 <span className={`token-budget ${usedTokens >= TOKEN_BUDGET ? 'full' : ''}`}>
                   {TOKEN_BUDGET - usedTokens} / {TOKEN_BUDGET} tokens
                 </span>
@@ -359,7 +326,36 @@ const NewGameModal: React.FC<{
                   <span key={i} className="stat org">{PERK_LABELS[p]}</span>
                 ))}
               </div>
+            </div>
+          </div>
 
+          {/* COLUMN 2: CEO trait choice + GDR CEO build underneath */}
+          <div className="setup-col">
+            <div className="form-group">
+              <label>Starting CEO Trait</label>
+              <div className="archetype-selector">
+                {CEOS.map(c => (
+                  <button
+                    key={c.id}
+                    className={`archetype-card ${selectedCeo === c.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedCeo(c.id)}
+                    style={{ borderColor: selectedCeo === c.id ? '#00d4aa' : undefined }}
+                  >
+                    <div className="archetype-header" style={{ background: selectedCeo === c.id ? '#00d4aa' : '#2a2f3e' }}>
+                      <span className="archetype-name">{c.name}</span>
+                    </div>
+                    <p className="archetype-desc">{c.desc}</p>
+                    <div className="archetype-stats">
+                      {c.stats.map((s, i) => (
+                        <span key={i} className={`stat ${s.startsWith('+') ? 'positive' : s.startsWith('-') ? 'negative' : ''}`}>{s}</span>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="setup-details" style={{ borderColor: '#00d4aa' }}>
               <div className="preview-section-label">CEO Perks — {CEO_TRAIT_DEFS[selectedCeo].name}</div>
               <div className="preview-stats">
                 {CEO_TRAIT_DEFS[selectedCeo].perks.length === 0 && (
@@ -371,7 +367,6 @@ const NewGameModal: React.FC<{
               </div>
               <p className="ceo-blurb">{CEO_TRAIT_DEFS[selectedCeo].blurb}</p>
 
-              {/* CEO GDR point-buy: 20 tokens across traits + S.P.E.C.I.A.L. + Luck */}
               <div className="preview-section-label">
                 CEO Character Build (S.P.E.C.I.A.L.)
                 <span className={`token-budget ${usedCeoTokens > CEO_TOKEN_BUDGET ? 'full' : ''}`}>

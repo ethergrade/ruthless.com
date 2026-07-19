@@ -710,18 +710,25 @@
 }
 
 /* ---- New game / load game modals --------------------------------------- */
-.new-game-modal { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); }
+.new-game-modal { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 4px; }
 .setup-name-row { display: flex; gap: 12px; }
 .setup-top {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
-  align-items: stretch;
-}
   align-items: start;
 }
+.setup-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  align-self: stretch;
+}
 .setup-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.preview-col { min-width: 0; }
 .setup-bottom {
   display: grid;
   grid-template-columns: 1fr 240px 1fr;
