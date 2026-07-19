@@ -190,7 +190,7 @@
 .btn-primary {
   background: var(--accent, #00d4aa); color: #04121a; font-weight: 700; border: none;
   box-shadow: 0 0 14px rgba(0,212,170,.35);
-.btn-primary { background: var(--accent, #00d4aa); color: #04121a; font-weight: 700; border: none; box-shadow: 0 0 14px rgba(0,212,170,.35); }
+}
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 

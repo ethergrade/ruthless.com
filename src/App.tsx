@@ -10,6 +10,8 @@ import { MainMenu, SaveGameModal } from './app/components/layout/MainMenu';
 import { Modal } from './app/components/ui/Modal';
 import { NotificationToast } from './app/components/ui/NotificationToast';
 import { ActionComposer } from './app/components/actions/ActionComposer';
+import { SandboxPanel } from './app/components/layout/SandboxPanel';
+import { QuickActionPage, type QuickPage } from './app/components/layout/QuickActionPage';
 import { formatNumber } from './utils/formatters';
 import { audio } from './audio/AudioEngine';
 import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
@@ -36,6 +38,9 @@ function App() {
     finishPlacement,
     explore,
     initialBuildings,
+    acknowledgeVictory,
+    continueAfterVictory,
+    retireRun,
   } = useGameStore();
   const { musicEnabled, setMusicEnabled } = useSettings();
 
@@ -55,12 +60,13 @@ function App() {
   const [editDraft, setEditDraft] = useState<import('./types').TurnAction | null>(null);
   // T: action targeting — pick a tile directly from the board.
   const [targeting, setTargeting] = useState<import('./app/components/map/MarketMap').TargetingState | null>(null);
-  const [bottomH, setBottomH] = useState(240);
+  const [bottomH, setBottomH] = useState(180);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showEventModal, setShowEventModal] = useState<{ event: GameEvent | null; open: boolean }>({ event: null, open: false });
   const [showMainMenu, setShowMainMenu] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const playerCompany = state?.companies.get(state.playerCompanyId);
+  const pendingVictory = state?.victoryMilestones.find(milestone => !milestone.acknowledged);
 
   const handleEndTurn = async () => {
     if (!state || isProcessing) return;
@@ -97,32 +103,25 @@ function App() {
 
   const handleAddAction = (action: Omit<import('./types').TurnAction, 'id' | 'status'>) => {
     addAction(action);
+    setTargeting(null);
     setShowActionModal(false);
     setPresetActionType(null);
   };
 
-  /** Quick Actions open the composer pre-set to the relevant action group. */
-  const quickActionPreset: Record<string, string | null> = {
-    'market': 'expand_market',
-    'departments': 'build_department',
-    'products': 'launch_product',
-    'executives': 'hire_executive',
-    'security': 'security_hardening',
-    'ai': 'ai_automation',
-    'finance': 'raise_capital',
-    'news': null,
-  };
+  /** Quick Actions open dedicated operational pages above the live canvas. */
   const handleQuickAction = (key: string) => {
-    if (key === 'news') { setActivePanel('news'); return; }
-    const preset = (quickActionPreset[key] ?? null) as ActionType | null;
-    setPresetActionType(preset);
+    setActivePanel(key);
+  };
+  const handleQuickPagePlan = (type: ActionType) => {
+    setPresetActionType(type);
+    setEditDraft(null);
     setShowActionModal(true);
   };
 
   /** EXPLOIT a live trend: open the Orders composer pre-filled to expand into
    *  the trending category (surge bonus applied by the engine on resolve). */
-  const handleExploit = (category: string) => {
-    const cat = category as import('./types').ProductCategory;
+  const handleExploit = (trend: import('./types').MarketTrend) => {
+    const cat = trend.category;
     setPresetActionType('expand_market');
     setEditDraft({
       id: `exploit_${cat}_${Date.now()}`,
@@ -132,6 +131,7 @@ function App() {
       priority: 1,
       status: 'planned',
       productCategory: cat,
+      trendId: trend.id,
     } as import('./types').TurnAction);
     if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
     setShowActionModal(true);
@@ -206,7 +206,7 @@ function App() {
     <div className="app">
       <Header
         turn={state?.turn || 1}
-        maxTurns={state?.maxTurns || 20}
+        maxTurns={state?.maxTurns ?? 0}
         playerCompany={playerCompany}
         onEndTurn={handleEndTurn}
         onSave={handleSave}
@@ -248,6 +248,9 @@ function App() {
               : null) : null}
             onClose={() => selectTile(null)}
           />
+          {state && playerCompany && ui.activePanel && ['market', 'departments', 'products', 'executives', 'security', 'ai', 'finance', 'news'].includes(ui.activePanel) && (
+            <QuickActionPage page={ui.activePanel as QuickPage} state={state} company={playerCompany} onClose={() => setActivePanel(null)} onPlan={handleQuickPagePlan} />
+          )}
         </main>
 
         {/* T: real-map placement overlay — pick departments, drop buildings on the
@@ -275,7 +278,7 @@ function App() {
               <div className="placement-status">
                 <span>Buildings placed: {state.pendingBuildings.length} / 3</span>
               </div>
-              <button className="btn btn-primary placement-done" onClick={handleFinishPlacement} disabled={state.pendingBuildings.length === 0}>
+              <button className="btn btn-primary placement-done" onClick={handleFinishPlacement} disabled={state.pendingBuildings.length < 3}>
                 DONE — SPAWN RIVALS
               </button>
             </div>
@@ -299,11 +302,12 @@ function App() {
         playerCompany={playerCompany}
         selectedTileId={selectedTileId}
         addAction={addAction}
+        onExploit={handleExploit}
         onEdit={handleEdit}
       />
 
       {showActionModal && playerCompany && state && (
-        <Modal title="Plan Executive Order" onClose={() => { setShowActionModal(false); setEditDraft(null); }} size="xl">
+        <Modal title={targeting ? 'Pick a highlighted tile' : 'Plan Executive Order'} onClose={() => { setTargeting(null); setShowActionModal(false); setEditDraft(null); }} size="xl" mapPicking={Boolean(targeting)}>
           <ActionComposer
             playerCompany={playerCompany}
             companies={Array.from(state.companies.values())}
@@ -311,7 +315,7 @@ function App() {
             presetType={presetActionType}
             initialDraft={editDraft}
             initialTileId={selectedTileId ?? undefined}
-            onClose={() => { setShowActionModal(false); setEditDraft(null); }}
+            onClose={() => { setTargeting(null); setShowActionModal(false); setEditDraft(null); }}
             onAdd={handleAddAction}
             estimate={estimateAction}
             onRequestTargeting={setTargeting}
@@ -338,6 +342,27 @@ function App() {
         notifications={ui.notifications}
         onDismiss={dismissNotification}
       />
+
+      <SandboxPanel />
+
+      {pendingVictory && playerCompany && (
+        <Modal title="HEADLINES / VICTORY MILESTONE" onClose={() => acknowledgeVictory(pendingVictory.id)} size="lg">
+          <div className="victory-headline">
+            <span className="victory-kicker">TURN {pendingVictory.turn} · MARKET BULLETIN</span>
+            <h2>{playerCompany.name} rewrites the balance of power.</h2>
+            <p>You reached <strong>{pendingVictory.label}</strong>. In this mode victory is a milestone: the market remains active and the corporation can keep evolving.</p>
+            <div className="victory-stats"><div><small>POWER</small><b>{pendingVictory.powerScore}</b></div><div><small>MARKET SHARE</small><b>{Math.round(pendingVictory.marketShare * 100)}%</b></div><div><small>TURN</small><b>{pendingVictory.turn}</b></div></div>
+            <div className="victory-actions">
+              <button className="btn btn-primary" onClick={continueAfterVictory}>CONTINUE</button>
+              <button className="btn btn-secondary" onClick={retireRun}>RETIRE</button>
+              <button className="btn btn-secondary" onClick={() => {
+                const blob = new Blob([JSON.stringify({ mode: state?.mode, turn: state?.turn, company: playerCompany, milestones: state?.victoryMilestones }, null, 2)], { type: 'application/json' });
+                const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `strategyless-run-${state?.turn}.json`; link.click(); URL.revokeObjectURL(link.href);
+              }}>EXPORT RUN</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showSaveModal && (
         <SaveGameModal

@@ -34,11 +34,14 @@ import type { MarketSegment,
   Building,
   InitialBuildingSpec,
   ChiefExecutive,
+  GameMode,
+  GameModeRules,
 } from '../../types';
 import { generateId } from '../utils/ids';
-import { createMarketMap, generateChunk, buildTileIndex, createTile } from '../factories/marketFactory';
+import { createMarketMap, buildTileIndex, createTile } from '../factories/marketFactory';
 import { createCompany } from '../factories/companyFactory';
 import { generateCompanyName } from '../../data/generators';
+import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots } from '../utils/buildings';
 
 export interface TurnResult {
   newState: GameState;
@@ -73,6 +76,8 @@ export class TurnEngine {
     initialBuildings?: InitialBuildingSpec[],
     realMapPlacement = false,
     mapSeed?: number,
+    mode: GameMode = scenario ? 'scenario' : 'free_game',
+    modeRules?: Partial<GameModeRules>,
   ) {
     this.rng = createRNG(seed);
     if (ceoTrait) this.ceoTrait = ceoTrait;
@@ -82,12 +87,16 @@ export class TurnEngine {
     this.initialBuildings = initialBuildings;
     this.realMapPlacement = realMapPlacement;
     this.mapSeed = mapSeed ?? seed ?? 1;
+    this.mode = mode;
+    this.modeRulesOverride = modeRules;
     this.state = this.initializeGameState();
     this.state.marketBriefing = this.generateMarketBriefing();
   }
 
   /** T — deterministic world seed (infinite map). */
   private mapSeed: number;
+  private mode: GameMode;
+  private modeRulesOverride?: Partial<GameModeRules>;
 
   getState(): GameState {
     return this.state;
@@ -96,8 +105,51 @@ export class TurnEngine {
   // Replace the entire state (used by load/save). Restores RNG continuity
   // from the saved seed so subsequent turns stay deterministic per save.
   setState(state: GameState): void {
-    this.state = state;
+    this.state = this.migrateState(state);
+    this.mode = this.state.mode;
     this.rng.setSeed(state.seed);
+  }
+
+  private migrateState(state: GameState): GameState {
+    const legacyMode: GameMode = state.mode ?? 'scenario';
+    const legacyLimit = state.maxTurns ?? 20;
+    const defaults = this.defaultModeRules(legacyMode, legacyLimit);
+    state.companies.forEach(company => company.buildings.forEach((building, index) => {
+      if (!building.name?.trim()) building.name = building.isHQ ? `${company.name} Headquarters` : `${company.name} Building ${index + 1}`;
+      const tile = state.marketTiles.get(building.tileId);
+      if (tile && tile.controllerId === company.id) tile.buildingId = building.id;
+      building.departmentIds.forEach(departmentId => {
+        const department = company.departments.find(candidate => candidate.id === departmentId);
+        if (department) department.buildingId = building.id;
+      });
+    }));
+    return {
+      ...state,
+      mode: legacyMode,
+      modeRules: state.modeRules ?? defaults,
+      victoryMilestones: state.victoryMilestones ?? [],
+      trendHistory: state.trendHistory ?? [],
+      trends: (state.trends ?? []).map(trend => ({
+        ...trend,
+        appearedTurn: trend.appearedTurn ?? state.turn,
+        decisionDeadlineTurn: trend.decisionDeadlineTurn ?? state.turn + 2,
+      })),
+      sandbox: legacyMode === 'sandbox'
+        ? (state.sandbox ?? { godModeUsed: false, victoryEnabled: false, intelligenceRevealed: false, auditLog: [] })
+        : state.sandbox,
+    };
+  }
+
+  private defaultModeRules(mode: GameMode, scenarioLimit?: number): GameModeRules {
+    const limited = mode === 'scenario' && scenarioLimit !== undefined;
+    return {
+      mode,
+      turnPolicy: limited ? { kind: 'limited', maxTurns: scenarioLimit } : { kind: 'open' },
+      victoryPolicy: mode === 'free_game' ? { kind: 'milestone_continue' }
+        : mode === 'sandbox' ? { kind: 'disabled' } : { kind: 'terminal' },
+      achievementsEnabled: mode !== 'sandbox',
+      simulationRules: { market: true, technologies: true, cataclysms: false, auctions: true, corporateWarfare: true },
+    };
   }
 
   getRNG(): ReturnType<typeof createRNG> {
@@ -106,14 +158,17 @@ export class TurnEngine {
 
   private initializeGameState(): GameState {
     const so = this.scenarioOpts;
-    const mapDims: Record<string, [number, number]> = { small: [6, 6], medium: [8, 8], large: [10, 10] };
+    const mapDims: Record<string, [number, number]> = { small: [7, 7], medium: [9, 9], large: [11, 11] };
     const [mw, mh] = so ? (mapDims[so.mapSize] ?? [8, 8]) : [8, 8];
-    const rivalCount = so ? Math.max(1, Math.min(4, so.aiRivals)) : 3;
+    const rivalCount = so ? Math.max(1, Math.min(7, so.aiRivals)) : 3;
     const rivalDefs: [string, CompanyArchetype][] = [
       ['NexusTech', 'hypergrowth_platform'],
       ['SentinelCyber', 'security_fortress'],
       ['ApexDigital', 'acquisition_machine'],
       ['Vertex Dynamics', 'lean_specialist'],
+      ['Helix Union', 'hypergrowth_platform'],
+      ['Obsidian Systems', 'security_fortress'],
+      ['Kestrel Group', 'acquisition_machine'],
     ];
     const aiCompanies = rivalDefs.slice(0, rivalCount).map(([name, arch], i) =>
       createCompany(this.rng, name, arch, false, i, undefined, undefined, undefined, 'rival'));
@@ -145,7 +200,7 @@ export class TurnEngine {
     if (this.initialBuildings && this.initialBuildings.length > 0 && !this.realMapPlacement) {
       this.seedPlayerBuildings(playerCompany, marketTiles, this.initialBuildings);
     } else if (!this.realMapPlacement) {
-      [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyBuilding(c, marketTiles));
+      [playerCompany, ...aiCompanies].forEach(c => this.seedCompanyNetwork(c, marketTiles));
     }
 
     // Spawn neutral "start-up" corporations sitting on random tiles that the
@@ -157,16 +212,35 @@ export class TurnEngine {
       .forEach(p => products.set(p.id, p));
     [...aiCompanies, ...startups].forEach(c => companies.set(c.id, c));
 
+    const scenarioLimit = so?.winConditions.find(w => w.kind === 'turn_limit');
+    const introScenarioLimit = scenarioLimit?.kind === 'turn_limit' ? scenarioLimit.turns : (this.mode === 'scenario' ? 12 : undefined);
+    const baseRules = this.defaultModeRules(this.mode, introScenarioLimit);
+    const modeRules: GameModeRules = {
+      ...baseRules,
+      ...this.modeRulesOverride,
+      simulationRules: { ...baseRules.simulationRules, ...(this.modeRulesOverride?.simulationRules ?? {}) },
+    };
     const result: GameState = {
       turn: 1,
-      maxTurns: 20,
+      maxTurns: modeRules.turnPolicy.kind === 'limited' ? modeRules.turnPolicy.maxTurns : 0,
+      mode: this.mode,
+      modeRules,
+      victoryMilestones: [],
+      sandbox: this.mode === 'sandbox'
+        ? { godModeUsed: false, victoryEnabled: false, intelligenceRevealed: false, auditLog: [] }
+        : undefined,
       playerCompanyId: playerCompany.id,
       companies,
       marketTiles,
       products,
       actions: [],
       events: [],
-      newsFeed: [],
+      newsFeed: [{
+        id: generateId.action(), turn: 1, category: 'market',
+        headline: 'Markets Open: A New Corporate War Begins',
+        body: 'Global demand is moving. Review Market Intel and Global Trends before committing executive orders.',
+        companyId: playerCompany.id, importance: 'major',
+      }],
       marketBriefing: {
         demandShifts: [], globalEvents: [], competitorMoves: [],
         cyberAlerts: [], maOpportunities: [], clientRequests: [],
@@ -180,6 +254,7 @@ export class TurnEngine {
       mapSeed: this.mapSeed,
       tileIndex,
       trends: this.generateMarketTrends(2),
+      trendHistory: [],
       weakSignals: this.generateWeakSignals(2),
       alerts: [],
       inventions: [],
@@ -193,13 +268,27 @@ export class TurnEngine {
     return result;
   }
 
-  /** T — infinite map: lazily stream a square region of tiles around (cx,cy) so the
-   *  world extends on demand. Deterministic: same coords + mapSeed => same tiles.
+  /** Lazily grow the authored market up to the canonical 207-tile ceiling.
+   *  Deterministic: same coords + mapSeed => same tiles.
    *  Returns the list of freshly generated tile ids (for UI/invalidation). */
   ensureRegion(cx: number, cy: number, radius = 8): TileId[] {
-    generateChunk(this.mapSeed, this.state.marketTiles, this.state.tileIndex, cx, cy, radius);
     const fresh: TileId[] = [];
-    this.state.marketTiles.forEach(t => { if ((t.x - cx) ** 2 + (t.y - cy) ** 2 <= radius * radius && !this.knownTiles.has(t.id)) { fresh.push(t.id); } });
+    const candidates: { x: number; y: number; distance: number }[] = [];
+    for (let y = cy - radius; y <= cy + radius; y++) for (let x = cx - radius; x <= cx + radius; x++) {
+      const distance = (x - cx) ** 2 + (y - cy) ** 2;
+      if (distance <= radius * radius) candidates.push({ x, y, distance });
+    }
+    candidates.sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x);
+    for (const candidate of candidates) {
+      if (this.state.marketTiles.size >= 207) break;
+      const key = `${candidate.x},${candidate.y}`;
+      if (this.state.tileIndex[key]) continue;
+      const tile = createTile(this.mapSeed, candidate.x, candidate.y);
+      this.state.marketTiles.set(tile.id, tile);
+      this.state.tileIndex[key] = tile.id;
+      this.knownTiles.add(tile.id);
+      fresh.push(tile.id);
+    }
     return fresh;
   }
 
@@ -227,25 +316,35 @@ export class TurnEngine {
 
   /** T — tiles the player/AI has ever interacted with (for save-diff & culling). */
   private knownTiles = new Set<TileId>();
-  private seedCompanyBuilding(company: Company, tiles: Map<string, MarketTile>): void {
-    const tileId = company.controlledTiles[0];
-    if (!tileId) return;
-    const tile = tiles.get(tileId);
-    if (!tile) return;
-    const id = generateId.building();
-    company.buildings.push({
-      id,
-      tileId,
-      departmentIds: company.departments.slice(0, 2).map(d => d.id),
-      productIds: company.products.slice(0, 1).map(p => p.id),
-      firewall: company.archetype === 'security_fortress' ? 40 : 20,
-      physicalSecurity: 30,
-      hushMoney: 0,
-      isHQ: true,
-      ceoId: company.ceos[0]?.id,
-      maxDepartments: 8,
+  /** Create one real building per authored starting territory. The HQ owns all
+   * starting departments/products; remaining branches are intentionally empty. */
+  private seedCompanyNetwork(company: Company, tiles: Map<string, MarketTile>): void {
+    company.buildings = [];
+    company.controlledTiles.forEach((tileId, index) => {
+      const tile = tiles.get(tileId);
+      if (!tile) return;
+      const id = generateId.building();
+      const isHQ = index === 0;
+      const building: Building = {
+        id,
+        tileId,
+        name: isHQ ? `${company.name} Headquarters` : `${company.name} Building ${index + 1}`,
+        departmentIds: isHQ ? company.departments.map(department => department.id) : [],
+        productIds: isHQ ? company.products.map(product => product.id) : [],
+        firewall: isHQ && company.archetype === 'security_fortress' ? 40 : isHQ ? 20 : 10,
+        physicalSecurity: isHQ ? 30 : 15,
+        hushMoney: 0,
+        isHQ,
+        ceoId: isHQ ? company.ceos[0]?.id : undefined,
+        maxDepartments: 8,
+      };
+      company.buildings.push(building);
+      tile.buildingId = id;
+      if (isHQ) {
+        company.departments.forEach(department => { department.buildingId = id; });
+        if (company.ceos[0]) company.ceos[0].hqBuildingId = id;
+      }
     });
-    tile.buildingId = id;
   }
 
   /**
@@ -347,13 +446,14 @@ export class TurnEngine {
   /** T: finish the real-map placement — spawn rivals on free tiles, game begins. */
   finishPlacement(): void {
     if (this.state.phase !== 'placement') return;
+    if (this.state.pendingBuildings.length < 3) return;
     // T: rivals were NOT seeded at init (their tiles must stay free during
     // placement). Spawn them now, on tiles the player has not claimed.
     const rivals = Array.from(this.state.companies.values()).filter(
       c => c.id !== this.state.playerCompanyId && c.controlledTiles.length === 0
     );
     this.assignStartingTerritories(this.state.marketTiles, rivals);
-    rivals.forEach(c => this.seedCompanyBuilding(c, this.state.marketTiles));
+    rivals.forEach(c => this.seedCompanyNetwork(c, this.state.marketTiles));
     this.state.phase = 'playing';
   }
 
@@ -386,12 +486,13 @@ export class TurnEngine {
         c.startupPotential = potential;
         const id = generateId.building();
         c.buildings.push({
-          id, tileId: tile.id,
+          id, tileId: tile.id, name: `${c.name} Headquarters`,
           departmentIds: c.departments.slice(0, 1).map(d => d.id),
           productIds: c.products.slice(0, 1).map(p => p.id),
           firewall: 10, physicalSecurity: 10, hushMoney: 0, isHQ: true,
           maxDepartments: 8,
         });
+        c.departments.slice(0, 1).forEach(department => { department.buildingId = id; });
         tile.buildingId = id;
       }
       startups.push(c);
@@ -484,10 +585,14 @@ export class TurnEngine {
     this.state.companies.forEach(c => this.applyCeoPillarMods(c));
     // T: recompute composite power score for every company (drives victory + UI).
     this.state.companies.forEach(c => { c.powerScore = this.computePowerScore(c); });
+    this.resolveCampaignTransition();
     this.checkVictoryConditions();
 
     // Persist this turn's news into the feed (P3: news must actually appear).
     this.state.newsFeed = [...this.state.newsFeed, ...newsItems].slice(-60);
+    // Persist the RNG cursor, not merely the initial seed, so save/load continues
+    // the exact same deterministic sequence.
+    this.state.seed = this.rng.getSeed();
 
     return {
       newState: { ...this.state },
@@ -581,7 +686,7 @@ export class TurnEngine {
   }
 
   private processAIActions(_events: GameEvent[], _newsItems: NewsItem[]): void {
-    const aiCompanies = Array.from(this.state.companies.values()).filter(c => !c.isPlayer);
+    const aiCompanies = Array.from(this.state.companies.values()).filter(c => c.kind === 'rival');
 
     aiCompanies.forEach(company => {
       const actions = this.generateAIActions(company);
@@ -614,6 +719,28 @@ export class TurnEngine {
         priority: this.rng.nextInt(1, 10),
         status: 'planned',
       };
+
+      if (actionType === 'industrial_espionage') {
+        const targets = [...this.state.companies.values()].filter(target => target.id !== company.id && target.departments.length > 0);
+        const target = this.rng.shuffle(targets).pop();
+        const department = target ? this.rng.shuffle([...target.departments]).pop() : undefined;
+        if (!target || !department) continue;
+        action.targetCompanyId = target.id;
+        action.targetDepartmentId = department.id;
+      }
+      if (actionType === 'cyber_attack') {
+        const targets = [...this.state.companies.values()].filter(target => target.id !== company.id && target.buildings.length > 0);
+        const target = this.rng.shuffle(targets).pop();
+        const building = target ? this.rng.shuffle([...target.buildings]).pop() : undefined;
+        if (!target || !building) continue;
+        action.targetCompanyId = target.id;
+        action.targetTileId = building.tileId;
+      }
+      if (actionType === 'build_department') {
+        const building = company.buildings.find(candidate => getBuildingFreeSlots(candidate) > 0);
+        if (!building) continue;
+        action.targetTileId = building.tileId;
+      }
 
       actions.push(action);
     }
@@ -724,6 +851,75 @@ export class TurnEngine {
     const company = this.state.companies.get(action.companyId);
     if (!company) return { success: false, message: 'Company not found', effects: {}, risksTriggered: [] };
 
+    if (action.type === 'create_ideas') {
+      const rdCapacity = company.departments.filter(department => department.type === 'product_rd').length;
+      const usedCapacity = this.ideasCreatedThisTurn.get(company.id) ?? 0;
+      if (usedCapacity >= rdCapacity) {
+        return { success: false, message: 'R&D capacity exhausted — each R&D department creates at most one idea per turn', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'build_building') {
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      if (!tile) return { success: false, message: 'Select a valid tile for the new building', effects: {}, risksTriggered: [] };
+      if (tile.buildingId) return { success: false, message: 'Tile occupied — a tile can contain only one building', effects: {}, risksTriggered: [] };
+      if (tile.controllerId && tile.controllerId !== company.id) return { success: false, message: 'Rival territory must be acquired before construction', effects: {}, risksTriggered: [] };
+      if (company.buildings.length >= 10) return { success: false, message: 'Corporate building limit reached (10)', effects: {}, risksTriggered: [] };
+    }
+    if (action.type === 'build_department') {
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const building = findBuildingOnTile(company, action.targetTileId);
+      const usedSlots = building ? getBuildingUsedSlots(building) : 0;
+      if (!tile || tile.controllerId !== company.id || !building) {
+        return { success: false, message: 'Build Department must target one of your buildings', effects: {}, risksTriggered: [] };
+      }
+      if (usedSlots >= building.maxDepartments) {
+        return { success: false, message: `${getBuildingDisplayName(company, building)} has no free department slots`, effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'security_offline') {
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const building = tile?.buildingId ? company.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+      if (!tile || tile.controllerId !== company.id || !building) {
+        return { success: false, message: 'Physical Security must target one of your buildings', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'sabotage_building') {
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const owner = tile?.controllerId ? this.state.companies.get(tile.controllerId) : undefined;
+      const building = tile?.buildingId ? owner?.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+      if (!tile || !owner || owner.id === company.id || !building) {
+        return { success: false, message: 'Sabotage requires a named opponent building', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'defend_tile') {
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const building = tile?.buildingId ? company.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+      if (!tile || tile.controllerId !== company.id || !building) {
+        return { success: false, message: 'Defend Building must target one of your buildings', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'industrial_espionage') {
+      const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+      const department = action.targetDepartmentId ? target?.departments.find(candidate => candidate.id === action.targetDepartmentId) : undefined;
+      if (!target || target.id === company.id) {
+        return { success: false, message: 'Industrial Espionage requires an opponent corporation', effects: {}, risksTriggered: [] };
+      }
+      if (!department) {
+        return { success: false, message: 'Select a real department belonging to the opponent corporation', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'cyber_attack') {
+      const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      const building = tile?.buildingId ? target?.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+      if (!target || target.id === company.id) {
+        return { success: false, message: 'Cyber Attack requires a rival target corporation', effects: {}, risksTriggered: [] };
+      }
+      if (!tile || tile.controllerId !== target.id || !building) {
+        return { success: false, message: 'Select a building belonging to the target corporation', effects: {}, risksTriggered: [] };
+      }
+    }
+
     if (action.budget > company.cash * 0.5) {
       return { success: false, message: 'Insufficient funds', effects: {}, risksTriggered: [] };
     }
@@ -741,7 +937,7 @@ export class TurnEngine {
     }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
@@ -752,6 +948,7 @@ export class TurnEngine {
       this.applyActionEffectsToCompany(action, company, effects);
     } else {
       effects.cash = -action.budget * 0.1;
+      company.cash -= Math.round(action.budget * 0.1);
       risks.push('execution_failure');
     }
 
@@ -764,29 +961,8 @@ export class TurnEngine {
   }
 
   private calculateSuccessChance(action: TurnAction, company: Company): number {
-    let chance = 0.7;
-
-    const relevantDept = company.departments.find(d => this.isDepartmentRelevant(d.type, action.type));
-    if (relevantDept) {
-      chance += (relevantDept.level - 1) * 0.05;
-      chance += (relevantDept.efficiency - 0.5) * 0.2;
-    }
-
-    if (action.executiveId) {
-      const exec = company.executives.find(e => e.id === action.executiveId);
-      if (exec) {
-        chance += (exec.level - 1) * 0.03;
-        chance += (exec.energy - 0.5) * 0.1;
-        if (exec.traits.includes('crisis_leader') && action.type === 'security_hardening') chance += 0.1;
-        if (exec.traits.includes('deal_maker') && action.type === 'acquire_company') chance += 0.15;
-        if (exec.traits.includes('growth_hacker') && action.type === 'expand_market') chance += 0.1;
-      }
-    }
-
-    const budgetRatio = action.budget / this.getActionBaseCost(action.type);
-    chance += Math.min(0.2, (budgetRatio - 1) * 0.1);
-
-    return Math.max(0.1, Math.min(0.95, chance));
+    void company;
+    return this.estimateSuccess(action);
   }
 
   private getActionBaseCost(actionType: ActionType): number {
@@ -897,7 +1073,8 @@ export class TurnEngine {
     company: Company,
     _effects: Record<string, number>
   ): void {
-    company.cash -= action.budget;
+    // Auction bids reserve intent and are paid exactly once when the listing settles.
+    if (action.type !== 'auction_bid') company.cash -= action.budget;
 
     switch (action.type) {
       case 'build_department':
@@ -1044,27 +1221,11 @@ export class TurnEngine {
       type = this.rng.shuffle(pool).pop()!;
     }
 
-    // Place the department inside a player-owned building on the chosen tile.
-    let buildingId: string | undefined;
-    if (action.targetTileId) {
-      const b = company.buildings.find(b => b.tileId === action.targetTileId);
-      if (b) buildingId = b.id;
-    }
-    // T: enforce the ruthless.com rule — max 8 departments per building. The HQ
-    // itself occupies 1 slot, so an HQ can hold at most 7 real departments.
-    const slotCount = (b: Building) => b.departmentIds.length + (b.isHQ ? 1 : 0);
-    if (buildingId) {
-      const b = company.buildings.find(x => x.id === buildingId);
-      if (b && slotCount(b) >= b.maxDepartments) {
-        // Find any building with capacity, else bail (player must build a new building).
-        const room = company.buildings.find(x => slotCount(x) < x.maxDepartments);
-        if (!room) return;
-        buildingId = room.id;
-      }
-    } else {
-      const room = company.buildings.find(x => slotCount(x) < x.maxDepartments);
-      if (room) buildingId = room.id;
-    }
+    // The resolver already validated this exact destination. Never reroute a
+    // department to a different building than the one selected by the player.
+    const destination = findBuildingOnTile(company, action.targetTileId);
+    if (!destination || getBuildingFreeSlots(destination) <= 0) return;
+    const buildingId = destination.id;
 
     // T: duplicated departments (2 legal, 3 legal) stack — grant a corporate synergy bonus.
     const sameType = company.departments.filter(d => d.type === type).length;
@@ -1114,11 +1275,17 @@ export class TurnEngine {
 
     // T5: riding an active global trend for this category grants a launch bonus.
     const trend = this.state.trends.find(t => t.category === category && t.expiresTurn > this.state.turn);
+    const latestResolvedTrend = [...this.state.trendHistory].reverse().find(entry => entry.trend.category === category);
+    const missedTrend = latestResolvedTrend?.outcome === 'missed'
+      && latestResolvedTrend.trend.decisionDeadlineTurn < this.state.turn
+      && (!trend || latestResolvedTrend.trend.appearedTurn >= trend.appearedTurn)
+      ? latestResolvedTrend
+      : undefined;
     const trendBonus = trend ? trend.strength : 0;
     // An idea-backed launch rides the R&D push: more early adopters + quality lift.
     const ideaBonus = idea ? (idea.breakthrough ? 0.18 : 0.10) + idea.maturity / 400 : 0;
 
-    company.products.push({
+    const product: Product = {
       id: generateId.product(),
       companyId: company.id,
       name,
@@ -1141,7 +1308,15 @@ export class TurnEngine {
       baseInstalled: 0,
       pivotCount: 0,
       ageTurns: 0,
-    });
+      trendTiming: missedTrend ? 'late' : trend ? 'on_time' : 'none',
+    };
+    if (missedTrend) {
+      product.quality = Math.min(product.quality, 70);
+      product.marketFit = Math.min(product.marketFit, 60);
+      product.maturity = Math.min(product.maturity, 55);
+      product.adopters = Math.min(product.adopters, 0.04);
+    }
+    company.products.push(product);
 
     // Consume the idea: it has been brought into production.
     if (idea) {
@@ -1168,6 +1343,7 @@ export class TurnEngine {
     // surging, aim at the trend's segment and get a stronger foothold + brand lift.
     const trend = action.productCategory
       ? this.state.trends.find(t => t.category === action.productCategory)
+        ?? this.state.trendHistory.find(entry => entry.outcome === 'pursued' && entry.trend.id === action.trendId)?.trend
       : undefined;
 
     const uncontrolleds = Array.from(this.state.marketTiles.values()).filter(
@@ -1278,10 +1454,8 @@ export class TurnEngine {
     if (price < 1000000) return;
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     if (!target) return;
-    if (price > company.cash) return;
 
     // Pay out.
-    company.cash -= price;
     target.cash += Math.round(price * 0.6);
     // Inherit the acquired firm's revenue stream (drives valuation after recalc).
     company.revenue += target.revenue;
@@ -1363,8 +1537,8 @@ export class TurnEngine {
       id,
       tileId,
       name: action.buildingName?.trim() || (isHQ ? 'HQ' : `BUILDING ${company.buildings.length + 1}`),
-      departmentIds: company.departments.slice(0, 1).map(d => d.id),
-      productIds: company.products.slice(0, 1).map(p => p.id),
+      departmentIds: [],
+      productIds: [],
       firewall: isHQ ? 30 : 10,
       physicalSecurity: isHQ ? 40 : 15,
       hushMoney: 0,
@@ -1384,37 +1558,26 @@ export class TurnEngine {
 
   /** Industrial espionage: steal an idea / cash / evidence from a rival. */
   private runIndustrialEspionage(company: Company, action: TurnAction): void {
-    // T: a player may scope the interior of a specific competitor building by
-    // picking its tile. The target company is taken from the tile if given.
-    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
-    let target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
-    if (!target && tile && tile.controllerId && tile.controllerId !== company.id) {
-      target = this.state.companies.get(tile.controllerId);
-    }
-    if (!target) return;
-    const success = this.rng.nextBoolean(0.6 - (target.securityPosture / 400));
-    if (!success) { company.scandal = Math.min(100, company.scandal + 8); return; }
-    // Tile-scoped: discover the interior of the rival building on that tile.
-    if (tile && tile.controllerId && tile.controllerId !== company.id) {
-      const owner = this.state.companies.get(tile.controllerId);
-      const building = owner?.buildings.find(b => b.tileId === tile.id);
-      if (building && !this.state.revealedBuildings.includes(building.id)) {
-        this.state.revealedBuildings.push(building.id);
-        const deptCount = building.departmentIds.length;
-        this.addNews(company.id, `${company.name} scopes the interior of ${owner!.name}'s tile ${building.tileId.replace('tile_', '').toUpperCase()} — ${deptCount} department${deptCount === 1 ? '' : 's'} exposed.`);
-      }
-    }
-    switch (action.targetDept) {
-      case 'rd':
-      case 'product': {
+    const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
+    const department = action.targetDepartmentId ? target?.departments.find(candidate => candidate.id === action.targetDepartmentId) : undefined;
+    if (!target || !department) return;
+    const building = target.buildings.find(candidate => candidate.id === department.buildingId || candidate.departmentIds.includes(department.id));
+    if (building && !this.state.revealedBuildings.includes(building.id)) this.state.revealedBuildings.push(building.id);
+    department.efficiency = Math.max(0.3, department.efficiency - 0.08);
+    department.morale = Math.max(0.2, department.morale - 0.05);
+    this.addNews(company.id, `${company.name} infiltrated ${target.name}'s ${department.type.replaceAll('_', ' ')} department${building ? ` inside ${building.name || 'a building'}` : ''}.`);
+    switch (department.type) {
+      case 'product_rd':
+      case 'ai_data':
+      case 'dev_engineering': {
         // steal an idea -> boost innovation + spawn a product insight
         company.innovation = Math.min(100, company.innovation + 6);
         const p = target.products[0];
         if (p) company.products.push({ ...p, id: generateId.product(), companyId: company.id, name: `${p.name} Clone`, tileIds: [] });
         break;
       }
-      case 'marketing':
-      case 'hr': {
+      case 'sales_marketing':
+      case 'people_culture': {
         company.cash += Math.round(action.budget * 0.5);
         target.cash -= Math.round(action.budget * 0.3);
         break;
@@ -1465,22 +1628,14 @@ export class TurnEngine {
     }
   }
 
-  /** Offline (physical) security: guards / lockdown / sabotage defense — or a raid on a rival tile. */
+  /** Offline (physical) security: reinforce one owned building with guards and lockdown systems. */
   private runSecurityOffline(company: Company, action: TurnAction): void {
     const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
-    if (tile && tile.controllerId && tile.controllerId !== company.id) {
-      // Offensive physical raid: degrade an enemy building's physical security.
-      const owner = this.state.companies.get(tile.controllerId);
-      const building = owner?.buildings.find(b => b.tileId === tile.id);
-      if (building) {
-        building.physicalSecurity = Math.max(0, building.physicalSecurity - Math.round(action.budget / 8000));
-        if (owner) owner.securityPosture = Math.max(0, owner.securityPosture - 2);
-      }
-      tile.pendingAction = { type: 'security_offline', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
-      return;
-    }
-    company.securityPosture = Math.min(100, company.securityPosture + action.budget / 8000);
-    company.buildings.forEach(b => { b.physicalSecurity = Math.min(100, b.physicalSecurity + 4); });
+    const building = tile?.buildingId ? company.buildings.find(candidate => candidate.id === tile.buildingId) : undefined;
+    if (!building) return;
+    building.physicalSecurity = Math.min(100, building.physicalSecurity + action.budget / 5000);
+    company.securityPosture = Math.min(100, company.securityPosture + action.budget / 20000);
+    tile!.pendingAction = { type: 'security_offline', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
   }
 
   /** Sabotage: arson / physical sabotage — set a rival building on fire (heavy damage). */
@@ -1517,7 +1672,7 @@ export class TurnEngine {
     }
   }
 
-  /** T7 — Defend Tile: reinforce a player-owned building's firewall + physical. */
+  /** T7 — Defend Building: reinforce one player-owned structure. */
   private runDefendTile(company: Company, action: TurnAction): void {
     const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
     if (!tile || tile.controllerId !== company.id) return;
@@ -1527,6 +1682,7 @@ export class TurnEngine {
     building.firewall = Math.min(100, building.firewall + boost);
     building.physicalSecurity = Math.min(100, building.physicalSecurity + boost);
     company.securityPosture = Math.min(100, company.securityPosture + Math.round(boost / 2));
+    tile.pendingAction = { type: 'defend_tile', byCompanyId: company.id, expiresTurn: this.state.turn + 1 };
   }
 
   /**
@@ -1586,11 +1742,11 @@ export class TurnEngine {
         const tile = victim.controlledTiles
           .map(id => this.state.marketTiles.get(id))
           .filter((t): t is MarketTile => Boolean(t))
-          .find(t => t!.controlStrength < 25);
+          .find(t => t.controlStrength < 0.25);
         if (tile) {
           tile.controllerId = shark.id;
-          tile.controlStrength = Math.max(20, tile.controlStrength - 10);
-          shark.controlledTiles.push(tile.id);
+          tile.controlStrength = Math.max(0.2, Math.min(1, tile.controlStrength));
+          if (!shark.controlledTiles.includes(tile.id)) shark.controlledTiles.push(tile.id);
           victim.controlledTiles = victim.controlledTiles.filter(id => id !== tile.id);
         }
       });
@@ -1600,9 +1756,9 @@ export class TurnEngine {
   /** T9 — R&D: invent a new idea/technology. Breakthroughs can spark a market trend. */
   private runCreateIdeas(company: Company, action: TurnAction): void {
     // Capacity cap: a company may invent at most as many ideas this turn as it
-    // has R&D departments (product_rd or ai_data). Tracked explicitly so it can
+    // has actual R&D departments. Tracked explicitly so it can
     // never be bypassed by queuing multiple create_ideas orders in one turn.
-    const rdCount = company.departments.filter(d => d.type === 'product_rd' || d.type === 'ai_data').length;
+    const rdCount = company.departments.filter(d => d.type === 'product_rd').length;
     const created = this.ideasCreatedThisTurn.get(company.id) ?? 0;
     if (created >= rdCount) return; // no R&D capacity left this turn
     const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
@@ -1631,6 +1787,8 @@ export class TurnEngine {
         sector: this.rng.shuffle(['enterprise_cluster', 'innovation_hub', 'high_growth', 'strategic_account']).pop()! as MarketSegment,
         strength: this.rng.nextFloat(0.5, 0.85),
         expiresTurn: this.state.turn + this.rng.nextInt(4, 8),
+        appearedTurn: this.state.turn,
+        decisionDeadlineTurn: this.state.turn + 2,
         blurb: `${company.name} just broke ground on ${category.replace('_', ' ')} — the market is taking notice.`,
       });
     }
@@ -1654,6 +1812,8 @@ export class TurnEngine {
           sector: this.rng.shuffle(['open_market', 'startup_zone', 'high_growth', 'innovation_hub']).pop()! as MarketSegment,
           strength: this.rng.nextFloat(0.45, 0.8),
           expiresTurn: this.state.turn + this.rng.nextInt(3, 7),
+          appearedTurn: this.state.turn,
+          decisionDeadlineTurn: this.state.turn + 2,
           blurb: `${company.name} open-sourced their ${idea.category.replace('_', ' ')} tech — adoption is snowballing.`,
         });
         this.state.weakSignals = this.state.weakSignals.filter(w => w.id !== signal.id);
@@ -1821,7 +1981,6 @@ export class TurnEngine {
     ceo.trainedSkills[skill] = (ceo.trainedSkills[skill] ?? 0) + gain;
     // T: training is a special CEO move — consumes a special point.
     ceo.specialPoints = Math.max(0, ceo.specialPoints - 1);
-    company.cash -= Math.round(action.budget * 0.5); // training has an opportunity cost
   }
 
   /** Fire a seated CEO — frees the HQ, removes the +1 order grant, and (if it was
@@ -1895,9 +2054,8 @@ export class TurnEngine {
     const hasFinance = company.departments.some(d => d.type === 'finance_investor' || d.type === 'corporate_strategy');
     if (!hasFinance) return;
     // "Below value": you pay less than their valuation (discount scales with budget).
-    const price = Math.max(1, Math.round(target.valuation * (0.6 + this.rng.nextFloat(0, 0.3))));
-    if (company.cash < price) return; // cannot afford even the discount
-    company.cash -= price;
+    const price = action.budget;
+    if (price < target.valuation * 0.6 || price >= target.valuation) return;
     // Absorb the rival: their cash, tech, products & tiles fold into yours.
     company.valuation += target.valuation * 0.6;
     company.cash += Math.round(target.cash * 0.4);
@@ -1953,7 +2111,6 @@ export class TurnEngine {
     };
     company.ceos.push(chief);
     hq.ceoId = chief.id;
-    company.cash -= chief.cost;
     // Each CEO/COO grants +1 executive order capacity.
     company.executiveOrderLimit += 1;
   }
@@ -2018,20 +2175,22 @@ export class TurnEngine {
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     if (!target) return;
     const offer = action.offerPrice ?? action.budget;
-    if (offer <= 0 || offer > company.cash) return;
+    if (offer <= 0) return;
     // Auto-accept if offer >= 2x building worth (ruthless.com rule); else probabilistic.
     const worth = Math.max(500000, target.valuation * 0.15);
     const accept = offer >= worth * 2 || this.rng.nextBoolean(offer / (worth * 1.5));
     if (accept) {
-      company.cash -= offer;
       target.cash += offer;
       company.marketInfluence += 4;
       target.marketInfluence = Math.max(0, target.marketInfluence - 3);
       // fold target buildings into the bidder
       target.buildings.forEach(b => {
-        b.tileId && company.controlledTiles.includes(b.tileId);
         if (!company.buildings.find(x => x.tileId === b.tileId)) company.buildings.push(b);
+        const tile = this.state.marketTiles.get(b.tileId);
+        if (tile) { tile.controllerId = company.id; tile.buildingId = b.id; }
+        if (!company.controlledTiles.includes(b.tileId)) company.controlledTiles.push(b.tileId);
       });
+      target.controlledTiles = target.controlledTiles.filter(id => !company.controlledTiles.includes(id));
     } else {
       company.scandal = Math.min(100, company.scandal + 2);
     }
@@ -2212,12 +2371,22 @@ export class TurnEngine {
     // scandal erodes credibility -> social/legal actions suffer.
     if (action.type === 'ceo_social' || action.type === 'marketing_campaign') chance -= company.scandal / 300;
 
-    const budgetRatio = action.budget / this.getActionBaseCost(action.type);
+    const baseCost = this.getActionBaseCost(action.type);
+    const budgetRatio = baseCost > 0 ? action.budget / baseCost : 1;
     chance += Math.min(0.2, (budgetRatio - 1) * 0.1);
 
     // T: Luck pillar — fortune softly biases every action's success (max +0.10).
     const luck = company.ceos[0]?.luck ?? 5;
     chance += luck / 100;
+
+    if (action.type === 'launch_product' && action.productCategory) {
+      const active = this.state.trends.find(trend => trend.category === action.productCategory);
+      const latestResolved = [...this.state.trendHistory].reverse().find(entry => entry.trend.category === action.productCategory);
+      const late = latestResolved?.outcome === 'missed'
+        && latestResolved.trend.decisionDeadlineTurn < this.state.turn
+        && (!active || latestResolved.trend.appearedTurn >= active.appearedTurn);
+      if (late) chance = Math.min(chance, 0.7);
+    }
 
     return Math.max(0.05, Math.min(0.97, Math.round(chance * 100) / 100));
   }
@@ -2311,14 +2480,6 @@ export class TurnEngine {
 
   private resolveMarket(): void {
     this.state.marketTiles.forEach(tile => {
-      if (tile.controllerId) {
-        const controller = this.state.companies.get(tile.controllerId);
-        if (controller) {
-          const revenue = tile.value * tile.controlStrength * 0.01;
-          controller.cash += revenue;
-        }
-      }
-
       tile.value *= (1 + tile.growth * 0.1);
       tile.competitivePressure = Math.max(0, Math.min(1, tile.competitivePressure + this.rng.nextFloat(-0.05, 0.05)));
     });
@@ -2340,7 +2501,7 @@ export class TurnEngine {
       }
 
       // Bankruptcy: out of cash and unable to cover costs with valuation.
-      if (company.cash < -500000 && company.debt > company.valuation) {
+      if (company.cash < -500000 && company.debt > company.valuation && this.state.mode !== 'sandbox') {
         this.triggerDefeat(company.id, 'bankruptcy');
       }
     });
@@ -2477,18 +2638,53 @@ export class TurnEngine {
     const totalMI = all.reduce((s, c) => s + c.marketInfluence, 0) || 1;
     const shareRel = player.marketInfluence / totalMI;
     const power = player.powerScore ?? this.computePowerScore(player);
+    const scenarioConditionsMet = (): boolean => {
+      const conditions = this.scenarioOpts?.winConditions ?? [];
+      if (!conditions.length) return power >= 55 && shareRel >= 0.25 && player.cash > 0;
+      const substantive = conditions.filter(condition => condition.kind !== 'turn_limit');
+      if (!substantive.length) {
+        const survival = conditions.find(condition => condition.kind === 'turn_limit');
+        return survival?.kind === 'turn_limit' ? this.state.turn >= survival.turns && player.cash > 0 : false;
+      }
+      return substantive.every(condition => {
+        if (condition.kind === 'tile_control') return player.controlledTiles.length >= condition.target;
+        if (condition.kind === 'valuation') return player.valuation >= condition.target;
+        if (condition.kind === 'market_share') return shareRel * 100 >= condition.target;
+        if (condition.kind === 'eliminate') {
+          if (condition.targetCompanyId) return !this.state.companies.has(condition.targetCompanyId);
+          return all.filter(company => company.kind === 'rival').length === 0;
+        }
+        return true;
+      });
+    };
 
-    // Victory: real dominance — high composite power AND meaningful relative share
-    // AND solvent. Idling (end-turn with no orders) leaves power far below 70 and
-    // shareRel below 0.30, so it can never trigger this.
-    if (power >= 70 && shareRel >= 0.30 && player.cash > 0) {
+    if (this.state.mode === 'scenario' && scenarioConditionsMet()) {
       this.state.isGameOver = true;
       this.state.victoryType = 'market_dominance';
       return;
     }
 
+    // Victory: real dominance — high composite power AND meaningful relative share
+    // AND solvent. Idling (end-turn with no orders) leaves power far below 70 and
+    // shareRel below 0.30, so it can never trigger this.
+    if (this.state.mode !== 'campaign' && power >= 70 && shareRel >= 0.30 && player.cash > 0) {
+      const alreadyRecorded = this.state.victoryMilestones.some(m => m.type === 'market_dominance');
+      if (!alreadyRecorded) {
+        this.state.victoryMilestones.push({
+          id: generateId.event(), turn: this.state.turn, type: 'market_dominance',
+          label: 'Market Dominance', powerScore: power, marketShare: shareRel,
+          acknowledged: false,
+        });
+      }
+      if (this.state.modeRules.victoryPolicy.kind === 'terminal') {
+        this.state.isGameOver = true;
+        this.state.victoryType = 'market_dominance';
+      }
+      return;
+    }
+
     // Defeat: player went bankrupt (handled in resolveFinancials) or got wiped out.
-    if (player.cash < -500000 && player.debt > player.valuation) {
+    if (player.cash < -500000 && player.debt > player.valuation && this.state.mode !== 'sandbox') {
       this.state.isGameOver = true;
       this.state.victoryType = undefined;
       return;
@@ -2496,7 +2692,13 @@ export class TurnEngine {
 
     // End of campaign: winner is the highest-power company, but only if it actually
     // achieved dominance (power >= 50). Below that, nobody "won" — idling loses.
-    if (this.state.turn >= this.state.maxTurns) {
+    const turnPolicy = this.state.modeRules.turnPolicy;
+    if (turnPolicy.kind === 'limited' && this.state.turn >= turnPolicy.maxTurns) {
+      if (this.state.mode === 'scenario') {
+        this.state.isGameOver = true;
+        this.state.victoryType = scenarioConditionsMet() ? 'market_dominance' : undefined;
+        return;
+      }
       const ranked = [...all].sort((a, b) => (b.powerScore ?? 0) - (a.powerScore ?? 0));
       const leader = ranked[0];
       this.state.isGameOver = true;
@@ -2504,6 +2706,40 @@ export class TurnEngine {
         ? 'market_dominance'
         : undefined;
     }
+  }
+
+  private resolveCampaignTransition(): void {
+    const definition = this.state.campaignDefinition;
+    const run = this.state.campaignRun;
+    if (this.state.mode !== 'campaign' || !definition || !run || run.completed) return;
+    const player = this.state.companies.get(this.state.playerCompanyId);
+    if (!player) return;
+    const totalInfluence = Array.from(this.state.companies.values()).reduce((sum, company) => sum + company.marketInfluence, 0) || 1;
+    const passes = (condition: import('../../types').CampaignCondition): boolean => {
+      if (condition.kind === 'always') return true;
+      const compare = (actual: number, value: number, operator: 'gte' | 'lte') => operator === 'gte' ? actual >= value : actual <= value;
+      if (condition.kind === 'cash') return compare(player.cash, condition.value, condition.operator);
+      if (condition.kind === 'debt') return compare(player.debt, condition.value, condition.operator);
+      if (condition.kind === 'turn') return compare(this.state.turn, condition.value, condition.operator);
+      if (condition.kind === 'market_share') return compare(player.marketInfluence / totalInfluence, condition.value, condition.operator);
+      return player.ideas.some(idea => idea.id === condition.technologyId);
+    };
+    const edge = definition.edges.find(candidate => candidate.fromChapterId === run.currentChapterId && candidate.conditions.every(passes));
+    if (!edge) return;
+    edge.effects?.forEach(effect => {
+      if (effect.kind === 'cash' && typeof effect.value === 'number') player.cash += effect.value;
+      if (effect.kind === 'debt' && typeof effect.value === 'number') player.debt = Math.max(0, player.debt + effect.value);
+      if (effect.kind === 'reputation' && typeof effect.value === 'number') player.brandTrust = Math.max(0, Math.min(100, player.brandTrust + effect.value));
+    });
+    run.currentChapterId = edge.toChapterId;
+    if (!run.visitedChapterIds.includes(edge.toChapterId)) run.visitedChapterIds.push(edge.toChapterId);
+    const chapter = definition.chapters.find(item => item.id === edge.toChapterId);
+    if (chapter?.isFinal) {
+      run.completed = true;
+      this.state.isGameOver = true;
+      this.state.victoryType = 'market_dominance';
+    }
+    this.addNews(player.id, `Campaign transition: ${chapter?.title ?? edge.label}`);
   }
 
   private generateMarketBriefing(): MarketBriefing {
@@ -2691,6 +2927,8 @@ export class TurnEngine {
         category, sector,
         strength,
         expiresTurn: t + this.rng.nextInt(4, 9),
+        appearedTurn: t,
+        decisionDeadlineTurn: t + 2,
         blurb: `The market is pulling ${category.replace('_', ' ')} hard in the ${sector.replace('_', ' ')} segment. Ride it with a matching launch or campaign.`,
       });
     }
@@ -2725,7 +2963,12 @@ export class TurnEngine {
   /** Refresh trends/signals each turn: drop expired, occasionally add new ones. */
   private refreshTrends(): void {
     const t = this.state.turn;
-    this.state.trends = this.state.trends.filter(tr => tr.expiresTurn > t);
+    const missed = this.state.trends.filter(tr => tr.decisionDeadlineTurn <= t || tr.expiresTurn <= t);
+    if (missed.length) {
+      this.state.trendHistory.push(...missed.map(trend => ({ trend, outcome: 'missed' as const, resolvedTurn: t })));
+      this.state.trendHistory = this.state.trendHistory.slice(-40);
+    }
+    this.state.trends = this.state.trends.filter(tr => tr.decisionDeadlineTurn > t && tr.expiresTurn > t);
     this.state.weakSignals = this.state.weakSignals.filter(w => w.expiresTurn > t);
     // ~50% chance to spin up a new trend; ~60% for a weak signal each turn.
     if (this.rng.nextBoolean(0.5)) this.state.trends.push(...this.generateMarketTrends(1));

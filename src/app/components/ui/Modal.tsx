@@ -7,6 +7,8 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   closeOnOverlayClick?: boolean;
+  /** Keep the modal mounted but let pointer events reach the game canvas. */
+  mapPicking?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -15,6 +17,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md',
   closeOnOverlayClick = true,
+  mapPicking = false,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -37,7 +40,7 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   const modalContent = (
-    <div className="modal-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
+    <div className={`modal-overlay ${mapPicking ? 'modal-map-picking' : ''}`} onClick={!mapPicking && closeOnOverlayClick ? onClose : undefined}>
       <div className={`modal ${sizeClasses[size]}`} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="modal-title">{title}</h3>

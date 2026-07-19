@@ -4,6 +4,7 @@ import type {
   GameState, TurnAction, NewsItem, MarketBriefing, MarketTile,
   CompanyId, TileId, CompanyArchetype,
   CEOTrait, ScenarioConfig, AlertItem, CeoBuild, InitialBuildingSpec,
+  GameMode, GameModeRules, SandboxCommand,
 } from '../types';
 import { TurnEngine } from '../simulation/turn/turnEngine';
 import { MiniDB } from '../data/db';
@@ -24,7 +25,7 @@ interface GameStore {
     notifications: string[];
   };
 
-  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number) => void;
+  initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number, mode?: GameMode, modeRules?: Partial<GameModeRules>) => void;
   /** T: real-map placement — drop a player building on a real tile, or finish placement (spawn rivals). */
   placeBuilding: (spec: InitialBuildingSpec) => void;
   finishPlacement: () => void;
@@ -48,6 +49,11 @@ interface GameStore {
   loadSlot: (slot: string) => boolean;
   hasAutosave: () => boolean;
   estimateAction: (action: Omit<TurnAction, 'id' | 'status'>) => number;
+  acknowledgeVictory: (milestoneId: string) => void;
+  continueAfterVictory: () => void;
+  retireRun: () => void;
+  applySandboxCommand: (command: Omit<SandboxCommand, 'id' | 'createdAt'>) => void;
+  undoSandboxCommand: () => void;
 }
 
 const initialUI = {
@@ -67,8 +73,8 @@ export const useGameStore = create<GameStore>()(
       selectedCompanyId: null,
       ui: initialUI,
 
-      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number) => {
-        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings, realMapPlacement, mapSeed);
+      initializeGame: (seed?: number, companyName?: string, archetype?: CompanyArchetype, color?: string, disasters?: boolean, ceoTrait?: CEOTrait, scenario?: ScenarioConfig, statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, sim?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean }, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean, mapSeed?: number, mode?: GameMode, modeRules?: Partial<GameModeRules>) => {
+        const engine = new TurnEngine(seed, ceoTrait, scenario, statOverrides, ceoBuild, initialBuildings, realMapPlacement, mapSeed, mode, modeRules);
         const state = engine.getState();
         if (companyName?.trim() || archetype || color || disasters !== undefined || sim) {
           const player = state.companies.get(state.playerCompanyId);
@@ -138,9 +144,27 @@ export const useGameStore = create<GameStore>()(
       addAction: (action) =>
         set((prev) => {
           if (!prev.state) return {};
+          const player = prev.state.companies.get(prev.state.playerCompanyId);
+          const planned = prev.state.actions.filter(a => a.companyId === action.companyId && a.status === 'planned');
+          if (!player || action.budget < 0 || action.budget > player.cash || planned.length >= player.executiveOrderLimit) return {};
+          const pursuedTrend = action.trendId
+            ? prev.state.trends.find(trend => trend.id === action.trendId)
+            : undefined;
+          if (action.trendId && !pursuedTrend) return {};
           const next = {
             ...prev.state,
             actions: [...prev.state.actions, { ...action, id: generateId.action(), status: 'planned' as const }],
+            trends: pursuedTrend
+              ? prev.state.trends.filter(trend => trend.id !== pursuedTrend.id)
+              : prev.state.trends,
+            trendHistory: pursuedTrend
+              ? [...prev.state.trendHistory, {
+                  trend: pursuedTrend,
+                  outcome: 'pursued' as const,
+                  resolvedTurn: prev.state.turn,
+                  companyId: action.companyId,
+                }].slice(-40)
+              : prev.state.trendHistory,
           };
           get().engine?.setState(next);
           if (useSettings.getState().sfxEnabled) audio.sfx('orderPlaced');
@@ -150,9 +174,20 @@ export const useGameStore = create<GameStore>()(
       removeAction: (actionId) =>
         set((prev) => {
           if (!prev.state) return {};
+          const removed = prev.state.actions.find(action => action.id === actionId && action.status === 'planned');
+          const captured = removed?.trendId
+            ? prev.state.trendHistory.find(entry => entry.trend.id === removed.trendId && entry.outcome === 'pursued')
+            : undefined;
+          const restoreTrend = captured && captured.trend.decisionDeadlineTurn >= prev.state.turn;
           const next = {
             ...prev.state,
             actions: prev.state.actions.filter((a) => a.id !== actionId),
+            trends: restoreTrend && !prev.state.trends.some(trend => trend.id === captured.trend.id)
+              ? [...prev.state.trends, captured.trend]
+              : prev.state.trends,
+            trendHistory: restoreTrend
+              ? prev.state.trendHistory.filter(entry => entry !== captured)
+              : prev.state.trendHistory,
           };
           get().engine?.setState(next);
           return { state: next };
@@ -262,6 +297,95 @@ export const useGameStore = create<GameStore>()(
         if (!engine) return 0;
         return engine.estimateSuccess({ ...action, id: 'preview', status: 'planned' });
       },
+
+      acknowledgeVictory: (milestoneId) => set((prev) => {
+        if (!prev.state) return {};
+        const next = { ...prev.state, victoryMilestones: prev.state.victoryMilestones.map(m => m.id === milestoneId ? { ...m, acknowledged: true } : m) };
+        prev.engine?.setState(next);
+        return { state: next };
+      }),
+
+      continueAfterVictory: () => set((prev) => {
+        if (!prev.state) return {};
+        const next = {
+          ...prev.state,
+          isGameOver: false,
+          victoryType: undefined,
+          victoryMilestones: prev.state.victoryMilestones.map(m => ({ ...m, acknowledged: true })),
+        };
+        prev.engine?.setState(next);
+        return { state: next };
+      }),
+
+      retireRun: () => set((prev) => {
+        if (!prev.state) return {};
+        const next = { ...prev.state, isGameOver: true };
+        prev.engine?.setState(next);
+        MiniDB.autosave(next);
+        return { state: next };
+      }),
+
+      applySandboxCommand: (draft) => set((prev) => {
+        const state = prev.state;
+        if (!state || state.mode !== 'sandbox' || !state.sandbox) return {};
+        const command: SandboxCommand = { ...draft, id: generateId.action(), createdAt: Date.now() };
+        const company = state.companies.get(command.companyId ?? state.playerCompanyId);
+        let previousValue: number | boolean | undefined;
+        let description = command.type.replaceAll('_', ' ');
+        const next = { ...state, companies: new Map(state.companies), sandbox: { ...state.sandbox, godModeUsed: true, auditLog: [...state.sandbox.auditLog] } };
+        const target = company ? { ...company } : undefined;
+        if (target) next.companies.set(target.id, target);
+        const numeric = typeof command.value === 'number' ? command.value : 0;
+        switch (command.type) {
+          case 'set_cash': if (target) { previousValue = target.cash; target.cash = numeric; } break;
+          case 'set_debt': if (target) { previousValue = target.debt; target.debt = numeric; } break;
+          case 'set_reputation': if (target) { previousValue = target.brandTrust; target.brandTrust = numeric; } break;
+          case 'set_influence': if (target) { previousValue = target.marketInfluence; target.marketInfluence = numeric; } break;
+          case 'set_stock': if (target) { previousValue = target.valuation; target.valuation = numeric; description = 'set stock valuation'; } break;
+          case 'set_morale': if (target) { previousValue = target.employeeMorale; target.employeeMorale = numeric; } break;
+          case 'toggle_victory': previousValue = next.sandbox!.victoryEnabled; next.sandbox!.victoryEnabled = Boolean(command.value); next.modeRules = { ...next.modeRules, victoryPolicy: command.value ? { kind: 'milestone_continue' } : { kind: 'disabled' } }; break;
+          case 'reveal_intelligence': previousValue = next.sandbox!.intelligenceRevealed; next.sandbox!.intelligenceRevealed = Boolean(command.value); break;
+          case 'advance_turns': break;
+        }
+        next.modeRules = { ...next.modeRules, achievementsEnabled: false };
+        next.sandbox!.auditLog.push({ command, previousValue, description });
+        prev.engine?.setState(next);
+        if (command.type === 'advance_turns') {
+          const turns = Math.max(1, Math.min(25, numeric));
+          let resolved: GameState = next;
+          for (let i = 0; i < turns; i++) resolved = prev.engine!.endTurn().newState;
+          return { state: resolved };
+        }
+        MiniDB.autosave(next);
+        return { state: next };
+      }),
+
+      undoSandboxCommand: () => set((prev) => {
+        const state = prev.state;
+        const entry = state?.sandbox?.auditLog.at(-1);
+        if (!state || !state.sandbox || !entry || entry.previousValue === undefined) return {};
+        const next: GameState = { ...state, companies: new Map(state.companies), sandbox: { ...state.sandbox, auditLog: state.sandbox.auditLog.slice(0, -1) } };
+        const company = state.companies.get(entry.command.companyId ?? state.playerCompanyId);
+        const target = company ? { ...company } : undefined;
+        if (target) next.companies.set(target.id, target);
+        const previous = entry.previousValue;
+        if (typeof previous === 'number' && target) {
+          if (entry.command.type === 'set_cash') target.cash = previous;
+          if (entry.command.type === 'set_debt') target.debt = previous;
+          if (entry.command.type === 'set_stock') target.valuation = previous;
+          if (entry.command.type === 'set_reputation') target.brandTrust = previous;
+          if (entry.command.type === 'set_influence') target.marketInfluence = previous;
+          if (entry.command.type === 'set_morale') target.employeeMorale = previous;
+        }
+        if (entry.command.type === 'toggle_victory') {
+          next.sandbox!.victoryEnabled = Boolean(previous);
+          next.modeRules = { ...next.modeRules, victoryPolicy: previous ? { kind: 'milestone_continue' } : { kind: 'disabled' } };
+        }
+        if (entry.command.type === 'reveal_intelligence') next.sandbox!.intelligenceRevealed = Boolean(previous);
+        prev.engine?.setState(next);
+        MiniDB.autosave(next);
+        return { state: next };
+      }),
     }),
     { name: 'strategyless-store' }
   )

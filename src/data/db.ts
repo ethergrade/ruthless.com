@@ -4,12 +4,17 @@
 // Map-aware (de)serialization, so saves survive reloads without a backend.
 
 import type { GameState } from '../types';
+import { getIdCounterState, setIdCounterState, type IdCounterState } from '../simulation/utils/ids';
 
 const PREFIX = 'strategyless:save:';
 const AUTOSAVE_SLOT = 'auto';
 
-interface SavedGame extends GameState {
+interface SaveEnvelope {
+  saveVersion: 2;
   savedAt: number;
+  idState: IdCounterState;
+  checksum: string;
+  state: GameState;
 }
 
 // Convert Maps to a tagged plain-object form so JSON.stringify keeps them.
@@ -28,11 +33,29 @@ const reviver = (_key: string, value: any): any => {
   return value;
 };
 
-export const serializeState = (state: GameState): string =>
-  JSON.stringify({ ...state, savedAt: Date.now() } as SavedGame, replacer);
+const checksum = (value: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
 
-export const deserializeState = (json: string): GameState =>
-  JSON.parse(json, reviver) as GameState;
+export const serializeState = (state: GameState): string => {
+  const stateJson = JSON.stringify(state, replacer);
+  const envelope: SaveEnvelope = { saveVersion: 2, savedAt: Date.now(), idState: getIdCounterState(), checksum: checksum(stateJson), state };
+  return JSON.stringify(envelope, replacer);
+};
+
+export const deserializeState = (json: string): GameState => {
+  const parsed = JSON.parse(json, reviver) as SaveEnvelope | (GameState & { savedAt?: number });
+  if ('saveVersion' in parsed && parsed.saveVersion === 2) {
+    const stateJson = JSON.stringify(parsed.state, replacer);
+    if (parsed.checksum !== checksum(stateJson)) throw new Error('Save checksum mismatch');
+    setIdCounterState(parsed.idState);
+    Object.defineProperty(parsed.state, 'savedAt', { value: parsed.savedAt, enumerable: false, configurable: true });
+    return parsed.state;
+  }
+  return parsed as GameState;
+};
 
 // In-memory fallback so the module never throws in non-browser (SSR/test) envs.
 const memoryStore = new Map<string, string>();
@@ -90,7 +113,7 @@ export const MiniDB = {
       company: player?.name ?? 'Unknown',
       turn: state.turn,
       cash: player?.cash ?? 0,
-      savedAt: (state as SavedGame).savedAt ?? Date.now(),
+      savedAt: (state as GameState & { savedAt?: number }).savedAt ?? Date.now(),
     };
   },
 

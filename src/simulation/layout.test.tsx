@@ -5,6 +5,8 @@ import { TurnEngine } from './turn/turnEngine';
 import { Header } from '../app/components/layout/Header';
 import { Sidebar } from '../app/components/layout/Sidebar';
 import { BottomPanel } from '../app/components/layout/BottomPanel';
+import { QuickActionPage, type QuickPage } from '../app/components/layout/QuickActionPage';
+import { ActionComposer } from '../app/components/actions/ActionComposer';
 import type { MarketBriefing } from '../types';
 
 // renderToString exercises the component tree and throws on render crashes.
@@ -75,9 +77,41 @@ describe('Fase 2 — layout components render without crashing', () => {
         onEdit: () => {},
       })
     );
-    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'Tech Book', 'Workforce']) {
+    for (const tab of ['KPI', 'Departments', 'Products', 'Capabilities', 'Orders', 'Global Trends', 'Tech Book', 'Workforce']) {
       expect(html).toContain(tab);
     }
     expect(html).toContain('class="bottom-panel"');
+  });
+
+  it('renders a dedicated, closable page for every Quick Action link', () => {
+    const engine = new TurnEngine(2024);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const pages: QuickPage[] = ['market', 'departments', 'products', 'executives', 'security', 'ai', 'finance', 'news'];
+    for (const page of pages) {
+      const html = renderToString(createElement(QuickActionPage, {
+        page, state, company, onClose: () => {}, onPlan: () => {},
+      }));
+      expect(html).toContain('quick-page-close');
+      expect(html).toContain('quick-page-stats');
+    }
+  });
+
+  it('shows all three friendly player buildings in Build Department', () => {
+    const engine = new TurnEngine(2025);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const html = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'build_department',
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(html).toContain(`${company.name} Headquarters`);
+    expect(html).toContain(`${company.name} Building 2`);
+    expect(html).toContain(`${company.name} Building 3`);
+    expect(html).not.toContain('— select tile —');
   });
 });

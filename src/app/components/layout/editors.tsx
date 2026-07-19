@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal } from '../../components/ui/Modal';
 import type {
   ScenarioConfig, ScenarioWinCondition, CampaignConfig,
   CompanyArchetype, CEOTrait,
+  CampaignDefinition, CampaignChapter,
 } from '../../../types';
-import { ARCHETYPES_SIMPLE, CEOS_SIMPLE, genId } from '../../../data/editorsData';
-import { useSettings } from '../../../store/settings';
+import { genId } from '../../../data/editorsData';
+import { CampaignLibrary, createCampaignDefinition, validateCampaign } from '../../../data/campaigns';
 
 /**
  * SCENARIO EDITOR — tactical, self-contained board setup.
@@ -46,7 +47,7 @@ export const ScenarioEditorModal: React.FC<{
         </div>
         <div className="form-group">
           <label>AI Rivals: {aiRivals}</label>
-          <input type="range" min={1} max={4} value={aiRivals} onChange={e => setAiRivals(parseInt(e.target.value))} />
+          <input type="range" min={1} max={7} value={aiRivals} onChange={e => setAiRivals(parseInt(e.target.value))} />
         </div>
         <div className="form-group">
           <label>Player Start Cash</label>
@@ -97,94 +98,132 @@ export const CampaignEditorModal: React.FC<{
   onStart: (cfg: CampaignConfig) => void;
   onCancel: () => void;
 }> = ({ onStart, onCancel }) => {
-  const [name, setName] = useState('Rise of the Shark');
-  const [chapters, setChapters] = useState(3);
-  const [corpName, setCorpName] = useState('MyCorp');
-  const [archetype, setArchetype] = useState<CompanyArchetype>('hypergrowth_platform');
-  const [ceoTrait, setCeoTrait] = useState<CEOTrait>('none');
-  const [color, setColor] = useState('#00d4aa');
-  const [aiDifficulty, setAiDifficulty] = useState<'docile' | 'aggressive' | 'ruthless'>('aggressive');
-  const [intro, setIntro] = useState('A new player enters a market ruled by sharks. Build, betray, dominate.');
+  const [campaign, setCampaign] = useState<CampaignDefinition>(() => CampaignLibrary.save(CampaignLibrary.list()[0] ?? createCampaignDefinition()));
+  const [selectedId, setSelectedId] = useState(campaign.entryChapterId);
+  const [message, setMessage] = useState('Autosave ready.');
+  const [corpName, setCorpName] = useState('PTO Industries');
+  const [archetype] = useState<CompanyArchetype>('hypergrowth_platform');
+  const [ceoTrait] = useState<CEOTrait>('initiative');
+  const [color] = useState('#00c8df');
+  const selected = campaign.chapters.find(ch => ch.id === selectedId) ?? campaign.chapters[0];
+  const validation = useMemo(() => validateCampaign(campaign), [campaign]);
+
+  const commit = (next: CampaignDefinition, note = 'Campaign autosaved.') => {
+    const saved = CampaignLibrary.save(next);
+    setCampaign(saved);
+    setMessage(note);
+  };
+  const updateSelected = (patch: Partial<CampaignChapter>) => {
+    commit({ ...campaign, chapters: campaign.chapters.map(ch => ch.id === selected.id ? { ...ch, ...patch } : ch) });
+  };
+  const addChapter = () => {
+    const id = genId('chapter');
+    const chapter: CampaignChapter = {
+      id, title: `Chapter ${campaign.chapters.length + 1}`, aiDifficulty: 'aggressive', narrativeBeats: [],
+      scenario: { id: genId('scn'), name: `Market ${campaign.chapters.length + 1}`, mapSize: 'medium', aiRivals: 3, startCash: 5_000_000, disasters: true, winConditions: [] },
+    };
+    commit({ ...campaign, chapters: [...campaign.chapters, chapter] }, 'Chapter created.');
+    setSelectedId(id);
+  };
+  const connectTo = (toChapterId: string) => {
+    if (!selected || toChapterId === selected.id) return;
+    commit({ ...campaign, edges: [...campaign.edges, { id: genId('edge'), fromChapterId: selected.id, toChapterId, label: 'Continue', conditions: [{ kind: 'always' }] }] }, 'Transition created.');
+  };
+  const exportJson = () => {
+    const blob = new Blob([CampaignLibrary.export(campaign)], { type: 'application/json' });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href; anchor.download = `${campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.strategyless.json`; anchor.click();
+    URL.revokeObjectURL(href);
+  };
+  const importJson = async (file?: File) => {
+    if (!file) return;
+    try {
+      const imported = CampaignLibrary.import(await file.text());
+      setCampaign(imported); setSelectedId(imported.entryChapterId); setMessage('Import validated and saved.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Import failed.'); }
+  };
+
+  const play = () => {
+    if (!validation.valid || !campaign.chapters.length) { setMessage('Resolve validation errors before playtest.'); return; }
+    const cfg: CampaignConfig = {
+      id: campaign.id, name: campaign.name, intro: campaign.description,
+      chapters: campaign.chapters,
+      playerCorp: { name: corpName, archetype, ceoTrait, color },
+      definition: campaign,
+    };
+    onStart(cfg);
+  };
 
   return (
-    <Modal title="CAMPAIGN EDITOR" onClose={onCancel} size="md">
-      <div className="editor-modal campaign-editor">
-        <p className="editor-sub">Narrative arc — your corporation persists across chapters. Chapter 1 starts now.</p>
-        <div className="form-group">
-          <label>Campaign Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} maxLength={28} />
+    <Modal title="CAMPAIGN EDITOR / NARRATIVE NETWORK" onClose={onCancel} size="xxl">
+      <div className="campaign-workbench">
+        <div className="campaign-toolbar">
+          <button onClick={() => { const fresh = createCampaignDefinition(); commit(fresh, 'New campaign created.'); setSelectedId(fresh.entryChapterId); }}>NEW CAMPAIGN</button>
+          <button onClick={addChapter}>ADD CHAPTER</button>
+          <label className="campaign-file">IMPORT JSON<input type="file" accept="application/json,.json" onChange={e => void importJson(e.target.files?.[0])} /></label>
+          <button onClick={exportJson}>EXPORT JSON</button>
+          <button onClick={() => setMessage(validation.valid ? 'Validation passed.' : validation.errors.join(' '))}>VALIDATE</button>
+          <button className="primary" onClick={play}>PLAYTEST</button>
         </div>
-        <div className="form-group">
-          <label>Chapters: {chapters}</label>
-          <input type="range" min={1} max={5} value={chapters} onChange={e => setChapters(parseInt(e.target.value))} />
-        </div>
-        <div className="form-group">
-          <label>Story Hook (intro)</label>
-          <textarea value={intro} rows={2} onChange={e => setIntro(e.target.value)} maxLength={200} />
-        </div>
-
-        <h4 className="editor-h4">Persistent Player Corporation</h4>
-        <div className="form-group">
-          <label>Corp Name</label>
-          <input value={corpName} onChange={e => setCorpName(e.target.value)} maxLength={24} />
-        </div>
-        <div className="form-group">
-          <label>Archetype</label>
-          <select value={archetype} onChange={e => setArchetype(e.target.value as CompanyArchetype)}>
-            {ARCHETYPES_SIMPLE.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label>CEO Trait</label>
-          <select value={ceoTrait} onChange={e => setCeoTrait(e.target.value as CEOTrait)}>
-            {CEOS_SIMPLE.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="form-group row">
-          <div>
-            <label>Corp Color</label>
-            <input type="color" value={color} onChange={e => setColor(e.target.value)} />
+        <aside className="campaign-outline">
+          <span className="workbench-kicker">OUTLINE</span>
+          <input value={campaign.name} onChange={e => commit({ ...campaign, name: e.target.value })} aria-label="Campaign name" />
+          <textarea value={campaign.description} onChange={e => commit({ ...campaign, description: e.target.value })} rows={3} aria-label="Campaign description" />
+          <nav>
+            {campaign.chapters.map((chapter, index) => (
+              <button key={chapter.id} className={chapter.id === selected.id ? 'active' : ''} onClick={() => setSelectedId(chapter.id)}>
+                <span>{String(index + 1).padStart(2, '0')}</span>{chapter.title}{chapter.isFinal ? ' / FINAL' : ''}
+              </button>
+            ))}
+          </nav>
+          <div className="campaign-library-count">{CampaignLibrary.list().length} local campaign(s)</div>
+        </aside>
+        <section className="campaign-graph" aria-label="Campaign graph">
+          <div className="graph-grid" />
+          {campaign.chapters.map((chapter, index) => (
+            <button key={chapter.id} className={`chapter-node ${chapter.id === selected.id ? 'selected' : ''} ${chapter.isFinal ? 'final' : ''}`} onClick={() => setSelectedId(chapter.id)}>
+              <small>NODE {String(index + 1).padStart(2, '0')}</small>
+              <strong>{chapter.title}</strong>
+              <span>{chapter.turnLimit ? `${chapter.turnLimit} turns` : 'open turns'} · {chapter.scenario.aiRivals} rivals</span>
+              <em>{campaign.edges.filter(edge => edge.fromChapterId === chapter.id).length} exit(s)</em>
+            </button>
+          ))}
+        </section>
+        <aside className="campaign-inspector">
+          <span className="workbench-kicker">CHAPTER INSPECTOR</span>
+          <label>Title<input value={selected.title} onChange={e => updateSelected({ title: e.target.value })} /></label>
+          <label>Briefing<textarea rows={4} value={selected.narrativeIntro ?? ''} onChange={e => updateSelected({ narrativeIntro: e.target.value })} /></label>
+          <div className="inspector-pair">
+            <label>Turn limit<input type="number" min={0} value={selected.turnLimit ?? 0} onChange={e => updateSelected({ turnLimit: Number(e.target.value) || undefined })} /></label>
+            <label>Board<select value={selected.scenario.mapSize} onChange={e => updateSelected({ scenario: { ...selected.scenario, mapSize: e.target.value as 'small' | 'medium' | 'large' } })}><option>small</option><option>medium</option><option>large</option></select></label>
           </div>
-          <div>
-            <label>AI Difficulty</label>
-            <select value={aiDifficulty} onChange={e => setAiDifficulty(e.target.value as 'docile' | 'aggressive' | 'ruthless')}>
-              <option value="docile">Docile</option>
-              <option value="aggressive">Aggressive</option>
-              <option value="ruthless">Ruthless</option>
-            </select>
+          <div className="campaign-ai-control">
+            <div className="campaign-control-head">
+              <span>AI RIVALS</span>
+              <output aria-live="polite" aria-label={`${selected.scenario.aiRivals} AI rivals`}>{selected.scenario.aiRivals}</output>
+            </div>
+            <div className="campaign-slider-row">
+              <button type="button" aria-label="Remove one AI rival" disabled={selected.scenario.aiRivals <= 1} onClick={() => updateSelected({ scenario: { ...selected.scenario, aiRivals: Math.max(1, selected.scenario.aiRivals - 1) } })}>−</button>
+              <input aria-label="AI rivals" type="range" min={1} max={7} step={1} value={selected.scenario.aiRivals} onChange={e => updateSelected({ scenario: { ...selected.scenario, aiRivals: Number(e.target.value) } })} />
+              <button type="button" aria-label="Add one AI rival" disabled={selected.scenario.aiRivals >= 7} onClick={() => updateSelected({ scenario: { ...selected.scenario, aiRivals: Math.min(7, selected.scenario.aiRivals + 1) } })}>+</button>
+            </div>
+            <div className="campaign-range-scale" aria-hidden="true">{[1, 2, 3, 4, 5, 6, 7].map(value => <span key={value} className={value === selected.scenario.aiRivals ? 'active' : ''}>{value}</span>)}</div>
+            <label className="campaign-inspector-check">
+              <input type="checkbox" checked={!!selected.isFinal} onChange={e => updateSelected({ isFinal: e.target.checked })} />
+              <span><strong>Final chapter</strong><small>End the campaign when this node resolves.</small></span>
+            </label>
           </div>
-        </div>
-        <div className="editor-actions">
-          <button className="menu-btn ghost" onClick={onCancel}>CANCEL</button>
-          <button className="menu-btn primary" onClick={() => {
-            const { difficultyOverride } = useSettings.getState();
-            const ch: CampaignConfig['chapters'] = [];
-            for (let i = 0; i < chapters; i++) {
-              ch.push({
-                id: genId('ch'),
-                title: `Chapter ${i + 1}`,
-                aiDifficulty: difficultyOverride !== 'none' ? difficultyOverride : aiDifficulty,
-                narrativeIntro: i === 0 ? intro : undefined,
-                scenario: {
-                  id: genId('scn'),
-                  name: `${name} — Ch.${i + 1}`,
-                  mapSize: i === 0 ? 'medium' : (i >= 3 ? 'large' : 'medium'),
-                  aiRivals: Math.min(4, 2 + i),
-                  startCash: 5000000 + i * 1000000,
-                  disasters: true,
-                  winConditions: [{ kind: 'tile_control', target: 4 + i * 2 }],
-                },
-              });
-            }
-            onStart({
-              id: genId('cmp'),
-              name: name.trim() || 'Campaign',
-              chapters: ch,
-              playerCorp: { name: corpName.trim() || 'MyCorp', archetype, ceoTrait, color },
-              intro,
-            });
-          }}>START CAMPAIGN ▶</button>
-        </div>
+          <label>Connect to<select defaultValue="" onChange={e => { connectTo(e.target.value); e.currentTarget.value = ''; }}><option value="">Add transition…</option>{campaign.chapters.filter(ch => ch.id !== selected.id).map(ch => <option key={ch.id} value={ch.id}>{ch.title}</option>)}</select></label>
+          <div className="edge-list">{campaign.edges.filter(edge => edge.fromChapterId === selected.id).map(edge => <div key={edge.id}><strong>{edge.label}</strong><span>→ {campaign.chapters.find(ch => ch.id === edge.toChapterId)?.title}</span></div>)}</div>
+          <label>Playtest corporation<input value={corpName} onChange={e => setCorpName(e.target.value)} /></label>
+        </aside>
+        <footer className={`campaign-console ${validation.valid ? 'valid' : 'invalid'}`}>
+          <strong>{validation.valid ? 'VALID' : `${validation.errors.length} ERROR(S)`}</strong>
+          <span>{message}</span>
+          <span>{validation.warnings.join(' ')}</span>
+          <button onClick={onCancel}>CLOSE</button>
+        </footer>
       </div>
     </Modal>
   );

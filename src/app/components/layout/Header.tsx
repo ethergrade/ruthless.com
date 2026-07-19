@@ -38,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({ turn, maxTurns, playerCompany, o
       <div className="header-center">
         <div className="turn-counter">
           <span className="turn-label">TURN</span>
-          <span className="turn-value">{turn} / {maxTurns}</span>
+          <span className="turn-value">{turn} / {maxTurns > 0 ? maxTurns : '∞'}</span>
         </div>
       </div>
 

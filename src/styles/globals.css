@@ -293,6 +293,8 @@ input:focus, select:focus, textarea:focus {
   z-index: 1000;
   animation: fadeIn var(--transition-fast);
 }
+.modal-overlay.modal-map-picking { align-items: flex-end; justify-content: flex-end; padding: 18px; pointer-events: none; background: transparent; backdrop-filter: none; }
+.modal-map-picking .modal { width: min(440px, calc(100vw - 36px)); max-height: 52vh; margin-right: max(0px, 17vw); pointer-events: auto; border-color: var(--accent-cyan); box-shadow: 0 0 0 1px rgba(0,212,170,.2), 0 18px 55px rgba(0,0,0,.72); }
 
 .modal {
   background: var(--bg-panel);

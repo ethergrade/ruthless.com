@@ -5,6 +5,135 @@ export type DepartmentId = string;
 export type ExecutiveId = string;
 export type ActionId = string;
 
+export type GameMode = 'scenario' | 'campaign' | 'free_game' | 'sandbox';
+
+export type TurnPolicy =
+  | { kind: 'limited'; maxTurns: number }
+  | { kind: 'open' };
+
+export type VictoryPolicy =
+  | { kind: 'terminal' }
+  | { kind: 'milestone_continue' }
+  | { kind: 'disabled' };
+
+export interface GameModeRules {
+  mode: GameMode;
+  turnPolicy: TurnPolicy;
+  victoryPolicy: VictoryPolicy;
+  achievementsEnabled: boolean;
+  simulationRules: {
+    market: boolean;
+    technologies: boolean;
+    cataclysms: boolean;
+    auctions: boolean;
+    corporateWarfare: boolean;
+  };
+}
+
+export interface VictoryMilestone {
+  id: string;
+  turn: number;
+  type: VictoryType;
+  label: string;
+  powerScore: number;
+  marketShare: number;
+  acknowledged: boolean;
+}
+
+export interface FreeGameConfig {
+  seed?: number;
+  mapSize: 'small' | 'medium' | 'large';
+  aiRivals: number;
+  startups: number;
+  difficulty: 'docile' | 'aggressive' | 'ruthless';
+  victoryConditions: VictoryType[];
+  simulation: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean };
+}
+
+export type SandboxCommandType =
+  | 'set_cash' | 'set_debt' | 'set_reputation' | 'set_influence'
+  | 'set_stock' | 'set_morale' | 'advance_turns' | 'toggle_victory'
+  | 'reveal_intelligence';
+
+export interface SandboxCommand {
+  id: string;
+  type: SandboxCommandType;
+  companyId?: CompanyId;
+  value?: number | boolean;
+  createdAt: number;
+}
+
+export interface SandboxAuditEntry {
+  command: SandboxCommand;
+  previousValue?: number | boolean;
+  description: string;
+}
+
+export interface SandboxState {
+  godModeUsed: boolean;
+  victoryEnabled: boolean;
+  intelligenceRevealed: boolean;
+  auditLog: SandboxAuditEntry[];
+}
+
+export type CampaignCondition =
+  | { kind: 'always' }
+  | { kind: 'market_share'; operator: 'gte' | 'lte'; value: number }
+  | { kind: 'cash'; operator: 'gte' | 'lte'; value: number }
+  | { kind: 'debt'; operator: 'gte' | 'lte'; value: number }
+  | { kind: 'turn'; operator: 'gte' | 'lte'; value: number }
+  | { kind: 'technology'; technologyId: string };
+
+export interface CampaignEffect {
+  kind: 'cash' | 'debt' | 'reputation' | 'technology' | 'placement_bonus';
+  value: number | string;
+}
+
+export interface CampaignEdge {
+  id: string;
+  fromChapterId: string;
+  toChapterId: string;
+  label: string;
+  conditions: CampaignCondition[];
+  effects?: CampaignEffect[];
+}
+
+export interface NarrativeBeat {
+  id: string;
+  title: string;
+  body: string;
+  speaker?: string;
+  trigger: CampaignCondition;
+  priority: number;
+}
+
+export interface CampaignDefinition {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  description: string;
+  entryChapterId: string;
+  chapters: CampaignChapter[];
+  edges: CampaignEdge[];
+  updatedAt: number;
+}
+
+export interface PersistentCorporationSnapshot {
+  company: Company;
+  products: Product[];
+  capturedAtTurn: number;
+}
+
+export interface CampaignRun {
+  campaignId: string;
+  currentChapterId: string;
+  visitedChapterIds: string[];
+  persistentCorporation?: PersistentCorporationSnapshot;
+  completed: boolean;
+}
+
+export type InterturnPhase = 'results' | 'auction' | 'headlines' | 'victory' | 'briefing';
+
 export type MarketSegment =
   | 'open_market'
   | 'enterprise_cluster'
@@ -114,7 +243,7 @@ export type ActionType =
   | 'cyber_attack'            // hack a rival: data run / virus / breach
   | 'security_offline'        // physical security: guards, lockdown, sabotage defense
   | 'sabotage_building'       // arson / physical sabotage: set a rival building on fire
-  | 'defend_tile'            // T7: reinforce own building/tile firewall + physical
+  | 'defend_tile'            // internal id: Defend Building, reinforces one owned structure
   | 'security_online'         // cyber defense: firewall, sweep, change passwords
   | 'legal_action'            // lawsuit / patent / dispute
   | 'ceo_social'              // CEO social post: tone + authenticity
@@ -157,7 +286,7 @@ export interface ScenarioConfig {
   name: string;
   mapSize: 'small' | 'medium' | 'large';
   seed?: number;
-  aiRivals: number;            // 1..4 rival corporations
+  aiRivals: number;            // 1..7 rival corporations
   disasters: boolean;          // @deprecated legacy — derive from `simulation`
   /** Granular world-simulation toggles (player chooses each at new game). */
   simulation?: { marketSimulation: boolean; cataclysms: boolean; newTech: boolean };
@@ -173,6 +302,12 @@ export interface CampaignChapter {
   scenario: ScenarioConfig;
   narrativeIntro?: string;     // story beat shown before the chapter
   aiDifficulty: 'docile' | 'aggressive' | 'ruthless';
+  description?: string;
+  isFinal?: boolean;
+  turnLimit?: number;
+  narrativeBeats?: NarrativeBeat[];
+  entryConditions?: CampaignCondition[];
+  rewards?: CampaignEffect[];
 }
 
 /** Narrative multi-chapter arc with a PERSISTENT player corporation. */
@@ -188,6 +323,7 @@ export interface CampaignConfig {
     color: string;
   };
   intro?: string;              // campaign-level story hook
+  definition?: CampaignDefinition;
 }
 
 export type CompanyArchetype =
@@ -419,6 +555,8 @@ export interface Product {
   customNamed?: boolean;
   /** True when listed for auction (req 2). */
   upForAuction?: boolean;
+  /** Timing against the most recent global trend for this category. */
+  trendTiming?: 'on_time' | 'late' | 'none';
 }
 
 /** T9 — an R&D idea / invented technology. Can be patented, open-sourced, or sold. */
@@ -562,6 +700,8 @@ export interface TurnAction {
   companyId: CompanyId;
   type: ActionType;
   targetId?: string;
+  /** Global trend explicitly pursued by an EXPLOIT order. */
+  trendId?: string;
   budget: number;
   executiveId?: ExecutiveId;
   status: 'planned' | 'resolved' | 'failed';
@@ -574,6 +714,8 @@ export interface TurnAction {
   targetCompanyId?: CompanyId;
   /** Target department class for espionage/cyber/security. */
   targetDept?: RuthlessDept;
+  /** Exact opponent department selected for Industrial Espionage. */
+  targetDepartmentId?: DepartmentId;
   /** CEO social / marketing tone. */
   tone?: VoiceTone;
   /** Marketing/social authenticity. */
@@ -659,7 +801,14 @@ export interface EventOption {
 
 export interface GameState {
   turn: number;
+  /** Legacy display value. The authoritative limit lives in modeRules.turnPolicy. */
   maxTurns: number;
+  mode: GameMode;
+  modeRules: GameModeRules;
+  victoryMilestones: VictoryMilestone[];
+  sandbox?: SandboxState;
+  campaignRun?: CampaignRun;
+  campaignDefinition?: CampaignDefinition;
   playerCompanyId: CompanyId;
   companies: Map<CompanyId, Company>;
   marketTiles: Map<TileId, MarketTile>;
@@ -691,6 +840,8 @@ export interface GameState {
   tileIndex: Record<string, TileId>;
   /** Active global market trends (T5): demanded category x sector. */
   trends: MarketTrend[];
+  /** Trends removed because the opportunity was pursued or missed. */
+  trendHistory: TrendHistoryEntry[];
   /** Early weak signals hinting at emerging trends (T5). */
   weakSignals: WeakSignal[];
   /** T6: persistent alert log (news/events that warranted a toast) surfaced in the Orders tab. */
@@ -747,8 +898,19 @@ export interface MarketTrend {
   strength: number;
   /** turn this trend expires. */
   expiresTurn: number;
+  /** Turn the opportunity first became actionable. */
+  appearedTurn: number;
+  /** Last turn in which EXPLOIT captures the full opportunity. */
+  decisionDeadlineTurn: number;
   /** short narrative. */
   blurb: string;
+}
+
+export interface TrendHistoryEntry {
+  trend: MarketTrend;
+  outcome: 'pursued' | 'missed';
+  resolvedTurn: number;
+  companyId?: CompanyId;
 }
 
 /**

@@ -3,7 +3,7 @@ import { useGameStore } from '../../../store/gameStore';
 import { MiniDB } from '../../../data/db';
 import { ScenarioEditorModal, CampaignEditorModal } from './editors';
 import { SettingsModal } from './SettingsModal';
-import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec, DepartmentType } from '../../../types';
+import type { ScenarioConfig, CampaignConfig, CEOSkill, CeoBuild, InitialBuildingSpec, DepartmentType, GameMode } from '../../../types';
 import { ARCHETYPE_STATS, CEO_TRAIT_DEFS, STAT_LABELS, PERK_LABELS, CEO_PILLARS, PILLAR_LABELS, CEO_TOKEN_BUDGET, ARCHETYPE_PERKS, type CompanyStats } from '../../../data/archetypes';
 import { formatNumber } from '../../../utils/formatters';
 import { Modal } from '../../components/ui/Modal';
@@ -39,6 +39,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const [showScenario, setShowScenario] = useState(false);
   const [showCampaign, setShowCampaign] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [newGameMode, setNewGameMode] = useState<GameMode>('free_game');
   const [seed, setSeed] = useState('');
   const [selectedColor, setSelectedColor] = useState('#00d4aa');
   const [simulation, setSimulation] = useState({ marketSimulation: true, cataclysms: false, newTech: false });
@@ -59,6 +60,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         simulation,
         _initialBuildings,
         realMapPlacement, // T: player drops buildings live on the board
+        undefined,
+        newGameMode,
       );
     } catch (err) {
       // initializeGame shouldn't throw, but never block the modal from closing.
@@ -70,7 +73,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
   const handleStartScenario = (cfg: ScenarioConfig) => {
     try {
       initializeGame(cfg.seed, cfg.name, undefined, undefined, undefined, undefined, cfg, undefined, undefined,
-        cfg.simulation ?? { marketSimulation: true, cataclysms: false, newTech: false });
+        cfg.simulation ?? { marketSimulation: true, cataclysms: false, newTech: false }, undefined, false, undefined, 'scenario');
     } catch { /* never block */ }
     setShowScenario(false);
     onStartGame();
@@ -88,7 +91,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         ch1.scenario.disasters,
         cfg.playerCorp.ceoTrait,
         ch1.scenario,
+        undefined, undefined, undefined, undefined, false, undefined, 'campaign',
       );
+      const game = useGameStore.getState();
+      if (game.state && game.engine) {
+        const campaignState = {
+          ...game.state,
+          campaignDefinition: cfg.definition,
+          campaignRun: cfg.definition ? {
+            campaignId: cfg.definition.id,
+            currentChapterId: cfg.definition.entryChapterId,
+            visitedChapterIds: [cfg.definition.entryChapterId],
+            completed: false,
+          } : undefined,
+        };
+        game.engine.setState(campaignState);
+        game.setState(campaignState);
+      }
     } catch { /* never block */ }
     setShowCampaign(false);
     onStartGame();
@@ -113,21 +132,29 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
         </div>
 
         <div className="menu-buttons">
-          <button className="menu-btn primary" onClick={() => setShowNewGame(true)}>
+          <button className="menu-btn primary" onClick={() => { setNewGameMode('scenario'); setShowScenario(true); }}>
             <span className="btn-icon"><Icon name="play" /></span>
-            <span>NEW GAME</span>
+            <span>SCENARIO</span>
           </button>
-          <button className="menu-btn secondary" onClick={handleLoad}>
-            <span className="btn-icon"><Icon name="folder" /></span>
-            <span>LOAD GAME</span>
+          <button className="menu-btn primary" onClick={() => { setNewGameMode('free_game'); setShowNewGame(true); }}>
+            <span className="btn-icon"><Icon name="target" /></span>
+            <span>FREE GAME</span>
           </button>
-          <button className="menu-btn secondary" onClick={() => setShowScenario(true)}>
-            <span className="btn-icon"><Icon name="gamepad" /></span>
-            <span>SCENARIO EDITOR</span>
+          <button className="menu-btn secondary" onClick={() => { setNewGameMode('sandbox'); setShowNewGame(true); }}>
+            <span className="btn-icon"><Icon name="bolt" /></span>
+            <span>SANDBOX / GOD MODE</span>
           </button>
           <button className="menu-btn secondary" onClick={() => setShowCampaign(true)}>
             <span className="btn-icon"><Icon name="book" /></span>
+            <span>CAMPAIGN</span>
+          </button>
+          <button className="menu-btn secondary" onClick={() => setShowCampaign(true)}>
+            <span className="btn-icon"><Icon name="dept" /></span>
             <span>CAMPAIGN EDITOR</span>
+          </button>
+          <button className="menu-btn secondary" onClick={() => setShowLoadGame(true)}>
+            <span className="btn-icon"><Icon name="folder" /></span>
+            <span>LOAD GAME</span>
           </button>
           <button className="menu-btn ghost" onClick={() => setShowSettings(true)}>
             <span className="btn-icon"><Icon name="gear" /></span>
@@ -146,6 +173,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 
       {showNewGame && (
         <NewGameModal
+          mode={newGameMode}
           companyName={companyName}
           setCompanyName={setCompanyName}
           selectedArchetype={selectedArchetype}
@@ -184,6 +212,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, onLoadGame }) =
 };
 
 const NewGameModal: React.FC<{
+  mode: GameMode;
   companyName: string;
   setCompanyName: (name: string) => void;
   selectedArchetype: CompanyArchetype;
@@ -198,7 +227,7 @@ const NewGameModal: React.FC<{
   setSeed: (s: string) => void;
   onStart: (statOverrides?: Partial<Record<string, number>>, ceoBuild?: CeoBuild, initialBuildings?: InitialBuildingSpec[], realMapPlacement?: boolean) => void;
   onCancel: () => void;
-}> = ({ companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, simulation, setSimulation, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
+}> = ({ mode, companyName, setCompanyName, selectedArchetype, setSelectedArchetype, selectedColor, setSelectedColor, simulation, setSimulation, selectedCeo, setSelectedCeo, seed, setSeed, onStart, onCancel }) => {
   const archetype = ARCHETYPES.find(a => a.id === selectedArchetype)!;
   const COLORS = ['#00d4aa', '#ff6b35', '#007bff', '#ffc107', '#e83e8c', '#6f42c1', '#20c997', '#fd7e14'];
 
@@ -256,11 +285,12 @@ const NewGameModal: React.FC<{
   // T: New Game — player pre-distributes up to 8 departments across 3 starting
   // buildings (HQ + 2 branches). Dropped live on the board during placement.
   const [initialBuildings, setInitialBuildings] = useState<InitialBuildingSpec[]>([
-    { isHQ: true, deptTypes: [] },
-    { isHQ: false, deptTypes: [] },
-    { isHQ: false, deptTypes: [] },
+    { isHQ: true, deptTypes: ['corporate_strategy', 'product_rd', 'finance_investor'] },
+    { isHQ: false, deptTypes: ['sales_marketing', 'people_culture', 'acquisitions'] },
+    { isHQ: false, deptTypes: ['cybersecurity', 'ai_data'] },
   ]);
   const MAX_DEPTS = 8;
+  const totalStartingDepartments = initialBuildings.reduce((sum, building) => sum + building.deptTypes.length, 0);
   const toggleDept = (bIdx: number, dt: DepartmentType) => {
     setInitialBuildings(prev => {
       const total = prev.reduce((s, b) => s + b.deptTypes.length, 0);
@@ -274,7 +304,7 @@ const NewGameModal: React.FC<{
   };
 
   return (
-    <Modal title="NEW GAME SETUP" onClose={onCancel} size="xxl">
+    <Modal title={mode === 'sandbox' ? 'SANDBOX — GOD MODE SETUP' : 'FREE GAME — OPEN MARKET'} onClose={onCancel} size="xxl">
       <div className="new-game-modal">
         <div className="setup-name-row">
           <div className="form-group" style={{ flex: 1 }}>
@@ -543,7 +573,7 @@ const NewGameModal: React.FC<{
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild, initialBuildings)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET}>
+          <button className="btn btn-primary" onClick={() => onStart(statOverrides, ceoBuild, initialBuildings)} disabled={!companyName.trim() || usedCeoTokens > CEO_TOKEN_BUDGET || totalStartingDepartments < 3}>
             START GAME
           </button>
         </div>

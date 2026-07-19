@@ -27,3 +27,10 @@ export const generateId = {
 export const resetIdCounters = (): void => {
   counters = { company: 0, tile: 0, product: 0, department: 0, executive: 0, action: 0, building: 0, event: 0 };
 };
+
+export type IdCounterState = typeof counters;
+export const getIdCounterState = (): IdCounterState => ({ ...counters });
+export const setIdCounterState = (state?: Partial<IdCounterState>): void => {
+  if (!state) return;
+  counters = { ...counters, ...state };
+};

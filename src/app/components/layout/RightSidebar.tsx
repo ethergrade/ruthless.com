@@ -1,11 +1,11 @@
 import React from 'react';
-import type { GameState, NewsItem } from '../../../types';
+import type { GameState, MarketTrend, NewsItem } from '../../../types';
 import { NewsPanel, TrendsPanel } from './BottomPanel';
 
 interface RightSidebarProps {
   state: GameState | null;
   newsFeed: NewsItem[];
-  onExploit: (category: string) => void;
+  onExploit: (trend: MarketTrend) => void;
 }
 
 /** Right-column rail: global market TRENDS (top) + live NEWS feed (bottom). */
@@ -16,7 +16,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ state, newsFeed, onE
       <section className="rs-section">
         <div className="rs-head">Market Trends</div>
         <div className="rs-body">
-          <TrendsPanel trends={state.trends} weakSignals={state.weakSignals} onExploit={onExploit} />
+          <TrendsPanel trends={state.trends} trendHistory={state.trendHistory} weakSignals={state.weakSignals} currentTurn={state.turn} onExploit={onExploit} />
         </div>
       </section>
       <section className="rs-section rs-grow">

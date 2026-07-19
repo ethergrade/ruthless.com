@@ -1,18 +1,20 @@
-import React, { useState } from 'react';
-import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, WeakSignal, AlertItem, Idea, Technology, Building, TileId, ActionType } from '../../../types';
+import React, { useEffect, useState } from 'react';
+import type { Company, NewsItem, Department, Product, TurnAction, GameState, MarketTrend, TrendHistoryEntry, WeakSignal, AlertItem, Idea, Technology, Building, TileId, ActionType } from '../../../types';
 import { TECHNOLOGIES, DEV_SKILLS } from '../../../data/technologies';
 import { CEO_PILLARS, PILLAR_LABELS, PERK_LABELS, PERK_PILLAR_THRESHOLD, CEO_TRAIT_DEFS } from '../../../data/archetypes';
 import { Icon, IconName } from '../ui/Icon';
 import { useGameStore } from '../../../store/gameStore';
+import { getBuildingDisplayName } from '../../../simulation/utils/buildings';
 
 interface BottomPanelProps {
   state: GameState | null;
   playerCompany: Company | undefined;
   onEdit: (action: TurnAction) => void;
   height?: number;
-  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo';
+  defaultTab?: 'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'trends' | 'tech' | 'workforce' | 'ceo';
   selectedTileId?: string | null;
   addAction?: (a: TurnAction) => void;
+  onExploit?: (trend: MarketTrend) => void;
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -23,8 +25,15 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   height = 220,
   selectedTileId,
   addAction,
+  onExploit = () => undefined,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'tech' | 'workforce' | 'ceo'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'trends' | 'tech' | 'workforce' | 'ceo'>(defaultTab);
+
+  useEffect(() => {
+    if (!state || !selectedTileId) return;
+    const tile = state.marketTiles.get(selectedTileId as TileId);
+    if (tile?.controllerId === state.playerCompanyId && tile.buildingId) setActiveTab('departments');
+  }, [selectedTileId, state]);
 
   if (!state || !playerCompany) return null;
 
@@ -46,6 +55,9 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         </button>
         <button className={`tab ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
           Orders
+        </button>
+        <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => setActiveTab('trends')}>
+          Global Trends <span className="trend-live-count">{state.trends.length}</span>
         </button>
         <button className={`tab ${activeTab === 'tech' ? 'active' : ''}`} onClick={() => setActiveTab('tech')}>
           Tech Book
@@ -71,6 +83,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
+        {activeTab === 'trends' && <TrendsPanel trends={state.trends} trendHistory={state.trendHistory} weakSignals={state.weakSignals} currentTurn={state.turn} onExploit={onExploit} />}
         {activeTab === 'tech' && <TechnologyBookPanel technologies={TECHNOLOGIES} />}
         {activeTab === 'workforce' && <WorkforcePanel company={playerCompany} />}
         {activeTab === 'ceo' && <CeoPanel company={playerCompany} onEdit={onEdit} />}
@@ -166,6 +179,9 @@ const DepartmentsPanel: React.FC<{
   return (
     <div className="building-tree">
       {buildings.map(b => {
+        const owner = state?.companies.get(playerCompanyId);
+        const buildingName = owner ? getBuildingDisplayName(owner, b) : (b.name || 'Building');
+        const buildingTile = state?.marketTiles.get(b.tileId);
         const depts = b.departmentIds
           .map(id => departments.find(d => d.id === id))
           .filter((d): d is Department => Boolean(d));
@@ -174,8 +190,8 @@ const DepartmentsPanel: React.FC<{
           <div key={b.id} className={`building-node ${b.isHQ ? 'hq' : ''} ${selectedTileId === b.tileId ? 'selected' : ''}`}>
             <button className="building-row" onClick={() => setOpenId(isOpen ? null : b.id)}>
               <span className="bu-caret">{isOpen ? '▾' : '▸'}</span>
-              <span className="bu-name">{b.name ?? (b.isHQ ? '⚑ HQ' : '⌂ Branch')}</span>
-              <span className="bu-seg">{b.tileId}</span>
+              <span className="bu-name">{b.isHQ ? '⚑ ' : '⌂ '}{buildingName}</span>
+              <span className="bu-seg">{buildingTile?.segment.replaceAll('_', ' ') || 'corporate site'}</span>
               <span className="bu-fw">FW {b.firewall}</span>
               <span className="bu-count">{depts.length}/{b.maxDepartments} dept{depts.length === 1 ? '' : 's'}</span>
             </button>
@@ -649,9 +665,11 @@ function blankAction(companyId: string, type: ActionType): TurnAction {
 
 export const TrendsPanel: React.FC<{
   trends: MarketTrend[];
+  trendHistory?: TrendHistoryEntry[];
   weakSignals: WeakSignal[];
-  onExploit: (category: string) => void;
-}> = ({ trends, weakSignals, onExploit }) => {
+  currentTurn?: number;
+  onExploit: (trend: MarketTrend) => void;
+}> = ({ trends, trendHistory = [], weakSignals, currentTurn = 1, onExploit }) => {
   return (
     <div className="trends-panel">
       <div className="trends-section">
@@ -670,12 +688,25 @@ export const TrendsPanel: React.FC<{
             <div className="trend-meta">
               <span className="trend-tag cat">{t.category.replace('_', ' ')}</span>
               <span className="trend-tag sec">{t.sector.replace('_', ' ')}</span>
-              <span className="trend-exp">until T{t.expiresTurn}</span>
+              <span className="trend-exp">EXPLOIT: {Math.max(0, t.decisionDeadlineTurn - currentTurn + 1)} turn{t.decisionDeadlineTurn - currentTurn === 0 ? '' : 's'} left</span>
             </div>
-            <button className="trend-exploit" onClick={() => onExploit(t.category)}>EXPLOIT ▶</button>
+            <button className="trend-exploit" onClick={() => onExploit(t)}>EXPLOIT ▶</button>
           </div>
         ))}
       </div>
+
+      {trendHistory.length > 0 && (
+        <div className="trends-section trend-history">
+          <div className="trends-section-head"><span>MARKET MEMORY</span><span className="trends-count">LAST 6</span></div>
+          {trendHistory.slice(-6).reverse().map(entry => (
+            <div key={`${entry.trend.id}_${entry.resolvedTurn}`} className={`trend-transition ${entry.outcome}`}>
+              <span className="trend-transition-state">{entry.outcome === 'pursued' ? 'CAPTURED' : 'FADED'}</span>
+              <strong>{entry.trend.title}</strong>
+              <small>{entry.outcome === 'pursued' ? `Order committed on T${entry.resolvedTurn}` : `Window missed on T${entry.resolvedTurn} · late launches capped`}</small>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="trends-section">
         <div className="trends-section-head">

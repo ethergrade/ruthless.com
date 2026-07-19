@@ -122,20 +122,18 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
   useEffect(() => { targetingRef.current = targeting; }, [targeting]);
   useEffect(() => { onExploreRef.current = onExplore; }, [onExplore]);
 
-  // T: after every turn (and on first mount) keep the view framed on the player's
-  // HQ so the camera never drifts away from the home base between end turns.
+  // Keep the authored board framed after a turn without pinning the camera to the
+  // HQ at the board edge (which previously pushed half the market under the deck).
   useEffect(() => {
     const cam = camRef.current;
     if (!cam || !state) return;
-    const player = state.companies.get(state.playerCompanyId);
-    const hq = player?.buildings.find(b => b.isHQ);
-    if (hq) {
-      const t = state.marketTiles.get(hq.tileId);
-      if (t) {
-        const w = tileToWorld(t.x, t.y);
-        cam.centerOn(w.x, w.y);
-      }
-    }
+    const active = Array.from(state.marketTiles.values());
+    if (!active.length) return;
+    const center = active.reduce((sum, tile) => {
+      const world = tileToWorld(tile.x, tile.y);
+      return { x: sum.x + world.x, y: sum.y + world.y };
+    }, { x: 0, y: 0 });
+    cam.centerOn(center.x / active.length, center.y / active.length);
   }, [state, state?.turn, state?.phase]);
 
   // Rebuild the Phaser scene only ONCE (when state first becomes available).
@@ -201,8 +199,6 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       const glowLayer = scene.add.graphics().setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
       const overlay = scene.add.graphics().setDepth(5);
 
-      const hideRivals = stateRef.current?.phase === 'placement';
-
       /* ---- inverse projection + O(1) tile pick via spatial index ------- */
       const screenToTile = (wx: number, wy: number): MarketTile | null => {
         const ix = wx / (TILE_W / 2);
@@ -223,7 +219,10 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
 
       // T: draw only the tiles intersecting the camera viewport (culling).
       const drawWorld = () => {
+        if (!stateRef.current) return;
         const cam = scene.cameras.main;
+        const hideRivals = stateRef.current?.phase === 'placement';
+        stateRef.current?.companies.forEach(company => companyColors.set(company.id, Phaser.Display.Color.HexStringToColor(company.color).color));
         tileLayer.clear(); linesLayer.clear(); glowLayer.clear(); overlay.clear();
 
         // visible world rect -> grid range
@@ -306,22 +305,17 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             }
           }
 
-          if (owned) {
+          if (owned && t.buildingId) {
             const col = companyColors.get(t.controllerId!) || 0x00d4aa;
-            const building = t.buildingId ? stateRef.current!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId) : undefined;
-            const deptCount = building ? building.departmentIds.length : 0;
-            drawBuilding(tileLayer, glowLayer, sx, sy, deptCount, col);
-          } else if (t.isStartupTile && !t.buildingId && !hideRivals) {
-            drawBuilding(tileLayer, glowLayer, sx, sy, 0, 0x8a94a6);
+            const building = stateRef.current!.companies.get(t.controllerId!)?.buildings.find(b => b.id === t.buildingId && b.tileId === t.id);
+            if (building) drawBuilding(tileLayer, glowLayer, sx, sy, building.departmentIds.length, col);
           }
           if (t.isStartupTile && !hideRivals) {
             const pot = t.startupPotential ?? 'empty';
             const starCol = pot === 'high' ? 0xffd166 : pot === 'promising' ? 0xf4a259 : 0x8a8f9c;
             tileLayer.lineStyle(2.5, starCol, 0.9).strokePoints(diamondPoints(sx, sy), true);
-            const star = scene.add.text(sx, sy - 6, pot === 'empty' ? '✦' : '★', {
-              fontFamily: 'JetBrains Mono, monospace', fontSize: '16px', color: '#ffd166',
-            }).setOrigin(0.5).setDepth(6);
-            star.setShadow(0, 0, '#000', 4);
+            overlay.fillStyle(starCol, 1).fillCircle(sx, sy - 8, pot === 'empty' ? 4 : 7);
+            overlay.lineStyle(2, 0x071012, 1).strokeCircle(sx, sy - 8, pot === 'empty' ? 2 : 4);
             if (pot !== 'empty') {
               glowLayer.fillStyle(starCol, 0.18 + (pot === 'high' ? 0.18 : 0.08)).fillCircle(sx, sy - 18, 20);
             }
@@ -332,10 +326,8 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
             const paCol = t.pendingAction.byCompanyId === stateRef.current!.playerCompanyId ? 0x00ffa3 : 0xff5c5c;
             glowLayer.fillStyle(paCol, 0.5).fillCircle(sx, sy - 40, 12);
             overlay.lineStyle(2, paCol, 0.9).strokeCircle(sx, sy - 40, 9);
-            const pulse = scene.add.text(sx, sy - 40, '!', {
-              fontFamily: 'JetBrains Mono, monospace', fontSize: '13px', color: '#0b0e16', fontStyle: 'bold',
-            }).setOrigin(0.5).setDepth(6);
-            scene.tweens.add({ targets: pulse, alpha: { from: 0.4, to: 1 }, duration: 600, yoyo: true, repeat: -1 });
+            overlay.lineStyle(2, 0x071012, 1).lineBetween(sx, sy - 45, sx, sy - 38);
+            overlay.fillStyle(0x071012, 1).fillCircle(sx, sy - 35, 1.5);
           }
         });
 
@@ -377,8 +369,13 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
       } else {
         const margin = 120;
         const fit = Math.min(W / (TILE_W * 8 + margin * 2), H / (TILE_H * 16 + margin * 2));
-        setCamZoom(Phaser.Math.Clamp(fit * 0.95, 0.35, 1.4));
-        cam.centerOn(0, 0);
+        setCamZoom(Phaser.Math.Clamp(fit * 1.35, 0.45, 1.65));
+        const activeTiles = Array.from(stateRef.current!.marketTiles.values());
+        const center = activeTiles.reduce((sum, tile) => {
+          const point = tileToWorld(tile.x, tile.y);
+          return { x: sum.x + point.x, y: sum.y + point.y };
+        }, { x: 0, y: 0 });
+        cam.centerOn(center.x / activeTiles.length, center.y / activeTiles.length);
       }
 
       const spaceKey = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -396,7 +393,7 @@ export const MarketMap: React.FC<Props> = ({ state, selectedTileId, onTileSelect
         const tgt = targetingRef.current;
         if (t && tgt && tgt.isValid(t)) {
           tgt.onPick(t.id);
-        } else if (t && state?.phase === 'placement' && onPlaceTileRef.current) {
+        } else if (t && stateRef.current?.phase === 'placement' && onPlaceTileRef.current) {
           onPlaceTileRef.current(t.id);
         } else {
           onTileSelectRef.current(t ? t.id : null);

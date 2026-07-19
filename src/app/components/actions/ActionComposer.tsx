@@ -9,6 +9,7 @@ import {
   spinProductName,
 } from '../../../data/generators';
 import { CEO_PILLARS, PILLAR_LABELS } from '../../../data/archetypes';
+import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots, getOwnedBuildingsWithCapacity } from '../../../simulation/utils/buildings';
 
 interface Props {
   playerCompany: Company;
@@ -64,9 +65,9 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'security_hardening', label: 'Security Hardening', group: 'Security & M&A', baseCost: 200000, needs: ['targetProduct'], requiresDept: 'cybersecurity' },
   { type: 'security_offline', label: 'Physical Security', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'sabotage_building', label: 'Sabotage Building', group: 'Security & M&A', baseCost: 300000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
-  { type: 'defend_tile', label: 'Defend Tile', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
+  { type: 'defend_tile', label: 'Defend Building', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000, requiresDept: 'cybersecurity' },
-  { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetTile', 'targetDept'], requiresDept: 'cybersecurity' },
+  { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetCompany', 'targetDept'], requiresDept: 'cybersecurity' },
   { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'cybersecurity' },
   { type: 'legal_action', label: 'Legal Action', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'legal_compliance' },
   { type: 'scout_acquisition', label: 'Scout Acquisition', group: 'Security & M&A', baseCost: 50000, requiresDept: 'acquisitions' },
@@ -115,6 +116,7 @@ export const ActionComposer: React.FC<Props> = ({
 
   const [targetCompanyId, setTargetCompanyId] = useState<CompanyId | ''>('');
   const [targetDept, setTargetDept] = useState<RuthlessDept>('rd');
+  const [targetDepartmentId, setTargetDepartmentId] = useState<string>('');
   const [targetTileId, setTargetTileId] = useState<TileId | ''>('');
   const [tone, setTone] = useState<VoiceTone>(playerCompany.voiceTone ?? 'aggressive');
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
@@ -143,6 +145,7 @@ export const ActionComposer: React.FC<Props> = ({
     setType(initialDraft.type);
     setBudget(initialDraft.budget);
     setTargetCompanyId(initialDraft.targetCompanyId ?? '');
+    setTargetDepartmentId(initialDraft.targetDepartmentId ?? '');
     setTargetTileId(initialDraft.targetTileId ?? (initialTileId || ''));
     setTargetProductId(initialDraft.targetProductId ?? '');
     setTone(initialDraft.tone ?? (playerCompany.voiceTone ?? 'aggressive'));
@@ -161,11 +164,32 @@ export const ActionComposer: React.FC<Props> = ({
   const rivals = companies.filter(c => c.id !== playerCompany.id);
   // Build actions only allow the player's own controlled tiles (req T3).
   const needs = def.needs ?? [];
-  const canSubmit = budget > 0 || def.baseCost === 0 ||
-    (type === 'launch_product' && !!productName) ||
-    (type === 'auction_sell' && !!auctionAssetId) ||
-    (type === 'release_source' && !!ideaId) ||
-    (type === 'sell_source' && !!ideaId && !!targetCompanyId);
+  const chosenTile = targetTileId ? tiles.find(tile => tile.id === targetTileId) : undefined;
+  const chosenTileValid = !needs.includes('targetTile') || Boolean(chosenTile && (
+    type === 'build_department'
+      ? chosenTile.controllerId === playerCompany.id && Boolean(findBuildingOnTile(playerCompany, chosenTile.id) && getBuildingFreeSlots(findBuildingOnTile(playerCompany, chosenTile.id)!) > 0)
+    : type === 'build_building'
+      ? !chosenTile.buildingId && (!chosenTile.controllerId || chosenTile.controllerId === playerCompany.id)
+      : type === 'security_offline'
+        ? chosenTile.controllerId === playerCompany.id && Boolean(chosenTile.buildingId)
+      : type === 'sabotage_building'
+        ? chosenTile.controllerId !== playerCompany.id && Boolean(chosenTile.controllerId && chosenTile.buildingId)
+      : type === 'defend_tile'
+        ? chosenTile.controllerId === playerCompany.id && Boolean(chosenTile.buildingId)
+      : type === 'cyber_attack'
+        ? chosenTile.controllerId === targetCompanyId && Boolean(chosenTile.buildingId)
+      : true
+  ));
+  const requiredTargetsValid =
+    (!needs.includes('targetCompany') || !!targetCompanyId) && chosenTileValid &&
+    (!needs.includes('targetDept') || (type === 'industrial_espionage' ? !!targetDepartmentId : !!targetDept)) &&
+    (!needs.includes('targetProduct') || !!targetProductId) &&
+    (!needs.includes('targetIdea') || !!ideaId) &&
+    (!needs.includes('targetExecutive') || !!targetExecutiveId) &&
+    (!needs.includes('hqBuilding') || !!hqBuildingId) &&
+    (type !== 'launch_product' || !!productName.trim()) &&
+    (type !== 'auction_sell' || !!auctionAssetId);
+  const canSubmit = requiredTargetsValid && budget >= def.baseCost && budget <= maxBudget;
 
   // live success estimate (req 4)
   const draft: Omit<import('../../../types').TurnAction, 'id' | 'status'> = {
@@ -175,6 +199,7 @@ export const ActionComposer: React.FC<Props> = ({
     priority: 1,
     targetCompanyId: targetCompanyId || undefined,
     targetDept: needs.includes('targetDept') ? targetDept : undefined,
+    targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
     targetTileId: targetTileId || undefined,
     tone: needs.includes('tone') ? tone : undefined,
     authenticity: needs.includes('auth') ? auth : undefined,
@@ -188,6 +213,7 @@ export const ActionComposer: React.FC<Props> = ({
     buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
     hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
     executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
+    trendId: initialDraft?.trendId,
   };
   const successPct = estimate ? Math.round(estimate(draft) * 100) : null;
 
@@ -199,23 +225,28 @@ export const ActionComposer: React.FC<Props> = ({
       priority: 1,
       targetCompanyId: targetCompanyId || undefined,
       targetDept: needs.includes('targetDept') ? targetDept : undefined,
+      targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
       targetTileId: targetTileId || undefined,
       tone: needs.includes('tone') ? tone : undefined,
       authenticity: needs.includes('auth') ? auth : undefined,
       targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
       departmentType: needs.includes('departmentType') ? deptType : undefined,
       productName: type === 'launch_product' ? productName : undefined,
-      productCategory: type === 'launch_product' ? productCategory : undefined,
+      productCategory: (type === 'launch_product' || type === 'expand_market') ? productCategory : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
       targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
       ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
       makeHQ: needs.includes('makeHQ') ? makeHQ : undefined,
+      buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
       hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
+      executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
+      trendId: initialDraft?.trendId,
     });
     onClose();
   };
 
   const selectType = (t: ActionType) => {
+    onRequestTargeting?.(null);
     setType(t);
     const d = ACTION_DEFS.find(a => a.type === t)!;
     setGroup(d.group);
@@ -255,7 +286,11 @@ export const ActionComposer: React.FC<Props> = ({
         {needs.includes('targetCompany') && (
           <div className="ac-field">
             <label>Target Corporation</label>
-            <select value={targetCompanyId} onChange={e => setTargetCompanyId(e.target.value)}>
+            <select value={targetCompanyId} onChange={e => {
+              setTargetCompanyId(e.target.value);
+              if (type === 'industrial_espionage') setTargetDepartmentId('');
+              if (type === 'cyber_attack') setTargetTileId('');
+            }}>
               <option value="">— select rival —</option>
               {rivals.map(c => (
                 <option key={c.id} value={c.id}>
@@ -269,10 +304,34 @@ export const ActionComposer: React.FC<Props> = ({
         {/* target dept for espionage */}
         {needs.includes('targetDept') && (
           <div className="ac-field">
-            <label>Target Department</label>
-            <select value={targetDept} onChange={e => setTargetDept(e.target.value as RuthlessDept)}>
-              {DEPT_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-            </select>
+            <label>{type === 'industrial_espionage' ? 'Opponent Department' : 'Target Department'}</label>
+            {type === 'industrial_espionage' ? (() => {
+              const target = companies.find(company => company.id === targetCompanyId);
+              const mapDept = (departmentType: DepartmentType): RuthlessDept => ({
+                product_rd: 'rd', ai_data: 'computer_core', cybersecurity: 'security', sales_marketing: 'marketing',
+                consulting_services: 'product', acquisitions: 'acquisitions', legal_compliance: 'legal',
+                people_culture: 'hr', finance_investor: 'admin', dev_engineering: 'computer_core', corporate_strategy: 'admin',
+              }[departmentType] as RuthlessDept);
+              return <>
+                <select value={targetDepartmentId} disabled={!target} onChange={e => {
+                  setTargetDepartmentId(e.target.value);
+                  const department = target?.departments.find(candidate => candidate.id === e.target.value);
+                  if (department) setTargetDept(mapDept(department.type));
+                }}>
+                  <option value="">{target ? '— select an opponent department —' : '— choose a corporation first —'}</option>
+                  {target?.departments.map(department => (
+                    <option key={department.id} value={department.id}>
+                      {department.type.replaceAll('_', ' ')} · level {department.level} · efficiency {(department.efficiency * 100).toFixed(0)}%
+                    </option>
+                  ))}
+                </select>
+                <span className="ac-hint">The order targets this exact department inside {target?.name || 'the selected corporation'}; no market tile is required.</span>
+              </>;
+            })() : (
+              <select value={targetDept} onChange={e => setTargetDept(e.target.value as RuthlessDept)}>
+                {DEPT_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+            )}
           </div>
         )}
 
@@ -280,32 +339,61 @@ export const ActionComposer: React.FC<Props> = ({
         {needs.includes('targetTile') && (() => {
           const isOwn = type === 'build_department';
           const isSeize = type === 'build_building';
-          const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action', 'security_offline', 'defend_tile'].includes(type);
+          const isPhysicalDefense = type === 'security_offline';
+          const isSabotage = type === 'sabotage_building';
+          const isDefendBuilding = type === 'defend_tile';
+          const isCyberAttack = type === 'cyber_attack';
+          const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action'].includes(type);
+          const slotCount = getBuildingUsedSlots;
           const validTile = (t: MarketTile): boolean => {
             // T: build_department targets one of the player's tiles — a building tile
             // (to add a dept to an existing building) or an empty owned tile.
-            if (isOwn) return !!t.controllerId && t.controllerId === playerCompany.id;
+            if (isOwn) {
+              const building = findBuildingOnTile(playerCompany, t.id);
+              return Boolean(building && t.controllerId === playerCompany.id && slotCount(building) < building.maxDepartments);
+            }
+            if (isPhysicalDefense) return t.controllerId === playerCompany.id && Boolean(t.buildingId);
+            if (isSabotage) return Boolean(t.buildingId && t.controllerId && t.controllerId !== playerCompany.id);
+            if (isDefendBuilding) return t.controllerId === playerCompany.id && Boolean(t.buildingId);
+            if (isCyberAttack) return Boolean(targetCompanyId && t.buildingId && t.controllerId === targetCompanyId);
             if (isOffensive) return !!t.controllerId && t.controllerId !== playerCompany.id;
-            if (isSeize) return !t.controllerId || t.controllerId !== playerCompany.id; // free or rival (seize)
+            if (isSeize) return !t.buildingId && (!t.controllerId || t.controllerId === playerCompany.id);
             return true;
           };
           // T: building picker — choose an existing building with free slots.
-          const slotCount = (b: { departmentIds: unknown[]; isHQ?: boolean }) =>
-            b.departmentIds.length + (b.isHQ ? 1 : 0);
           const ownBuildings = isOwn
-            ? playerCompany.buildings
-                .filter(b => slotCount(b) < b.maxDepartments)
+            ? getOwnedBuildingsWithCapacity(playerCompany)
                 .sort((a, b) => (a.isHQ ? -1 : 0) - (b.isHQ ? -1 : 0))
             : [];
           const selectedBuilding = isOwn && targetTileId
-            ? playerCompany.buildings.find(b => b.tileId === targetTileId)
+            ? findBuildingOnTile(playerCompany, targetTileId)
+            : undefined;
+          const friendlyBuildingName = (building: typeof playerCompany.buildings[number]) => getBuildingDisplayName(playerCompany, building);
+          const buildingDirectory = companies.flatMap(company => company.buildings.map(building => ({
+            company,
+            building,
+            tile: tiles.find(tile => tile.id === building.tileId),
+          }))).filter(entry => Boolean(entry.tile));
+          const opponentBuildings = buildingDirectory.filter(entry => entry.company.id !== playerCompany.id);
+          const playerBuildings = buildingDirectory.filter(entry => entry.company.id === playerCompany.id);
+          const cyberTargetBuildings = buildingDirectory.filter(entry => entry.company.id === targetCompanyId);
+          const selectedDirectoryEntry = targetTileId
+            ? buildingDirectory.find(entry => entry.building.tileId === targetTileId)
             : undefined;
           const hint = isOwn
             ? 'Pick one of YOUR buildings (or click it on the map) to house the new department'
+            : isPhysicalDefense
+              ? 'Pick one of YOUR buildings to reinforce its physical security'
+            : isSabotage
+              ? 'Pick an OPPONENT BUILDING — corporation and building names are shown in the selector'
+            : isDefendBuilding
+              ? 'Pick one of YOUR BUILDINGS to reinforce firewall and physical security'
+            : isCyberAttack
+              ? `Pick a building belonging to ${companies.find(company => company.id === targetCompanyId)?.name || 'the selected target corporation'}`
             : isOffensive
               ? 'Click a RIVAL-controlled tile to target'
               : isSeize
-                ? 'Click any tile (free or rival) to drop a new building'
+                ? 'Click an EMPTY neutral or owned tile to place an empty building'
                 : 'Click a tile on the map';
           const startTargeting = () => onRequestTargeting?.({
             isValid: validTile,
@@ -320,24 +408,37 @@ export const ActionComposer: React.FC<Props> = ({
           return (
             <div className="ac-field">
               {isOwn && (
-                <div className="ac-field">
-                  <label>Building (with free slots)</label>
-                  <select value={selectedBuilding?.id ?? ''} onChange={e => {
-                    const b = playerCompany.buildings.find(x => x.id === e.target.value);
-                    if (b) setTargetTileId(b.tileId);
-                  }}>
-                    <option value="">— choose a building —</option>
-                    {ownBuildings.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} · {slotCount(b)}/{b.maxDepartments} slots
-                      </option>
-                    ))}
-                  </select>
+                <div className="ac-building-choice">
+                  <label>Choose one of your buildings</label>
+                  <div className="ac-tile-pick">
+                    <select value={selectedBuilding?.id ?? ''} onChange={e => {
+                      const b = playerCompany.buildings.find(x => x.id === e.target.value);
+                      setTargetTileId(b?.tileId ?? '');
+                    }}>
+                      <option value="">— select building —</option>
+                      {ownBuildings.map(b => {
+                        const tile = tiles.find(candidate => candidate.id === b.tileId);
+                        const used = slotCount(b);
+                        return <option key={b.id} value={b.id}>
+                          {friendlyBuildingName(b)}{b.isHQ ? ' · HQ' : ''} · {b.maxDepartments - used} free · {tile?.segment.replaceAll('_', ' ') || 'corporate site'}
+                        </option>;
+                      })}
+                    </select>
+                    <button type="button" className={`btn btn-secondary ac-pick-btn ${targeting ? 'active' : ''}`} onClick={() => targeting ? onRequestTargeting?.(null) : startTargeting()}>
+                      {targeting ? 'Cancel pick' : 'Pick building on map'}
+                    </button>
+                  </div>
+                  {selectedBuilding && <div className="ac-tile-chosen">Destination: <b>{friendlyBuildingName(selectedBuilding)}</b> · {slotCount(selectedBuilding)}/{selectedBuilding.maxDepartments} slots used</div>}
                 </div>
               )}
-              <label>{isOffensive ? 'Target Tile (rival building / territory)'
+              {!isOwn && <>
+              <label>{isSabotage ? 'Sabotage Target Building'
+                : isDefendBuilding ? 'Building to Defend'
+                : isCyberAttack ? 'Target Corporation Building'
+                : isOffensive ? 'Target Tile (rival building / territory)'
+                : isPhysicalDefense ? 'Your Building'
                 : isOwn ? 'Building Tile'
-                : isSeize ? 'Build On Tile (free or rival)' : 'Target Tile'}</label>
+                : isSeize ? 'Build On Tile (empty neutral / owned)' : 'Target Tile'}</label>
               <div className="ac-tile-pick">
                 <select value={targetTileId} onChange={e => {
                   const tid = e.target.value as TileId | '';
@@ -345,8 +446,39 @@ export const ActionComposer: React.FC<Props> = ({
                   const t = tiles.find(x => x.id === tid);
                   if (t?.controllerId && t.controllerId !== playerCompany.id) setTargetCompanyId(t.controllerId);
                 }}>
-                  <option value="">— select tile —</option>
-                  {tiles.filter(validTile).map(t => (
+                  <option value="">{isSabotage ? '— select an opponent building —' : isDefendBuilding ? '— select one of your buildings —' : isCyberAttack ? '— select a building of the target corporation —' : '— select tile —'}</option>
+                  {isSabotage ? <>
+                    <optgroup label="OPPONENT BUILDINGS — VALID TARGETS">
+                      {opponentBuildings.map(({ company, building }) => (
+                        <option key={building.id} value={building.tileId}>
+                          {company.name} — {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · security {building.physicalSecurity.toFixed(0)}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="YOUR BUILDINGS — CANNOT SABOTAGE">
+                      {playerBuildings.map(({ company, building }) => (
+                        <option key={building.id} value={building.tileId} disabled>
+                          {company.name} — {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · YOURS
+                        </option>
+                      ))}
+                    </optgroup>
+                  </> : isDefendBuilding ? (
+                    <optgroup label="YOUR BUILDINGS — DEFENSIVE TARGETS">
+                      {playerBuildings.map(({ building }) => (
+                        <option key={building.id} value={building.tileId}>
+                          {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · firewall {building.firewall.toFixed(0)} · physical {building.physicalSecurity.toFixed(0)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : isCyberAttack ? (
+                    <optgroup label={`${companies.find(company => company.id === targetCompanyId)?.name || 'TARGET CORPORATION'} — BUILDINGS`}>
+                      {cyberTargetBuildings.map(({ company, building }) => (
+                        <option key={building.id} value={building.tileId}>
+                          {company.name} — {building.name || (building.isHQ ? 'HQ' : 'Unnamed Building')} · firewall {building.firewall.toFixed(0)} · physical {building.physicalSecurity.toFixed(0)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : tiles.filter(validTile).map(t => (
                     <option key={t.id} value={t.id}>
                       {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}{t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ' · (free)'}
                     </option>
@@ -357,8 +489,15 @@ export const ActionComposer: React.FC<Props> = ({
                 </button>
               </div>
               {targetTileId && (
-                <div className="ac-tile-chosen">Selected: <b>{targetTileId.replace('tile_', '').toUpperCase()}</b></div>
+                <div className="ac-tile-chosen">Selected: <b>{(isSabotage || isDefendBuilding || isCyberAttack) && selectedDirectoryEntry
+                  ? `${selectedDirectoryEntry.company.name} — ${selectedDirectoryEntry.building.name || 'Building'}`
+                  : targetTileId.replace('tile_', '').toUpperCase()}</b></div>
               )}
+              {isSabotage && <span className="ac-hint">Your buildings remain visible for orientation but are disabled. Map pick highlights only opponent buildings.</span>}
+              {isDefendBuilding && <span className="ac-hint">The order reinforces only the selected building. Empty territory cannot be defended with this action.</span>}
+              {isCyberAttack && <span className="ac-hint">Every listed structure is a building of the selected target corporation. Tile identifiers are intentionally hidden.</span>}
+              </>}
+              {isSeize && <span className="ac-hint">New buildings open with 0 departments and 0 products. Staff them with later orders.</span>}
             </div>
           );
         })()}
@@ -578,7 +717,7 @@ export const ActionComposer: React.FC<Props> = ({
                 let best = maxBudget;
                 for (let b = def.baseCost; b <= maxBudget; b += 50000) {
                   const pct = estimate({ ...draft, budget: b } as Omit<TurnAction, 'id' | 'status'>);
-                  if (pct >= 95) { best = b; break; }
+                  if (pct >= 0.95) { best = b; break; }
                 }
                 setBudget(best);
               }}
