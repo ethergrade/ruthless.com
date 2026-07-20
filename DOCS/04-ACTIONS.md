@@ -33,7 +33,7 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 | Azione | Effetto |
 |--------|---------|
 | `scout_acquisition` | Esplora opportunità di acquisizione |
-| `acquire_company` | Acquisisce una corp (soglia: startup 60% / rival 80% del valore) |
+| `acquire_company` | Acquisisce una corp (soglia: startup 60% / rival 80% del valore), trasferisce tutti gli edifici con reparti/prodotti e genera uno shock M&A positivo o negativo |
 | `acquire_below_value` | Compra un rivale sotto valutazione (richiede Finance) |
 | `public_tender_offer` | OPA pubblica su edificio/company rivale |
 

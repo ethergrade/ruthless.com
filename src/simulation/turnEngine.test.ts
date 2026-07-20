@@ -147,6 +147,76 @@ describe('Market briefing refreshes each turn', () => {
   });
 });
 
+describe('Company acquisitions', () => {
+  it('moves every acquired building and its operating assets to the buyer', () => {
+    const engine = new TurnEngine(909);
+    const state = engine.getState();
+    const player = state.companies.get(state.playerCompanyId)!;
+    const target = [...state.companies.values()].find(company => company.kind === 'rival')!;
+
+    // Keep this integration test focused on the player's deal.
+    state.companies.forEach(company => {
+      if (!company.isPlayer) company.kind = 'startup';
+    });
+    const acquiredBuildingIds = target.buildings.map(building => building.id);
+    const acquiredDepartmentIds = target.departments.map(department => department.id);
+    const acquiredProductIds = target.products.map(product => product.id);
+    const acquiredTileIds = target.buildings.map(building => building.tileId);
+    const playerBuildingCount = player.buildings.length;
+
+    player.cash = 10_000_000;
+    target.valuation = 1_500_000;
+    state.actions.push({
+      id: 'acquire_all_buildings', companyId: player.id, type: 'acquire_company',
+      targetCompanyId: target.id, budget: 1_200_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    expect(player.buildings).toHaveLength(playerBuildingCount + acquiredBuildingIds.length);
+    expect(acquiredBuildingIds.every(id => player.buildings.some(building => building.id === id))).toBe(true);
+    expect(acquiredDepartmentIds.every(id => player.departments.some(department => department.id === id))).toBe(true);
+    expect(acquiredProductIds.every(id => player.products.some(product => product.id === id))).toBe(true);
+    expect(acquiredProductIds.every(id => state.products.get(id)?.companyId === player.id)).toBe(true);
+    expect(target.buildings).toHaveLength(0);
+    expect(state.companies.has(target.id)).toBe(false);
+    expect(player.acquisitions).toBeGreaterThanOrEqual(1);
+    acquiredTileIds.forEach(tileId => {
+      expect(state.marketTiles.get(tileId)?.controllerId).toBe(player.id);
+      expect(player.controlledTiles).toContain(tileId);
+      expect(target.controlledTiles).not.toContain(tileId);
+    });
+  });
+
+  it('creates a visible positive or negative M&A shock after a successful deal', () => {
+    const engine = new TurnEngine(910);
+    const state = engine.getState();
+    const player = state.companies.get(state.playerCompanyId)!;
+    const target = [...state.companies.values()].find(company => company.kind === 'rival')!;
+    state.companies.forEach(company => {
+      if (!company.isPlayer) company.kind = 'startup';
+    });
+
+    player.cash = 10_000_000;
+    target.valuation = 1_500_000;
+    state.actions.push({
+      id: 'acquisition_market_shock', companyId: player.id, type: 'acquire_company',
+      targetCompanyId: target.id, budget: 1_200_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const shift = state.marketBriefing.demandShifts.find(item => item.reason.includes(target.name));
+    const event = state.marketBriefing.globalEvents.find(item =>
+      item.kind === 'ma' && item.affectedCompanies.includes(target.id));
+    expect(shift).toBeDefined();
+    expect(Math.abs(shift!.change)).toBeGreaterThanOrEqual(0.06);
+    expect(Math.abs(shift!.change)).toBeLessThanOrEqual(0.18);
+    expect(event?.title).toBe(shift!.change > 0 ? 'Acquisition Rally' : 'Acquisition Backlash');
+    expect(state.alerts.at(-1)?.body).toContain(target.name);
+  });
+});
+
 describe('R&D idea capacity and global trend timing', () => {
   it('creates at most one idea per R&D department in the same turn', () => {
     const engine = new TurnEngine(2026);

@@ -64,6 +64,10 @@ al successo delle azioni rilevanti (`isDepartmentRelevant`).
 - `marketShare` = quota relativa di influenza/valore tra tutte le company.
 - `MarketTrend[]`, `WeakSignal[]` — segnali macro che guidano le opportunità.
 - `marketBriefing` — riepilogo ogni turno (incl. opportunità di M&A da rivali).
+- Un'acquisizione completata assorbe la company target e trasferisce tile, edifici e relativi
+  reparti/prodotti al compratore, rimuovendo il precedente proprietario dai competitor.
+  Il premio pagato, la qualità del target, la redditività e l'archetipo del compratore determinano
+  la probabilità di uno shock M&A positivo o negativo su domanda, valutazione e influenza.
 
 ## Crisi / Calamità (Cataclysm)
 

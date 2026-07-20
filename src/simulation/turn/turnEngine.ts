@@ -50,6 +50,15 @@ export interface TurnResult {
   marketBriefing: MarketBriefing;
 }
 
+interface PendingAcquisitionShock {
+  buyerId: CompanyId;
+  targetId: CompanyId;
+  targetName: string;
+  segments: MarketSegment[];
+  change: number;
+  acquiredValue: number;
+}
+
 export class TurnEngine {
   private rng: ReturnType<typeof createRNG>;
   private state: GameState;
@@ -63,6 +72,8 @@ export class TurnEngine {
   private realMapPlacement = false;
   /** Ideas actually created this turn, per company — backs the R&D capacity cap. */
   private ideasCreatedThisTurn = new Map<string, number>();
+  /** M&A shocks resolve after company metrics, so their quote movement is not overwritten. */
+  private pendingAcquisitionShocks: PendingAcquisitionShock[] = [];
 
   // T: point-buy stat overrides for the player's starting build.
   private statOverrides?: Partial<Record<string, number>>;
@@ -561,7 +572,16 @@ export class TurnEngine {
       if (t.pendingAction && t.pendingAction.expiresTurn <= this.state.turn) t.pendingAction = undefined;
     });
     Array.from(this.state.companies.values()).forEach(c => this.recalculateCompanyMetrics(c));
+    const acquisitionBriefing = this.applyPendingAcquisitionShocks();
     this.state.marketBriefing = this.generateMarketBriefing();
+    this.state.marketBriefing.demandShifts = [
+      ...acquisitionBriefing.demandShifts,
+      ...this.state.marketBriefing.demandShifts,
+    ];
+    this.state.marketBriefing.globalEvents = [
+      ...acquisitionBriefing.globalEvents,
+      ...this.state.marketBriefing.globalEvents,
+    ];
     this.refreshTrends();
     this.advanceProductLifecycles();
 
@@ -1555,55 +1575,169 @@ export class TurnEngine {
     const price = action.budget;
     if (price < 1000000) return;
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
-    if (!target) return;
+    if (!target || target.id === company.id) return;
+
+    const acquiredValue = target.valuation;
+    const acquiredRevenue = target.revenue;
+    const acquiredBuildings = [...target.buildings];
+    const acquiredTileIds = new Set<TileId>([
+      ...target.controlledTiles,
+      ...acquiredBuildings.map(building => building.tileId),
+    ]);
+    const affectedSegments = [...new Set(
+      [...acquiredTileIds]
+        .map(tileId => this.state.marketTiles.get(tileId)?.segment)
+        .filter((segment): segment is MarketSegment => Boolean(segment)),
+    )];
 
     // Pay out.
     target.cash += Math.round(price * 0.6);
     // Inherit the acquired firm's revenue stream (drives valuation after recalc).
-    company.revenue += target.revenue;
-    // Fold target buildings + their tiles into the buyer (acquire tile + building).
-    target.buildings.forEach(b => {
-      if (!company.buildings.find(x => x.tileId === b.tileId)) {
-        company.buildings.push(b);
-        const t = this.state.marketTiles.get(b.tileId);
-        if (t) { t.controllerId = company.id; t.buildingId = b.id; t.isStartupTile = false; t.startupPotential = undefined; }
-        if (!company.controlledTiles.includes(b.tileId)) company.controlledTiles.push(b.tileId);
+    company.revenue += acquiredRevenue;
+
+    // Move every building exactly once. Departments and products housed by the
+    // acquired corporation move with the real estate, avoiding duplicate owners
+    // and orphaned building interiors after the tile changes colour.
+    acquiredBuildings.forEach(building => {
+      if (!company.buildings.some(candidate => candidate.id === building.id || candidate.tileId === building.tileId)) {
+        building.ceoId = undefined;
+        company.buildings.push(building);
       }
+      const tile = this.state.marketTiles.get(building.tileId);
+      if (tile) {
+        tile.controllerId = company.id;
+        tile.buildingId = building.id;
+        tile.isStartupTile = false;
+        tile.startupPotential = undefined;
+      }
+      if (!company.controlledTiles.includes(building.tileId)) company.controlledTiles.push(building.tileId);
     });
-    // Empty-shell startups: still grab the tile (no building to move).
-    target.controlledTiles.forEach(tid => {
+    target.buildings = [];
+
+    target.departments.forEach(department => {
+      department.executiveId = undefined;
+      if (!company.departments.some(candidate => candidate.id === department.id)) company.departments.push(department);
+    });
+    target.departments = [];
+
+    target.products.forEach(product => {
+      product.companyId = company.id;
+      if (!company.products.some(candidate => candidate.id === product.id)) company.products.push(product);
+      this.state.products.set(product.id, product);
+    });
+    target.products = [];
+
+    // Empty-shell startups and non-building territory are acquired too.
+    acquiredTileIds.forEach(tid => {
       const t = this.state.marketTiles.get(tid);
-      if (t && t.controllerId === target.id && !company.controlledTiles.includes(tid)) {
+      if (t && (t.controllerId === target.id || acquiredBuildings.some(building => building.tileId === tid))) {
         t.controllerId = company.id;
         t.isStartupTile = false;
         t.startupPotential = undefined;
-        company.controlledTiles.push(tid);
+        if (!company.controlledTiles.includes(tid)) company.controlledTiles.push(tid);
       }
     });
+    target.controlledTiles = target.controlledTiles.filter(tileId => !acquiredTileIds.has(tileId));
+
     // Market-share / valuation impact (the player's quote moves up or down).
     const share = target.marketInfluence;
     company.marketInfluence = Math.min(100, company.marketInfluence + share * 0.8 + 3);
-    company.valuation = Math.max(1, company.valuation + target.valuation * 0.5);
+    company.valuation = Math.max(1, company.valuation + acquiredValue * 0.5);
     target.marketInfluence = Math.max(0, target.marketInfluence - share * 0.5);
-    // Acquired startup's fate: absorbed (removed) once bought out.
-    if (target.isStartup) {
-      this.state.companies.delete(target.id);
-      company.acquisitions = (company.acquisitions ?? 0) + 1;
-    }
 
-    this.addNews(company.id, `${company.name} acquires ${target.name} for $${price.toLocaleString()} — market share shifts.`);
-    this.state.marketBriefing.globalEvents.push({
-      id: generateId.action(),
-      turn: this.state.turn,
-      category: 'ma',
-      kind: 'ma',
-      title: 'Acquisition',
-      description: `${company.name} acquires ${target.name} ($${price.toLocaleString()}).`,
-      impact: { marketInfluenceDelta: share * 0.8 + 3 },
-      affectedCompanies: [company.id, target.id],
-      duration: 1,
-      severity: 'high',
+    // Integration quality, profitability and deal premium influence investor
+    // sentiment, but uncertainty remains: every completed acquisition can rally
+    // or sell off. Acquisition-focused companies receive a modest integration edge.
+    const targetQuality = (target.brandTrust + target.innovation + target.securityPosture) / 300;
+    const priceRatio = price / Math.max(1, acquiredValue);
+    const integrationEdge = company.archetype === 'acquisition_machine' ? 0.12 : 0;
+    const profitabilityEdge = target.cashFlow >= 0 ? 0.08 : -0.08;
+    const overpaymentPenalty = Math.max(0, priceRatio - 1) * 0.2;
+    const positiveChance = Math.max(0.15, Math.min(0.85,
+      0.45 + (targetQuality - 0.5) * 0.35 + integrationEdge + profitabilityEdge - overpaymentPenalty,
+    ));
+    const positive = this.rng.nextBoolean(positiveChance);
+    const magnitude = this.rng.nextFloat(0.06, 0.18);
+    this.pendingAcquisitionShocks.push({
+      buyerId: company.id,
+      targetId: target.id,
+      targetName: target.name,
+      segments: affectedSegments.length ? affectedSegments : ['open_market'],
+      change: positive ? magnitude : -magnitude,
+      acquiredValue,
     });
+
+    // A successful company acquisition is a full absorption, not a repeatable
+    // purchase of an empty shell: remove the former owner from the market.
+    this.state.companies.delete(target.id);
+    company.acquisitions = (company.acquisitions ?? 0) + 1;
+    this.addNews(company.id, `${company.name} acquires ${target.name} for $${price.toLocaleString()} — ${acquiredBuildings.length} buildings change ownership.`);
+  }
+
+  /** Apply completed M&A sentiment after the standard valuation/influence pass. */
+  private applyPendingAcquisitionShocks(): Pick<MarketBriefing, 'demandShifts' | 'globalEvents'> {
+    const demandShifts: DemandShift[] = [];
+    const globalEvents: GameEvent[] = [];
+
+    this.pendingAcquisitionShocks.forEach(shock => {
+      const buyer = this.state.companies.get(shock.buyerId);
+      if (!buyer) return;
+
+      const influenceDelta = shock.change * 20;
+      const valuationDelta = shock.acquiredValue * shock.change;
+      buyer.marketInfluence = Math.max(0, Math.min(100, buyer.marketInfluence + influenceDelta));
+      buyer.valuation = Math.max(1, buyer.valuation + valuationDelta);
+      buyer.brandTrust = Math.max(0, Math.min(100, buyer.brandTrust + shock.change * 12));
+
+      this.state.companies.forEach(competitor => {
+        if (competitor.id !== buyer.id && competitor.id !== shock.targetId) {
+          competitor.marketInfluence = Math.max(0, Math.min(100, competitor.marketInfluence - shock.change * 3));
+        }
+      });
+
+      const segmentSet = new Set(shock.segments);
+      this.state.marketTiles.forEach(tile => {
+        if (!segmentSet.has(tile.segment)) return;
+        tile.demandLevel = Math.max(0, Math.min(2, tile.demandLevel * (1 + shock.change)));
+        tile.growth = Math.max(-1, Math.min(1, tile.growth + shock.change * 0.25));
+      });
+
+      shock.segments.slice(0, 3).forEach(segment => demandShifts.push({
+        segment,
+        change: shock.change,
+        reason: `${buyer.name} acquisition of ${shock.targetName}`,
+      }));
+
+      const rallied = shock.change > 0;
+      const title = rallied ? 'Acquisition Rally' : 'Acquisition Backlash';
+      const description = rallied
+        ? `${buyer.name}'s acquisition of ${shock.targetName} wins investor confidence and lifts exposed markets.`
+        : `${buyer.name}'s acquisition of ${shock.targetName} triggers integration fears and a market sell-off.`;
+      globalEvents.push({
+        id: generateId.event(),
+        turn: this.state.turn,
+        category: 'ma',
+        kind: 'ma',
+        title,
+        description,
+        impact: { marketInfluenceDelta: influenceDelta, valuationDelta, demandChange: shock.change },
+        affectedCompanies: [buyer.id, shock.targetId],
+        duration: 1,
+        severity: rallied ? 'high' : 'critical',
+      });
+      this.state.alerts.push({
+        id: generateId.action(),
+        turn: this.state.turn,
+        title,
+        body: `${description} Market demand ${rallied ? 'rose' : 'fell'} ${(Math.abs(shock.change) * 100).toFixed(1)}%.`,
+        importance: rallied ? 'major' : 'critical',
+      });
+      this.addNews(buyer.id, `${title}: ${description}`);
+    });
+
+    this.state.alerts = this.state.alerts.slice(-40);
+    this.pendingAcquisitionShocks = [];
+    return { demandShifts, globalEvents };
   }
 
   private raiseCapital(company: Company): void {
