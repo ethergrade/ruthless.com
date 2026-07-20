@@ -21,7 +21,7 @@ un gioco di strategia aziendale turn-based ispirato a *Tom Clancy's ruthless.com
 
 ## Stato attuale (snapshot 2026-07-20)
 
-- Verified green: `npm run lint` · `npm test` (65 test) · `npm run build`.
+- Verified green: `npm run lint` · `npm test` (68 test) · `npm run build`.
 - Meccaniche implementate: risorse aziendali, 11 dipartimenti, edifici + HQ, mappa infinita
   procedurale, ~45 azioni, CEO GDR a 8 pillar, crisi/calamità, vittoria per power score,
   placement reale su mappa con spawn rivali automatico al 3° building, Compute Grid con

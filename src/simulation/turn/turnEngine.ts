@@ -995,6 +995,18 @@ export class TurnEngine {
         return { success: false, message: `Product sector is locked to ${boundSector.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
       }
     }
+    if (action.type === 'expand_market' && action.trendId) {
+      const committedTrend = this.findCommittedTrend(action);
+      if (!committedTrend) {
+        return { success: false, message: 'The exploited Global Trend is no longer committed to this market expansion', effects: {}, risksTriggered: [] };
+      }
+      if (action.productCategory !== committedTrend.category) {
+        return { success: false, message: `Market expansion category is locked to ${committedTrend.category.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
+      }
+      if (action.targetSegments?.length && !action.targetSegments.includes(committedTrend.sector)) {
+        return { success: false, message: `Market expansion sector is locked to ${committedTrend.sector.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
+      }
+    }
     if (action.type === 'build_building') {
       const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
       if (!tile) return { success: false, message: 'Select a valid tile for the new building', effects: {}, risksTriggered: [] };
@@ -1751,10 +1763,10 @@ export class TurnEngine {
   private expandMarket(company: Company, action: TurnAction): void {
     // Exploit a live trend: if the action targets a category that is currently
     // surging, aim at the trend's segment and get a stronger foothold + brand lift.
-    const trend = action.productCategory
+    const committedTrend = action.trendId ? this.findCommittedTrend(action) : undefined;
+    const trend = committedTrend ?? (action.productCategory
       ? this.state.trends.find(t => t.category === action.productCategory)
-        ?? this.state.trendHistory.find(entry => entry.outcome === 'pursued' && entry.trend.id === action.trendId)?.trend
-      : undefined;
+      : undefined);
 
     const uncontrolleds = Array.from(this.state.marketTiles.values()).filter(
       t => t.controllerId !== company.id

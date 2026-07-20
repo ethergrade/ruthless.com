@@ -94,9 +94,10 @@ early hints you can exploit by launching the right product or running the right 
 before competitors react. Creating ideas and **releasing source code** shifts trends and
 builds **trust / awareness**.
 
-When you **EXPLOIT** a trend or **INVEST** in a weak signal, the opportunity is not
-just a generic launch bonus: Product Creation is locked to the selected category and
-market sector, and only compatible R&D ideas can be used.
+**EXPLOIT** and **INVEST** are intentionally different. Exploiting a Global Trend opens
+a category/sector-locked **Expand Market** order and captures market presence without
+creating a product. Investing in a weak signal opens a category/sector-bound **Launch
+Product** brief, where only compatible R&D ideas can be used.
 
 ### Compute Economy & Competitive Advantage
 

@@ -15,7 +15,7 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 | `improve_product` | Migliora un prodotto esistente |
 | `generate_compute` | Espande il Compute Grid: riserva immediata, più generazione futura e upkeep persistente |
 | `allocate_compute` | Assegna Compute Points a un prodotto; rendimento e crescita dipendono dal margine |
-| `expand_market` | Espande la quota di mercato |
+| `expand_market` | Espande la quota; da Global Trend `EXPLOIT` blocca categoria/settore e usa la forza del trend, senza lanciare prodotti |
 | `marketing_campaign` | Campagna marketing (+brand trust/awareness) |
 | `hire_executive` | Assume un executive |
 | `hire_ceo` / `hire_coo` | Assegna CEO/COO a un HQ (richiede HR dept) |

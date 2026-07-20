@@ -15,6 +15,7 @@ import { QuickActionPage, type QuickPage } from './app/components/layout/QuickAc
 import { formatNumber } from './utils/formatters';
 import { audio } from './audio/AudioEngine';
 import type { Company, Department, Product, Executive, EventOption, CompanyId, TileId, GameEvent, ActionType, MarketTile } from './types';
+import { createTrendExploitDraft, createWeakSignalInvestmentDraft } from './app/utils/marketOrders';
 import './styles/globals.css';
 import './styles/layout.css';
 import './styles/composer.css';
@@ -106,6 +107,13 @@ function App() {
     setTargeting(null);
     setShowActionModal(false);
     setPresetActionType(null);
+    setEditDraft(null);
+  };
+
+  const handleOpenActionComposer = () => {
+    setPresetActionType(null);
+    setEditDraft(null);
+    setShowActionModal(true);
   };
 
   /** Quick Actions open dedicated operational pages above the live canvas. */
@@ -118,39 +126,20 @@ function App() {
     setShowActionModal(true);
   };
 
-  /** EXPLOIT binds product creation to the trend's exact category and sector. */
+  /** EXPLOIT captures market territory in the trend's exact category and sector. */
   const handleExploit = (trend: import('./types').MarketTrend) => {
-    const cat = trend.category;
-    setPresetActionType('launch_product');
-    setEditDraft({
-      id: `exploit_${cat}_${Date.now()}`,
-      companyId: state!.playerCompanyId,
-      type: 'launch_product',
-      budget: 300000,
-      priority: 1,
-      status: 'planned',
-      productCategory: cat,
-      targetSegments: [trend.sector],
-      trendId: trend.id,
-    } as import('./types').TurnAction);
+    const draft = createTrendExploitDraft(state!.playerCompanyId, trend);
+    setPresetActionType(draft.type);
+    setEditDraft(draft);
     if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
     setShowActionModal(true);
   };
 
   /** INVEST turns a weak signal into a category/sector-bound product brief. */
   const handleInvestSignal = (signal: import('./types').WeakSignal) => {
-    setPresetActionType('launch_product');
-    setEditDraft({
-      id: `invest_${signal.relatedCategory}_${Date.now()}`,
-      companyId: state!.playerCompanyId,
-      type: 'launch_product',
-      budget: 300000,
-      priority: 1,
-      status: 'planned',
-      productCategory: signal.relatedCategory,
-      targetSegments: [signal.relatedSector],
-      weakSignalId: signal.id,
-    } as import('./types').TurnAction);
+    const draft = createWeakSignalInvestmentDraft(state!.playerCompanyId, signal);
+    setPresetActionType(draft.type);
+    setEditDraft(draft);
     if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
     setShowActionModal(true);
   };
@@ -244,7 +233,7 @@ function App() {
           auctionHouse={state ? Array.from(state.auctionHouse) : []}
           onBid={handleBid}
 
-          onShowActionModal={() => setShowActionModal(true)}
+          onShowActionModal={handleOpenActionComposer}
           onCompanySelect={handleCompanySelect}
           selectedCompanyId={selectedCompanyId}
           onQuickAction={handleQuickAction}

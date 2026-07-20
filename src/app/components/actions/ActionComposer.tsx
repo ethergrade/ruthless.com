@@ -145,7 +145,7 @@ export const ActionComposer: React.FC<Props> = ({
 
   // product editor state
   const [productName, setProductName] = useState<string>(initialDraft?.type === 'launch_product' ? initialDraft.productName ?? '' : '');
-  const [productCategory, setProductCategory] = useState<ProductCategory>(initialDraft?.type === 'launch_product' ? initialDraft.productCategory ?? 'saas' : 'saas');
+  const [productCategory, setProductCategory] = useState<ProductCategory>(initialDraft?.productCategory ?? 'saas');
   const [productSegments, setProductSegments] = useState<MarketSegment[]>(initialDraft?.type === 'launch_product' ? initialDraft.targetSegments ?? [] : []);
   const [spinSeed] = useState<number>(Math.floor(Math.random() * 100000));
 
@@ -274,7 +274,9 @@ export const ActionComposer: React.FC<Props> = ({
     departmentType: needs.includes('departmentType') ? deptType : undefined,
     productName: type === 'launch_product' ? productName : undefined,
     productCategory: type === 'launch_product' ? effectiveProductCategory : type === 'expand_market' ? productCategory : undefined,
-    targetSegments: type === 'launch_product' ? effectiveProductSegments : undefined,
+    targetSegments: type === 'launch_product'
+      ? effectiveProductSegments
+      : type === 'expand_market' && initialDraft?.trendId ? initialDraft.targetSegments : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
     ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
@@ -282,8 +284,8 @@ export const ActionComposer: React.FC<Props> = ({
     buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
     hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
     executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
-    trendId: (type === 'launch_product' || type === 'expand_market') ? initialDraft?.trendId : undefined,
-    weakSignalId: type === 'launch_product' ? initialDraft?.weakSignalId : undefined,
+    trendId: initialDraft?.type === type && (type === 'launch_product' || type === 'expand_market') ? initialDraft.trendId : undefined,
+    weakSignalId: initialDraft?.type === type && type === 'launch_product' ? initialDraft.weakSignalId : undefined,
   };
   const successPct = estimate ? Math.round(estimate(draft) * 100) : null;
 
@@ -304,7 +306,9 @@ export const ActionComposer: React.FC<Props> = ({
       departmentType: needs.includes('departmentType') ? deptType : undefined,
       productName: type === 'launch_product' ? productName : undefined,
       productCategory: type === 'launch_product' ? effectiveProductCategory : type === 'expand_market' ? productCategory : undefined,
-      targetSegments: type === 'launch_product' ? effectiveProductSegments : undefined,
+      targetSegments: type === 'launch_product'
+        ? effectiveProductSegments
+        : type === 'expand_market' && initialDraft?.trendId ? initialDraft.targetSegments : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
       targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
       ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
@@ -313,8 +317,8 @@ export const ActionComposer: React.FC<Props> = ({
       buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
       hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
       executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
-      trendId: (type === 'launch_product' || type === 'expand_market') ? initialDraft?.trendId : undefined,
-      weakSignalId: type === 'launch_product' ? initialDraft?.weakSignalId : undefined,
+      trendId: initialDraft?.type === type && (type === 'launch_product' || type === 'expand_market') ? initialDraft.trendId : undefined,
+      weakSignalId: initialDraft?.type === type && type === 'launch_product' ? initialDraft.weakSignalId : undefined,
     });
     onClose();
   };
@@ -650,10 +654,17 @@ export const ActionComposer: React.FC<Props> = ({
         {/* target category for market expansion (EXPLOIT a trend) */}
         {type === 'expand_market' && (
           <div className="ac-field">
-            <label>Target Category <span className="ac-hint">(exploits the trending demand)</span></label>
-            <select value={productCategory} onChange={e => setProductCategory(e.target.value as ProductCategory)}>
-              {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
-            </select>
+            <label>Target Category <span className="ac-hint">({initialDraft?.trendId ? 'locked by Global Trend EXPLOIT' : 'target market'})</span></label>
+            {initialDraft?.trendId ? <>
+              <input value={productCategory.replaceAll('_', ' ')} readOnly />
+              <label>Target Sector <span className="ac-hint">(locked by the same trend)</span></label>
+              <input value={(initialDraft.targetSegments?.[0] ?? 'open_market').replaceAll('_', ' ')} readOnly />
+              <span className="ac-hint">This order expands market control in the trend sector. It does not create a new product.</span>
+            </> : (
+              <select value={productCategory} onChange={e => setProductCategory(e.target.value as ProductCategory)}>
+                {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+              </select>
+            )}
           </div>
         )}
 

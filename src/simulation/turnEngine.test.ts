@@ -278,7 +278,7 @@ describe('R&D idea capacity and global trend timing', () => {
     expect(launched.quality).toBeLessThanOrEqual(70);
   });
 
-  it('locks an exploited trend launch to its category and sector', () => {
+  it('keeps legacy trend-bound product launches locked to their category and sector', () => {
     const engine = new TurnEngine(78);
     const state = engine.getState();
     const company = state.companies.get(state.playerCompanyId)!;
@@ -307,6 +307,62 @@ describe('R&D idea capacity and global trend timing', () => {
     expect(product.category).toBe('biotech');
     expect(product.targetSegments).toEqual(['regulated_industry']);
     expect(product.trendTiming).toBe('on_time');
+  });
+
+  it('resolves Global Trend EXPLOIT as sector-focused market expansion without launching a product', () => {
+    const engine = new TurnEngine(781);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    const trend = {
+      id: 'quantum_growth_exploit', title: 'Quantum growth wave', category: 'quantum' as const,
+      sector: 'high_growth' as const, strength: 0.8, appearedTurn: state.turn,
+      decisionDeadlineTurn: state.turn + 2, expiresTurn: state.turn + 5, blurb: 'Capture demand.',
+    };
+    // Mirrors gameStore.addAction: committing EXPLOIT removes the live card and
+    // records it in Market Memory before the executive order resolves.
+    state.trends = [];
+    state.trendHistory = [{ trend, outcome: 'pursued', resolvedTurn: state.turn, companyId: company.id }];
+    const target = [...state.marketTiles.values()].find(tile => tile.controllerId !== company.id)!;
+    state.marketTiles.forEach(tile => {
+      if (tile.controllerId !== company.id) tile.segment = tile.id === target.id ? 'high_growth' : 'open_market';
+    });
+    target.controllerId = undefined;
+    const productCountBefore = company.products.length;
+    engine.getRNG().nextBoolean = () => true;
+    const resolve = (engine as unknown as { resolveAction: (action: TurnAction) => { success: boolean; message: string } }).resolveAction.bind(engine);
+
+    const outcome = resolve({
+      id: 'exploit_quantum_growth', companyId: company.id, type: 'expand_market',
+      trendId: trend.id, productCategory: trend.category, targetSegments: [trend.sector],
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    expect(outcome.success).toBe(true);
+    expect(target.controllerId).toBe(company.id);
+    expect(company.controlledTiles).toContain(target.id);
+    expect(company.products).toHaveLength(productCountBefore);
+  });
+
+  it('rejects a Global Trend EXPLOIT order that changes the committed category or sector', () => {
+    const engine = new TurnEngine(782);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const trend = {
+      id: 'cloud_regulated_exploit', title: 'Cloud regulation wave', category: 'cloud_infra' as const,
+      sector: 'regulated_industry' as const, strength: 0.7, appearedTurn: state.turn,
+      decisionDeadlineTurn: state.turn + 2, expiresTurn: state.turn + 5, blurb: 'Capture demand.',
+    };
+    state.trends = [trend];
+    const resolve = (engine as unknown as { resolveAction: (action: TurnAction) => { success: boolean; message: string } }).resolveAction.bind(engine);
+    const outcome = resolve({
+      id: 'invalid_cloud_exploit', companyId: company.id, type: 'expand_market',
+      trendId: trend.id, productCategory: 'saas', targetSegments: ['high_growth'],
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.message).toContain('locked to cloud infra');
   });
 
   it('rejects an idea or manual category that conflicts with the invested trend', () => {

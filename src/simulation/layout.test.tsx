@@ -7,6 +7,7 @@ import { Sidebar } from '../app/components/layout/Sidebar';
 import { BottomPanel } from '../app/components/layout/BottomPanel';
 import { QuickActionPage, type QuickPage } from '../app/components/layout/QuickActionPage';
 import { ActionComposer } from '../app/components/actions/ActionComposer';
+import { createTrendExploitDraft, createWeakSignalInvestmentDraft } from '../app/utils/marketOrders';
 import type { MarketBriefing } from '../types';
 
 // renderToString exercises the component tree and throws on render crashes.
@@ -196,6 +197,35 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(html).toContain('Regulated Industry');
     expect(html).toContain('Bio Signal Idea');
     expect(html).not.toContain('SaaS Other Idea');
+  });
+
+  it('routes Global Trend EXPLOIT to market expansion while Weak Signal INVEST remains a product bet', () => {
+    const engine = new TurnEngine(2029);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const trend = state.trends[0];
+    const signal = state.weakSignals[0];
+    const exploitDraft = createTrendExploitDraft(company.id, trend, 1);
+    const investDraft = createWeakSignalInvestmentDraft(company.id, signal, 1);
+
+    expect(exploitDraft.type).toBe('expand_market');
+    expect(exploitDraft.productCategory).toBe(trend.category);
+    expect(exploitDraft.targetSegments).toEqual([trend.sector]);
+    expect(investDraft.type).toBe('launch_product');
+
+    const html = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: exploitDraft.type,
+      initialDraft: exploitDraft,
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(html).toContain('ac-btn selected"><span>Expand Market');
+    expect(html).toContain('locked by Global Trend EXPLOIT');
+    expect(html).toContain('does not create a new product');
+    expect(html).not.toContain('Product Name');
   });
 
   it('offers re-patent only for stolen ideas and product blueprints', () => {

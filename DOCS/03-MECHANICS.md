@@ -76,8 +76,11 @@ entra in cooldown fino al turno successivo.
 - `marketShare` = quota relativa di influenza/valore tra tutte le company.
 - `MarketTrend[]`, `WeakSignal[]` — segnali macro che guidano le opportunità.
 - `marketBriefing` — riepilogo ogni turno (incl. opportunità di M&A da rivali).
-- `EXPLOIT` su un trend e `INVEST` su un weak signal aprono `Launch Product` vincolando
-  categoria e settore all'opportunità scelta; il picker mostra solo idee R&D compatibili.
+- `EXPLOIT` su un Global Trend apre `Expand Market`: categoria e settore sono bloccati
+  dal trend e l'ordine tenta di conquistare presenza proprio in quel segmento, senza creare
+  automaticamente un prodotto.
+- `INVEST` su un weak signal apre invece `Launch Product`, vincolando categoria e settore
+  all'ipotesi anticipata; il picker mostra solo idee R&D compatibili.
 - Un'acquisizione completata assorbe la company target e trasferisce tile, edifici e relativi
   reparti/prodotti al compratore, rimuovendo il precedente proprietario dai competitor.
   Il premio pagato, la qualità del target, la redditività e l'archetipo del compratore determinano
