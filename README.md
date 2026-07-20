@@ -66,6 +66,20 @@ Chosen at **New Game**. They silently reshape your economy:
 - Initiative → free `expand_market` order every 3 turns.
 - Archetype → different starting departments, cash, exec-order limits.
 
+### Department Initiatives
+
+Every owned department can run a named strategic order. **Product R&D** can force a
+moonshot sprint, **AI & Data** a compute surge, **Cybersecurity** a zero-day drill,
+**Sales** a category blitz, **HR** a culture reset, **Finance** an investor roadshow,
+and the other departments have equivalent specialist initiatives.
+
+The preview exposes both upside and backfire before planning. Success probability uses
+the selected team's level, efficiency, morale and risk plus company morale and budget.
+Outcomes persistently affect workforce morale, brand and market share, adoption/market
+fit, compute/grid capacity, liquidity/debt, security and product health. One team can run
+only one high-pressure initiative per turn; failures spend part of the budget and apply
+the department-specific downside.
+
 ### Offensive vs Defensive (Shark Market)
 - **Offensive actions** (Cyber Attack, Sabotage, Espionage, Legal) target **rival tiles / corporations only**.
 - **Self-sabotage** actions let *you* damage your own assets to pilot the market —

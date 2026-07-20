@@ -10,6 +10,7 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 |--------|---------|
 | `build_department` | Aggiunge un dipartimento a un edificio con slot liberi |
 | `build_building` | Nuovo edificio su tile libera (richiede dipartimento pertinente) |
+| `department_initiative` | Esegue l'ordine strategico del reparto selezionato; probabilità ed effetti dipendono da livello, efficienza, morale, rischio e budget |
 | `launch_product` | Lancia un prodotto; idea, trend sfruttato o weak signal finanziato ne vincolano categoria e settore |
 | `improve_product` | Migliora un prodotto esistente |
 | `generate_compute` | Espande il Compute Grid: riserva immediata, più generazione futura e upkeep persistente |
@@ -28,6 +29,37 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 | `create_ideas` | R&D: inventa una tech/idea (brevità → trend) |
 | `release_source` | Open-source idea: +awareness/trust, può maturare un weak signal |
 | `sell_source` | Vende source code a un rivale: +cash, flip ownership trend |
+
+## Department Initiatives
+
+Ogni reparto posseduto espone un ordine dedicato tramite `department_initiative`.
+Il costo minimo è $200k; budget aggiuntivo aumenta probabilità e intensità fino a un cap.
+Lo stesso reparto può eseguire una sola initiative per turno. Un fallimento consuma il 35%
+del budget e applica il backfire specifico, oltre a essere registrato nel news feed.
+
+| Reparto | Ordine | Upside | Rischio / conseguenza negativa |
+|---------|--------|--------|--------------------------------|
+| Product R&D | Moonshot Product Sprint | innovazione, qualità e market fit | crunch, morale, rischio e debito tecnico |
+| AI & Data | Compute Surge | Compute Points, Compute Grid, AI capability | burn di compute, pressione e perdita AI |
+| Cybersecurity | Zero-Day Readiness Drill | cyber reserve, security posture, trust | esposizione pubblica, perdita difese e morale |
+| Sales & Marketing | Category Blitz | brand, adozione, market fit e market share | brand fatigue e perdita clienti |
+| Consulting Services | Transformation War Room | capacity, fee income, trust e product fit | over-utilization e danno reputazionale |
+| Acquisitions | Deal Pipeline Offensive | credibilità, innovazione e portfolio fit | integration anxiety, scandal e debito |
+| Legal & Compliance | Patent Fortress | Legal Points, trust e qualità percepita | compliance exposure e scandalo |
+| People & Culture | Culture Reset | morale, employer brand e recupero dei team | training slowdown o iniziativa percepita come vuota |
+| Finance & Investor | Investor Roadshow | liquidità e investor trust | maggiore leva, pressione interna e rischio credito |
+| Corporate Strategy | Portfolio Reorganization | brand, innovazione e fit di portafoglio | confusione strategica e morale in calo |
+| DEV Engineering | Platform Rewrite | scalabilità, qualità, compute e debito tecnico ridotto | outage, compute perso e nuovo debito tecnico |
+
+La chance usa:
+
+```
+0.45 + level + efficiency + departmentMorale - departmentRisk
+     + companyMorale + budgetConfidence
+```
+
+Il resolver applica clamp a tutte le metriche e usa il prodotto collegato al reparto
+quando l'ordine è tecnico; Sales, Consulting, Legal e Strategy operano sul portfolio.
 
 ## M&A
 

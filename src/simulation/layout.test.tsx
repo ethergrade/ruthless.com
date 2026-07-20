@@ -124,6 +124,31 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(composer).toContain('immediate reserve');
   });
 
+  it('previews the selected department initiative with its upside and backfire', () => {
+    const engine = new TurnEngine(2028);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const composer = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'department_initiative',
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(composer).toContain('Moonshot Product Sprint');
+    expect(composer).toContain('Innovation, product quality and market fit rise.');
+    expect(composer).toContain('Crunch lowers morale');
+    expect(composer).toContain('one initiative per turn');
+
+    const departmentsPage = renderToString(createElement(QuickActionPage, {
+      page: 'departments', state, company, onClose: () => {}, onPlan: () => {},
+    }));
+    expect(departmentsPage).toContain('Run department initiative');
+    expect(departmentsPage).toContain('morale');
+    expect(departmentsPage).toContain('risk');
+  });
+
   it('shows all three friendly player buildings in Build Department', () => {
     const engine = new TurnEngine(2025);
     const state = engine.getState();
@@ -140,6 +165,8 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(html).toContain(`${company.name} Building 2`);
     expect(html).toContain(`${company.name} Building 3`);
     expect(html).not.toContain('— select tile —');
+    expect(html).toContain('Unlocks:');
+    expect(html).toContain('Moonshot Product Sprint');
   });
 
   it('shows a trend-bound product category and sector and filters incompatible ideas', () => {

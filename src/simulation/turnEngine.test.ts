@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TurnEngine } from './turn/turnEngine';
-import type { NewsItem, TurnAction } from '../types';
+import type { ActionOutcome, NewsItem, TurnAction } from '../types';
+import { DEPARTMENT_INITIATIVES } from '../data/departmentInitiatives';
 
 function planPlayerAction(engine: TurnEngine, type: TurnAction['type'], budget: number): void {
   const state = engine.getState();
@@ -938,6 +939,114 @@ describe('Industrial Espionage targeting', () => {
     expect(product.legalClaimResolved).toBe(true);
     expect(company.cash).toBe(cashBefore);
     expect(newsItems.some(item => item.headline === 'Re-Patent Shield Holds')).toBe(true);
+  });
+});
+
+describe('Department initiatives', () => {
+  const resolveAction = (engine: TurnEngine, action: TurnAction): ActionOutcome =>
+    (engine as unknown as { resolveAction: (candidate: TurnAction) => ActionOutcome }).resolveAction(action);
+
+  it('defines a distinct upside and backfire for all eleven department types', () => {
+    const profiles = Object.values(DEPARTMENT_INITIATIVES);
+    expect(profiles).toHaveLength(11);
+    expect(new Set(profiles.map(profile => profile.label)).size).toBe(11);
+    profiles.forEach(profile => {
+      expect(profile.upside.length).toBeGreaterThan(10);
+      expect(profile.downside.length).toBeGreaterThan(10);
+      expect(Object.keys(profile.success).length).toBeGreaterThan(0);
+      expect(Object.keys(profile.failure).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('uses department and company morale, efficiency and risk in the live success estimate', () => {
+    const engine = new TurnEngine(920);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const department = company.departments[0];
+    const action: TurnAction = {
+      id: 'initiative_estimate', companyId: company.id, type: 'department_initiative',
+      targetDepartmentId: department.id, budget: 200_000, priority: 1, status: 'planned',
+    };
+    department.efficiency = 1;
+    department.morale = 1;
+    department.risk = 0;
+    company.employeeMorale = 100;
+    const healthyChance = engine.estimateSuccess(action);
+    department.efficiency = 0.3;
+    department.morale = 0.2;
+    department.risk = 0.9;
+    company.employeeMorale = 10;
+
+    expect(healthyChance).toBeGreaterThan(engine.estimateSuccess(action));
+  });
+
+  it('turns a successful AI initiative into compute and grid capacity with morale pressure and cooldown', () => {
+    const engine = new TurnEngine(921);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const department = company.departments[0];
+    department.type = 'ai_data';
+    const computeBefore = company.computePoints;
+    const infrastructureBefore = company.computeInfrastructure;
+    const moraleBefore = company.employeeMorale;
+    engine.getRNG().nextBoolean = () => true;
+    const action: TurnAction = {
+      id: 'ai_initiative', companyId: company.id, type: 'department_initiative',
+      targetDepartmentId: department.id, budget: 200_000, priority: 1, status: 'planned',
+    };
+
+    const outcome = resolveAction(engine, action);
+
+    expect(outcome.success).toBe(true);
+    expect(company.computePoints).toBeGreaterThan(computeBefore);
+    expect(company.computeInfrastructure).toBeGreaterThan(infrastructureBefore);
+    expect(company.employeeMorale).toBeLessThan(moraleBefore);
+    expect(department.lastInitiativeTurn).toBe(state.turn);
+    expect(resolveAction(engine, { ...action, id: 'ai_initiative_again' }).message).toContain('already run');
+  });
+
+  it('applies finance backfire consequences instead of a generic no-op failure', () => {
+    const engine = new TurnEngine(922);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const department = company.departments[0];
+    department.type = 'finance_investor';
+    const debtBefore = company.debt;
+    const moraleBefore = company.employeeMorale;
+    const riskBefore = department.risk;
+    engine.getRNG().nextBoolean = () => false;
+    const outcome = resolveAction(engine, {
+      id: 'finance_backfire', companyId: company.id, type: 'department_initiative',
+      targetDepartmentId: department.id, budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.risksTriggered).toContain('department_backfire:finance_investor');
+    expect(company.debt).toBeGreaterThan(debtBefore);
+    expect(company.employeeMorale).toBeLessThan(moraleBefore);
+    expect(department.risk).toBeGreaterThan(riskBefore);
+  });
+
+  it('converts a successful Sales initiative into adoption and persistent market influence', () => {
+    const engine = new TurnEngine(923);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const department = company.departments.find(candidate => candidate.type === 'sales_marketing')!;
+    const recalculate = (engine as unknown as { recalculateCompanyMetrics: (candidate: typeof company) => void }).recalculateCompanyMetrics.bind(engine);
+    recalculate(company);
+    const influenceBefore = company.marketInfluence;
+    const adoptionBefore = company.products[0].adopters;
+    engine.getRNG().nextBoolean = () => true;
+
+    const outcome = resolveAction(engine, {
+      id: 'sales_blitz', companyId: company.id, type: 'department_initiative',
+      targetDepartmentId: department.id, budget: 200_000, priority: 1, status: 'planned',
+    });
+    recalculate(company);
+
+    expect(outcome.success).toBe(true);
+    expect(company.products[0].adopters).toBeGreaterThan(adoptionBefore);
+    expect(company.marketInfluence).toBeGreaterThan(influenceBefore);
   });
 });
 

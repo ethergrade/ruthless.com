@@ -46,6 +46,13 @@ Ogni dipartimento ha `level`, `capacity`, `efficiency`, `morale`, `risk`, `recur
 `buildingId`. I dipartimenti abilitano azioni (`ACTION_DEFS.requiresDept`) e contribuiscono
 al successo delle azioni rilevanti (`isDepartmentRelevant`).
 
+`department_initiative` rende operativi tutti gli 11 tipi: il giocatore seleziona un
+reparto reale, vede prima upside e backfire e impegna budget. Morale alto ed efficienza
+alzano la chance; rischio e morale aziendale basso la riducono. Gli esiti muovono in modo
+persistente morale aziendale/reparto, brand (quindi market influence/share), adozione e
+market fit, compute/grid, liquidità/debito, difese e capacità specialistiche. Il reparto
+entra in cooldown fino al turno successivo.
+
 ## Edifici (`Building`)
 
 - Ogni company ha edifici su tile. L'**HQ** è `isHQ: true` e conta 1 slot in più.

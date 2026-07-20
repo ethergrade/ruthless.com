@@ -230,6 +230,7 @@ export type ActionType =
   | 'expand_market'
   | 'marketing_campaign'
   | 'hire_executive'
+  | 'department_initiative'  // run the selected department's strategic high-risk order
   | 'security_hardening'
   | 'generate_compute'       // expand the compute grid and create an immediate reserve
   | 'allocate_compute'       // assign compute capacity to a launched product
@@ -667,6 +668,8 @@ export interface Department {
   productId?: ProductId;
   /** A breached R&D/data department operates at reduced output until this turn. */
   disruptedUntilTurn?: number;
+  /** Prevents the same team from running multiple high-pressure initiatives in one turn. */
+  lastInitiativeTurn?: number;
   /** T: DEV vertical tech skills — name→skill 0..100 (CI/CD + futuristic techs). */
   techStack?: Record<string, number>;
 }

@@ -158,6 +158,7 @@ export const ACTION_PILLAR: Partial<Record<string, CEOSkill>> = {
   cyber_attack: 'network', industrial_espionage: 'network', build_building: 'strategy',
   exploit_stolen_asset: 'analytics', repatent_stolen_asset: 'analytics',
   build_department: 'strategy', defend_tile: 'strategy', mass_layoff: 'strategy',
+  department_initiative: 'operations',
   launch_product: 'analytics', pivot_product: 'analytics', release_source: 'analytics',
   generate_compute: 'analytics', allocate_compute: 'analytics', allocate_cybersecurity: 'resilience',
   build_ai: 'analytics', ai_automation: 'analytics',

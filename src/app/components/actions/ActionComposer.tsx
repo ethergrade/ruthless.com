@@ -9,6 +9,7 @@ import {
   spinProductName,
 } from '../../../data/generators';
 import { CEO_PILLARS, PILLAR_LABELS } from '../../../data/archetypes';
+import { getDepartmentInitiative } from '../../../data/departmentInitiatives';
 import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots, getOwnedBuildingsWithCapacity } from '../../../simulation/utils/buildings';
 import { calculateComputeExpansion, calculateComputeGeneration } from '../../../simulation/utils/compute';
 
@@ -36,7 +37,7 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'stolenAsset' | 'makeHQ' | 'hqBuilding' | 'targetExecutive' | 'resourcePoints')[];
+  needs?: ('targetCompany' | 'targetDept' | 'ownedDepartment' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'stolenAsset' | 'makeHQ' | 'hqBuilding' | 'targetExecutive' | 'resourcePoints')[];
   /** the player must own a department of this type to plan the action */
   requiresDept?: DepartmentType;
 }
@@ -48,6 +49,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'hire_coo', label: 'Hire COO (HQ)', group: 'Corporate', baseCost: 400000, needs: ['hqBuilding'] },
   { type: 'mass_layoff', label: 'Mass Layoff', group: 'Corporate', baseCost: 0, needs: ['targetTile'], requiresDept: 'people_culture' },
   { type: 'hire_executive', label: 'Hire Executive', group: 'Corporate', baseCost: 400000 },
+  { type: 'department_initiative', label: 'Department Initiative', group: 'Corporate', baseCost: 200000, needs: ['ownedDepartment'] },
   { type: 'raise_capital', label: 'Raise Capital', group: 'Corporate', baseCost: 0, requiresDept: 'finance_investor' },
   { type: 'reduce_costs', label: 'Reduce Costs', group: 'Corporate', baseCost: 0, requiresDept: 'finance_investor' },
   { type: 'launch_product', label: 'Launch Product', group: 'Product & R&D', baseCost: 300000, needs: ['productEditor', 'targetIdea'], requiresDept: 'product_rd' },
@@ -123,7 +125,10 @@ export const ActionComposer: React.FC<Props> = ({
 
   const [targetCompanyId, setTargetCompanyId] = useState<CompanyId | ''>('');
   const [targetDept, setTargetDept] = useState<RuthlessDept>('rd');
-  const [targetDepartmentId, setTargetDepartmentId] = useState<string>('');
+  const [targetDepartmentId, setTargetDepartmentId] = useState<string>(
+    initialDraft?.targetDepartmentId
+      ?? (presetType === 'department_initiative' ? playerCompany.departments[0]?.id ?? '' : '')
+  );
   const [targetTileId, setTargetTileId] = useState<TileId | ''>('');
   const [tone, setTone] = useState<VoiceTone>(playerCompany.voiceTone ?? 'aggressive');
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
@@ -200,6 +205,10 @@ export const ActionComposer: React.FC<Props> = ({
     ? playerCompany.cybersecurityPoints
     : playerCompany.computePoints;
   const selectedProduct = targetProductId ? playerCompany.products.find(product => product.id === targetProductId) : undefined;
+  const selectedDepartment = targetDepartmentId
+    ? playerCompany.departments.find(department => department.id === targetDepartmentId)
+    : undefined;
+  const selectedInitiative = selectedDepartment ? getDepartmentInitiative(selectedDepartment.type) : undefined;
   const selectedIdea = ideaId ? playerCompany.ideas.find(idea => idea.id === ideaId) : undefined;
   const marketBinding = initialDraft?.type === 'launch_product' && (initialDraft.trendId || initialDraft.weakSignalId)
     ? initialDraft
@@ -236,6 +245,7 @@ export const ActionComposer: React.FC<Props> = ({
   const requiredTargetsValid =
     (!needs.includes('targetCompany') || !!targetCompanyId) && chosenTileValid &&
     (!needs.includes('targetDept') || (type === 'industrial_espionage' ? !!targetDepartmentId : !!targetDept)) &&
+    (!needs.includes('ownedDepartment') || !!selectedDepartment) &&
     (!needs.includes('targetProduct') || !!targetProductId) &&
     (!needs.includes('targetIdea') || !!ideaId) &&
     (!needs.includes('stolenAsset') || !!stolenAssetId) &&
@@ -256,7 +266,7 @@ export const ActionComposer: React.FC<Props> = ({
     resourcePoints: needs.includes('resourcePoints') ? resourcePoints : undefined,
     targetCompanyId: targetCompanyId || undefined,
     targetDept: needs.includes('targetDept') ? targetDept : undefined,
-    targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
+    targetDepartmentId: (type === 'industrial_espionage' || type === 'department_initiative') ? targetDepartmentId || undefined : undefined,
     targetTileId: targetTileId || undefined,
     tone: needs.includes('tone') ? tone : undefined,
     authenticity: needs.includes('auth') ? auth : undefined,
@@ -286,7 +296,7 @@ export const ActionComposer: React.FC<Props> = ({
       resourcePoints: needs.includes('resourcePoints') ? resourcePoints : undefined,
       targetCompanyId: targetCompanyId || undefined,
       targetDept: needs.includes('targetDept') ? targetDept : undefined,
-      targetDepartmentId: type === 'industrial_espionage' ? targetDepartmentId || undefined : undefined,
+      targetDepartmentId: (type === 'industrial_espionage' || type === 'department_initiative') ? targetDepartmentId || undefined : undefined,
       targetTileId: targetTileId || undefined,
       tone: needs.includes('tone') ? tone : undefined,
       authenticity: needs.includes('auth') ? auth : undefined,
@@ -316,6 +326,7 @@ export const ActionComposer: React.FC<Props> = ({
     setGroup(d.group);
     setBudget(Math.min(d.baseCost, maxBudget) || 0);
     setStolenAssetId('');
+    if (t === 'department_initiative') setTargetDepartmentId(playerCompany.departments[0]?.id ?? '');
     const pool = t === 'allocate_cybersecurity' ? playerCompany.cybersecurityPoints : playerCompany.computePoints;
     setResourcePoints(Math.max(1, Math.min(10, pool)));
   };
@@ -365,6 +376,28 @@ export const ActionComposer: React.FC<Props> = ({
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {needs.includes('ownedDepartment') && (
+          <div className="ac-field">
+            <label>Operating Department</label>
+            <select value={targetDepartmentId} onChange={event => setTargetDepartmentId(event.target.value)}>
+              <option value="">— select one of your departments —</option>
+              {playerCompany.departments.map(department => {
+                const initiative = getDepartmentInitiative(department.type);
+                return <option key={department.id} value={department.id}>
+                  {initiative.label} · {department.type.replaceAll('_', ' ')} · LVL {department.level} · morale {(department.morale * 100).toFixed(0)}% · risk {(department.risk * 100).toFixed(0)}%
+                </option>;
+              })}
+            </select>
+            {selectedInitiative && <div className="ac-initiative-preview">
+              <strong>{selectedInitiative.label}</strong>
+              <span>{selectedInitiative.purpose}</span>
+              <span className="positive">↑ {selectedInitiative.upside}</span>
+              <span className="negative">↓ {selectedInitiative.downside}</span>
+              <small>Outcome uses this department's level, efficiency, morale and risk. Extra budget increases success odds and effect scale; the same team can run only one initiative per turn.</small>
+            </div>}
           </div>
         )}
 
@@ -577,6 +610,15 @@ export const ActionComposer: React.FC<Props> = ({
             <select value={deptType} onChange={e => setDeptType(e.target.value as DepartmentType)}>
               {DEPARTMENT_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
+            {(() => {
+              const initiative = getDepartmentInitiative(deptType);
+              return <div className="ac-initiative-preview">
+                <strong>Unlocks: {initiative.label}</strong>
+                <span>{initiative.purpose}</span>
+                <span className="positive">↑ {initiative.upside}</span>
+                <span className="negative">↓ {initiative.downside}</span>
+              </div>;
+            })()}
           </div>
         )}
 

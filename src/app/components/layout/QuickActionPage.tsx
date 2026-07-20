@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ActionType, Company, GameState } from '../../../types';
 import { COMPUTE_INFRASTRUCTURE_UPKEEP, calculateComputeGeneration } from '../../../simulation/utils/compute';
+import { getDepartmentInitiative } from '../../../data/departmentInitiatives';
 
 type QuickPage = 'market' | 'departments' | 'products' | 'executives' | 'security' | 'ai' | 'finance' | 'news';
 
@@ -14,7 +15,7 @@ interface Props {
 
 const PAGE_META: Record<QuickPage, { eyebrow: string; title: string; description: string; actions: { type: ActionType; label: string }[] }> = {
   market: { eyebrow: 'LIVE MARKET INTELLIGENCE', title: 'Market Intel', description: 'Demand, competition and exploitable pressure across the current turn.', actions: [{ type: 'expand_market', label: 'Expand market' }, { type: 'marketing_campaign', label: 'Launch campaign' }] },
-  departments: { eyebrow: 'CORPORATE NETWORK', title: 'Departments', description: 'Operating capacity, buildings and department deployment.', actions: [{ type: 'build_department', label: 'Build department' }, { type: 'build_building', label: 'Raise building' }] },
+  departments: { eyebrow: 'CORPORATE NETWORK', title: 'Departments', description: 'Run specialized initiatives whose upside and risk depend on team health.', actions: [{ type: 'department_initiative', label: 'Run department initiative' }, { type: 'build_department', label: 'Build department' }, { type: 'build_building', label: 'Raise building' }] },
   products: { eyebrow: 'PRODUCT WAR ROOM', title: 'Products', description: 'Ideas, launches and live product performance.', actions: [{ type: 'create_ideas', label: 'Create R&D idea' }, { type: 'launch_product', label: 'Launch product' }, { type: 'improve_product', label: 'Improve product' }] },
   executives: { eyebrow: 'EXECUTIVE OFFICE', title: 'Executives', description: 'Leadership capacity, energy and corporate command.', actions: [{ type: 'hire_executive', label: 'Hire executive' }, { type: 'train_ceo', label: 'Train CEO' }, { type: 'ceo_praise', label: 'Praise executive' }] },
   security: { eyebrow: 'SECURITY OPERATIONS', title: 'Security', description: 'Spendable resilience protects buildings, data and R&D assets.', actions: [{ type: 'allocate_cybersecurity', label: 'Allocate cyber points' }, { type: 'security_hardening', label: 'Harden security' }, { type: 'security_offline', label: 'Offline defense' }, { type: 'security_online', label: 'Generate cyber capacity' }] },
@@ -79,7 +80,7 @@ export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose
       ) : page === 'security' ? (
         <div className="quick-page-list">{company.buildings.map(building => <article key={building.id}><strong>{building.name || (building.isHQ ? 'Headquarters' : 'Building')}</strong><span>cyber {building.cybersecurityPoints} · firewall {building.firewall.toFixed(0)} · {building.departmentIds.length} departments</span></article>)}</div>
       ) : page === 'departments' ? (
-        <div className="quick-page-list">{company.departments.map(department => <article key={department.id}><strong>{department.type.replace('_', ' ')}</strong><span>LVL {department.level} · efficiency {(department.efficiency * 100).toFixed(0)}%</span></article>)}</div>
+        <div className="quick-page-list">{company.departments.map(department => <article key={department.id}><strong>{department.type.replaceAll('_', ' ')}</strong><span>{getDepartmentInitiative(department.type).label} · LVL {department.level} · efficiency {(department.efficiency * 100).toFixed(0)}% · morale {(department.morale * 100).toFixed(0)}% · risk {(department.risk * 100).toFixed(0)}%</span></article>)}</div>
       ) : (
         <div className="quick-page-list"><article><strong>{meta.title} operational console</strong><span>Metrics are live for turn {state.turn}. Choose an operation below to create a validated executive order.</span></article></div>
       )}

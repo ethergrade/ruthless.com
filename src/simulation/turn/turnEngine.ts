@@ -42,6 +42,11 @@ import { generateId } from '../utils/ids';
 import { createMarketMap, buildTileIndex, createTile } from '../factories/marketFactory';
 import { createCompany } from '../factories/companyFactory';
 import { generateCompanyName } from '../../data/generators';
+import {
+  DEPARTMENT_INITIATIVE_BASE_COST,
+  getDepartmentInitiative,
+  type DepartmentInitiativeEffects,
+} from '../../data/departmentInitiatives';
 import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots } from '../utils/buildings';
 import {
   COMPUTE_INFRASTRUCTURE_CAP,
@@ -783,6 +788,14 @@ export class TurnEngine {
         action.targetCompanyId = target.id;
         action.targetDepartmentId = department.id;
       }
+      if (actionType === 'department_initiative') {
+        const availableDepartments = company.departments.filter(department =>
+          department.lastInitiativeTurn !== this.state.turn
+          && (!department.disruptedUntilTurn || department.disruptedUntilTurn < this.state.turn));
+        const department = this.rng.shuffle(availableDepartments).pop();
+        if (!department) continue;
+        action.targetDepartmentId = department.id;
+      }
       if (actionType === 'cyber_attack') {
         if (company.computePoints < 1 || !company.departments.some(department => department.type === 'cybersecurity')) continue;
         const targets = [...this.state.companies.values()].filter(target => target.id !== company.id && target.buildings.length > 0);
@@ -828,7 +841,7 @@ export class TurnEngine {
       hypergrowth_platform: {
         build_department: 20, launch_product: 25, improve_product: 15,
         expand_market: 20, marketing_campaign: 10, hire_executive: 5,
-        security_hardening: 2, generate_compute: 5, allocate_compute: 8, allocate_cybersecurity: 3, ai_automation: 3, launch_consulting_practice: 1,
+        department_initiative: 7, security_hardening: 2, generate_compute: 5, allocate_compute: 8, allocate_cybersecurity: 3, ai_automation: 3, launch_consulting_practice: 1,
         scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1,
         build_building: 8, industrial_espionage: 4, cyber_attack: 3, security_offline: 2,
         security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -836,7 +849,7 @@ export class TurnEngine {
       security_fortress: {
         build_department: 15, launch_product: 10, improve_product: 15,
         expand_market: 5, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 25, generate_compute: 3, allocate_compute: 3, allocate_cybersecurity: 14, ai_automation: 5, launch_consulting_practice: 5,
+        department_initiative: 6, security_hardening: 25, generate_compute: 3, allocate_compute: 3, allocate_cybersecurity: 14, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5,
         build_building: 5, industrial_espionage: 3, cyber_attack: 4, security_offline: 8,
         security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0, auction_bid: 0,
@@ -844,7 +857,7 @@ export class TurnEngine {
       acquisition_machine: {
         build_department: 10, launch_product: 10, improve_product: 10,
         expand_market: 10, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 5, generate_compute: 3, allocate_compute: 4, allocate_cybersecurity: 5, ai_automation: 5, launch_consulting_practice: 5,
+        department_initiative: 8, security_hardening: 5, generate_compute: 3, allocate_compute: 4, allocate_cybersecurity: 5, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5,
         build_building: 6, industrial_espionage: 4, cyber_attack: 3, security_offline: 3,
         security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0, auction_bid: 0,
@@ -852,7 +865,7 @@ export class TurnEngine {
       lean_specialist: {
         build_department: 10, launch_product: 15, improve_product: 20,
         expand_market: 10, marketing_campaign: 10, hire_executive: 10,
-        security_hardening: 10, generate_compute: 6, allocate_compute: 10, allocate_cybersecurity: 8, ai_automation: 10, launch_consulting_practice: 15,
+        department_initiative: 8, security_hardening: 10, generate_compute: 6, allocate_compute: 10, allocate_cybersecurity: 8, ai_automation: 10, launch_consulting_practice: 15,
         scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10,
         build_building: 4, industrial_espionage: 5, cyber_attack: 4, security_offline: 4,
         security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -879,6 +892,7 @@ export class TurnEngine {
       expand_market: 200000,
       marketing_campaign: 150000,
       hire_executive: 400000,
+      department_initiative: DEPARTMENT_INITIATIVE_BASE_COST,
       security_hardening: 200000,
       generate_compute: 200000,
       allocate_compute: 0,
@@ -924,7 +938,8 @@ export class TurnEngine {
 
     const base = baseBudgets[actionType] || 100000;
     const variance = this.rng.nextFloat(0.5, 1.5);
-    return Math.round(base * variance * (company.cash / 1000000));
+    const calculated = Math.round(base * variance * (company.cash / 1000000));
+    return actionType === 'department_initiative' ? Math.max(base, calculated) : calculated;
   }
 
   private resolveAction(action: TurnAction): { success: boolean; message: string; effects: Record<string, number>; risksTriggered: string[] } {
@@ -936,6 +951,23 @@ export class TurnEngine {
       const usedCapacity = this.ideasCreatedThisTurn.get(company.id) ?? 0;
       if (usedCapacity >= rdCapacity) {
         return { success: false, message: 'R&D capacity exhausted — each R&D department creates at most one idea per turn', effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'department_initiative') {
+      const department = action.targetDepartmentId
+        ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
+        : undefined;
+      if (!department) {
+        return { success: false, message: 'Select one of your operating departments', effects: {}, risksTriggered: [] };
+      }
+      if (action.budget < DEPARTMENT_INITIATIVE_BASE_COST) {
+        return { success: false, message: `Department initiatives require at least $${DEPARTMENT_INITIATIVE_BASE_COST.toLocaleString()}`, effects: {}, risksTriggered: [] };
+      }
+      if (department.lastInitiativeTurn === this.state.turn) {
+        return { success: false, message: 'This department has already run an initiative this turn', effects: {}, risksTriggered: [] };
+      }
+      if (department.disruptedUntilTurn && department.disruptedUntilTurn >= this.state.turn) {
+        return { success: false, message: 'This department is disrupted and cannot run an initiative', effects: {}, risksTriggered: [] };
       }
     }
     if (action.type === 'launch_product') {
@@ -1114,14 +1146,34 @@ export class TurnEngine {
     if (success) {
       this.applyActionEffectsToCompany(action, company, effects);
     } else {
-      effects.cash = -action.budget * 0.1;
-      company.cash -= Math.round(action.budget * 0.1);
-      risks.push('execution_failure');
+      if (action.type === 'department_initiative') {
+        const department = action.targetDepartmentId
+          ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
+          : undefined;
+        const failureCost = Math.round(action.budget * 0.35);
+        company.cash -= failureCost;
+        effects.cash = -failureCost;
+        if (department) {
+          this.resolveDepartmentInitiative(company, department, action.budget, false, effects);
+          risks.push(`department_backfire:${department.type}`);
+        }
+      } else {
+        effects.cash = -action.budget * 0.1;
+        company.cash -= Math.round(action.budget * 0.1);
+        risks.push('execution_failure');
+      }
     }
+
+    const initiativeDepartment = action.type === 'department_initiative' && action.targetDepartmentId
+      ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
+      : undefined;
+    const initiative = initiativeDepartment ? getDepartmentInitiative(initiativeDepartment.type) : undefined;
 
     return {
       success,
-      message: success && action.type === 'generate_compute'
+      message: initiative
+        ? `${initiative.label} ${success ? 'delivered its upside' : 'backfired'} — ${success ? initiative.upside : initiative.downside}`
+        : success && action.type === 'generate_compute'
         ? `Compute Grid expanded by ${effects.computeInfrastructure ?? 0}; ${effects.computePoints ?? 0} Compute Points commissioned`
         : success ? 'Action completed successfully' : 'Action failed to achieve objectives',
       effects,
@@ -1142,6 +1194,7 @@ export class TurnEngine {
       expand_market: 200000,
       marketing_campaign: 150000,
       hire_executive: 400000,
+      department_initiative: DEPARTMENT_INITIATIVE_BASE_COST,
       security_hardening: 200000,
       generate_compute: 200000,
       allocate_compute: 0,
@@ -1195,6 +1248,7 @@ export class TurnEngine {
       expand_market: ['sales_marketing', 'corporate_strategy'],
       marketing_campaign: ['sales_marketing'],
       hire_executive: ['people_culture', 'corporate_strategy'],
+      department_initiative: ['product_rd', 'ai_data', 'cybersecurity', 'sales_marketing', 'consulting_services', 'acquisitions', 'legal_compliance', 'people_culture', 'finance_investor', 'corporate_strategy', 'dev_engineering'],
       security_hardening: ['cybersecurity', 'ai_data'],
       generate_compute: ['ai_data', 'dev_engineering'],
       allocate_compute: ['ai_data', 'dev_engineering'],
@@ -1274,6 +1328,13 @@ export class TurnEngine {
       case 'hire_executive':
         this.hireExecutive(company, action.budget);
         break;
+      case 'department_initiative': {
+        const department = action.targetDepartmentId
+          ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
+          : undefined;
+        if (department) this.resolveDepartmentInitiative(company, department, action.budget, true, _effects);
+        break;
+      }
       case 'security_hardening':
         this.hardenSecurity(company, action.budget, action.targetProductId);
         break;
@@ -1451,6 +1512,111 @@ export class TurnEngine {
       const b = company.buildings.find(x => x.id === buildingId);
       b?.departmentIds.push(dept.id);
     }
+  }
+
+  private resolveDepartmentInitiative(
+    company: Company,
+    department: Department,
+    budget: number,
+    success: boolean,
+    outcomeEffects: Record<string, number>,
+  ): void {
+    const profile = getDepartmentInitiative(department.type);
+    const budgetScale = Math.min(3, Math.max(1, budget / DEPARTMENT_INITIATIVE_BASE_COST));
+    const executionScale = success
+      ? Math.min(1.25, 0.75 + department.level * 0.04 + department.efficiency * 0.08 + department.morale * 0.05)
+      : 1 + department.risk * 0.5;
+    this.applyDepartmentInitiativeEffects(
+      company,
+      department,
+      success ? profile.success : profile.failure,
+      budgetScale * executionScale,
+      profile.productScope,
+      outcomeEffects,
+    );
+    department.lastInitiativeTurn = this.state.turn;
+  }
+
+  private applyDepartmentInitiativeEffects(
+    company: Company,
+    department: Department,
+    initiativeEffects: DepartmentInitiativeEffects,
+    scale: number,
+    productScope: 'linked' | 'portfolio',
+    outcomeEffects: Record<string, number>,
+  ): void {
+    const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+    const scaled = (value?: number): number => (value ?? 0) * scale;
+    const record = (key: string, amount: number): void => {
+      if (amount) outcomeEffects[key] = (outcomeEffects[key] ?? 0) + amount;
+    };
+
+    const employeeMorale = scaled(initiativeEffects.employeeMorale);
+    const employerBrand = scaled(initiativeEffects.employerBrand);
+    const brandTrust = scaled(initiativeEffects.brandTrust);
+    const innovation = scaled(initiativeEffects.innovation);
+    const aiCapability = scaled(initiativeEffects.aiCapability);
+    const consultingCapacity = scaled(initiativeEffects.consultingCapacity);
+    const securityPosture = scaled(initiativeEffects.securityPosture);
+    const computePoints = Math.round(scaled(initiativeEffects.computePoints));
+    const computeInfrastructure = Math.round(scaled(initiativeEffects.computeInfrastructure));
+    const cybersecurityPoints = Math.round(scaled(initiativeEffects.cybersecurityPoints));
+    const legalPoints = Math.round(scaled(initiativeEffects.legalPoints));
+    const debt = Math.round(scaled(initiativeEffects.debt));
+    const cash = Math.round(scaled(initiativeEffects.cash));
+    const scandal = scaled(initiativeEffects.scandal);
+
+    company.employeeMorale = clamp(company.employeeMorale + employeeMorale, 0, 100);
+    company.employerBrand = clamp(company.employerBrand + employerBrand, 0, 100);
+    company.brandTrust = clamp(company.brandTrust + brandTrust, 0, 100);
+    company.innovation = clamp(company.innovation + innovation, 0, 100);
+    company.aiCapability = clamp(company.aiCapability + aiCapability, 0, 100);
+    company.consultingCapacity = clamp(company.consultingCapacity + consultingCapacity, 0, 100);
+    company.securityPosture = clamp(company.securityPosture + securityPosture, 0, 100);
+    company.computePoints = clamp(company.computePoints + computePoints, 0, COMPUTE_POOL_CAP);
+    company.computerPoints = company.computePoints;
+    company.computeInfrastructure = clamp(company.computeInfrastructure + computeInfrastructure, 0, COMPUTE_INFRASTRUCTURE_CAP);
+    company.cybersecurityPoints = clamp(company.cybersecurityPoints + cybersecurityPoints, 0, 500);
+    company.legalPoints = Math.max(0, company.legalPoints + legalPoints);
+    company.debt = Math.max(0, company.debt + debt);
+    company.cash += cash;
+    company.scandal = clamp(company.scandal + scandal, 0, 100);
+
+    const departmentMorale = scaled(initiativeEffects.departmentMorale);
+    const allDepartmentMorale = scaled(initiativeEffects.allDepartmentMorale);
+    const departmentEfficiency = scaled(initiativeEffects.departmentEfficiency);
+    const departmentRisk = scaled(initiativeEffects.departmentRisk);
+    company.departments.forEach(candidate => {
+      candidate.morale = clamp(candidate.morale + allDepartmentMorale, 0.1, 1);
+    });
+    department.morale = clamp(department.morale + departmentMorale, 0.1, 1);
+    department.efficiency = clamp(department.efficiency + departmentEfficiency, 0.2, 1.25);
+    department.risk = clamp(department.risk + departmentRisk, 0, 1);
+
+    const linkedProduct = department.productId
+      ? company.products.find(product => product.id === department.productId)
+      : undefined;
+    const products = productScope === 'portfolio'
+      ? company.products
+      : linkedProduct ? [linkedProduct] : company.products.slice(0, 1);
+    products.forEach(product => {
+      product.quality = clamp(product.quality + scaled(initiativeEffects.productQuality), 0, 100);
+      product.marketFit = clamp(product.marketFit + scaled(initiativeEffects.productMarketFit), 0, 100);
+      product.adopters = clamp(product.adopters + scaled(initiativeEffects.productAdopters), 0, 1);
+      product.scalability = clamp(product.scalability + scaled(initiativeEffects.productScalability), 0, 100);
+      product.technicalDebt = clamp(product.technicalDebt + scaled(initiativeEffects.productTechnicalDebt), 0, 100);
+    });
+
+    record('employeeMorale', employeeMorale);
+    record('brandTrust', brandTrust);
+    record('computePoints', computePoints);
+    record('computeInfrastructure', computeInfrastructure);
+    record('cybersecurityPoints', cybersecurityPoints);
+    record('legalPoints', legalPoints);
+    record('cash', cash);
+    record('debt', debt);
+    record('scandal', scandal);
+    record('productMarketFit', scaled(initiativeEffects.productMarketFit) * products.length);
   }
 
   private findCommittedTrend(action: TurnAction): MarketTrend | undefined {
@@ -2907,6 +3073,21 @@ export class TurnEngine {
     const company = this.state.companies.get(action.companyId);
     if (!company) return 0;
     if (action.type === 'generate_compute' || action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity') return 1;
+    if (action.type === 'department_initiative') {
+      const department = action.targetDepartmentId
+        ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
+        : undefined;
+      if (!department || action.budget < DEPARTMENT_INITIATIVE_BASE_COST) return 0;
+      const budgetConfidence = Math.min(0.15, Math.max(0, action.budget / DEPARTMENT_INITIATIVE_BASE_COST - 1) * 0.075);
+      const chance = 0.45
+        + (department.level - 1) * 0.05
+        + (department.efficiency - 0.5) * 0.25
+        + (department.morale - 0.5) * 0.2
+        - department.risk * 0.25
+        + (company.employeeMorale - 50) / 500
+        + budgetConfidence;
+      return Math.max(0.05, Math.min(0.97, Math.round(chance * 100) / 100));
+    }
     let chance = 0.7;
 
     const relevantDept = company.departments.find(d => this.isDepartmentRelevant(d.type, action.type));
@@ -2971,7 +3152,7 @@ export class TurnEngine {
     if (acts.length === 0) return { combat: 0, defense: 0, growth: 0 };
     const combat = acts.filter(a => ['industrial_espionage', 'cyber_attack', 'legal_action', 'acquire_company', 'public_tender_offer'].includes(a.type)).length / acts.length;
     const defense = acts.filter(a => ['security_hardening', 'security_offline', 'security_online'].includes(a.type)).length / acts.length;
-    const growth = acts.filter(a => ['expand_market', 'launch_product', 'improve_product', 'ai_automation', 'build_department'].includes(a.type)).length / acts.length;
+    const growth = acts.filter(a => ['expand_market', 'launch_product', 'improve_product', 'ai_automation', 'build_department', 'department_initiative'].includes(a.type)).length / acts.length;
     return { combat, defense, growth };
   }
 

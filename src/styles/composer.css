@@ -77,6 +77,12 @@
   color: #9fb0d8;
 }
 .ac-hint { color: #6b7aa0; text-transform: none; letter-spacing: 0; font-size: 10px; }
+.ac-initiative-preview { display: grid; gap: 5px; margin-top: 5px; padding: 10px; border: 1px solid #293754; background: rgba(8, 13, 29, .8); font-size: 10px; line-height: 1.45; }
+.ac-initiative-preview strong { color: #d8e4ff; font: 700 12px var(--font-mono); text-transform: uppercase; }
+.ac-initiative-preview span { color: #8d9abb; }
+.ac-initiative-preview .positive { color: #42d3ad; }
+.ac-initiative-preview .negative { color: #ff7b83; }
+.ac-initiative-preview small { color: #66728f; }
 
 .ac-field select,
 .ac-field input[type='text'],
