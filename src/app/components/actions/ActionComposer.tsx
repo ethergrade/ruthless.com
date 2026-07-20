@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type {
   ActionType, Company, CompanyId, MarketTile, ProductCategory,
   VoiceTone, CampaignAuthenticity, RuthlessDept, TileId, ProductId, DepartmentType,
-  TurnAction, ExecutiveId,
+  TurnAction, ExecutiveId, MarketSegment,
 } from '../../../types';
 import {
   PRODUCT_CATEGORIES, SEGMENT_LABELS, VOICE_TONES, AUTHENTICITY_LEVELS,
@@ -124,7 +124,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [auth, setAuth] = useState<CampaignAuthenticity>(playerCompany.campaignAuthenticity ?? 'aspirational');
   const [auctionAssetId, setAuctionAssetId] = useState<string>('');
   const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
-  const [ideaId, setIdeaId] = useState<string>('');
+  const [ideaId, setIdeaId] = useState<string>(initialDraft?.ideaId ?? '');
   const [deptType, setDeptType] = useState<DepartmentType>('product_rd');
   const [makeHQ, setMakeHQ] = useState<boolean>(false);
   const [hqBuildingId, setHqBuildingId] = useState<string>('');
@@ -133,8 +133,9 @@ export const ActionComposer: React.FC<Props> = ({
   const [resourcePoints, setResourcePoints] = useState<number>(10);
 
   // product editor state
-  const [productName, setProductName] = useState<string>('');
-  const [productCategory, setProductCategory] = useState<ProductCategory>('saas');
+  const [productName, setProductName] = useState<string>(initialDraft?.type === 'launch_product' ? initialDraft.productName ?? '' : '');
+  const [productCategory, setProductCategory] = useState<ProductCategory>(initialDraft?.type === 'launch_product' ? initialDraft.productCategory ?? 'saas' : 'saas');
+  const [productSegments, setProductSegments] = useState<MarketSegment[]>(initialDraft?.type === 'launch_product' ? initialDraft.targetSegments ?? [] : []);
   const [spinSeed] = useState<number>(Math.floor(Math.random() * 100000));
 
   // Pre-fill from a previous order so the player can tweak & re-plan it (req P2).
@@ -151,12 +152,14 @@ export const ActionComposer: React.FC<Props> = ({
     setTargetDepartmentId(initialDraft.targetDepartmentId ?? '');
     setTargetTileId(initialDraft.targetTileId ?? (initialTileId || ''));
     setTargetProductId(initialDraft.targetProductId ?? '');
+    setIdeaId(initialDraft.ideaId ?? '');
     setResourcePoints(initialDraft.resourcePoints ?? 10);
     setTone(initialDraft.tone ?? (playerCompany.voiceTone ?? 'aggressive'));
     setAuth(initialDraft.authenticity ?? (playerCompany.campaignAuthenticity ?? 'aspirational'));
     if (initialDraft.type === 'launch_product') {
       setProductName(initialDraft.productName ?? '');
       setProductCategory((initialDraft.productCategory as ProductCategory) ?? 'saas');
+      setProductSegments(initialDraft.targetSegments ?? []);
     }
     if (initialDraft.type === 'expand_market' && initialDraft.productCategory) {
       setProductCategory(initialDraft.productCategory);
@@ -190,6 +193,18 @@ export const ActionComposer: React.FC<Props> = ({
     ? playerCompany.cybersecurityPoints
     : playerCompany.computePoints;
   const selectedProduct = targetProductId ? playerCompany.products.find(product => product.id === targetProductId) : undefined;
+  const selectedIdea = ideaId ? playerCompany.ideas.find(idea => idea.id === ideaId) : undefined;
+  const marketBinding = initialDraft?.type === 'launch_product' && (initialDraft.trendId || initialDraft.weakSignalId)
+    ? initialDraft
+    : undefined;
+  const boundCategory = marketBinding?.productCategory;
+  const compatibleIdeas = boundCategory
+    ? playerCompany.ideas.filter(idea => idea.category === boundCategory)
+    : playerCompany.ideas;
+  const effectiveProductCategory = boundCategory ?? selectedIdea?.category ?? productCategory;
+  const effectiveProductSegments: MarketSegment[] = productSegments.length
+    ? productSegments
+    : ['enterprise_cluster', 'high_growth'];
   const selectedOwnedBuilding = chosenTile?.buildingId
     ? playerCompany.buildings.find(building => building.id === chosenTile.buildingId)
     : undefined;
@@ -208,6 +223,7 @@ export const ActionComposer: React.FC<Props> = ({
     (!needs.includes('targetExecutive') || !!targetExecutiveId) &&
     (!needs.includes('hqBuilding') || !!hqBuildingId) &&
     (type !== 'launch_product' || !!productName.trim()) &&
+    (type !== 'launch_product' || !boundCategory || selectedIdea?.category === boundCategory) &&
     resourcePointsValid &&
     (type !== 'auction_sell' || !!auctionAssetId);
   const canSubmit = requiredTargetsValid && budget >= def.baseCost && budget <= maxBudget;
@@ -228,14 +244,16 @@ export const ActionComposer: React.FC<Props> = ({
     targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
     departmentType: needs.includes('departmentType') ? deptType : undefined,
     productName: type === 'launch_product' ? productName : undefined,
-    productCategory: (type === 'launch_product' || type === 'expand_market') ? productCategory : undefined,
+    productCategory: type === 'launch_product' ? effectiveProductCategory : type === 'expand_market' ? productCategory : undefined,
+    targetSegments: type === 'launch_product' ? effectiveProductSegments : undefined,
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
     ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
     buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
     hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
     executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
-    trendId: initialDraft?.trendId,
+    trendId: (type === 'launch_product' || type === 'expand_market') ? initialDraft?.trendId : undefined,
+    weakSignalId: type === 'launch_product' ? initialDraft?.weakSignalId : undefined,
   };
   const successPct = estimate ? Math.round(estimate(draft) * 100) : null;
 
@@ -255,7 +273,8 @@ export const ActionComposer: React.FC<Props> = ({
       targetProductId: needs.includes('targetProduct') ? targetProductId || undefined : undefined,
       departmentType: needs.includes('departmentType') ? deptType : undefined,
       productName: type === 'launch_product' ? productName : undefined,
-      productCategory: (type === 'launch_product' || type === 'expand_market') ? productCategory : undefined,
+      productCategory: type === 'launch_product' ? effectiveProductCategory : type === 'expand_market' ? productCategory : undefined,
+      targetSegments: type === 'launch_product' ? effectiveProductSegments : undefined,
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
       targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
       ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
@@ -263,7 +282,8 @@ export const ActionComposer: React.FC<Props> = ({
       buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
       hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
       executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
-      trendId: initialDraft?.trendId,
+      trendId: (type === 'launch_product' || type === 'expand_market') ? initialDraft?.trendId : undefined,
+      weakSignalId: type === 'launch_product' ? initialDraft?.weakSignalId : undefined,
     });
     onClose();
   };
@@ -621,12 +641,20 @@ export const ActionComposer: React.FC<Props> = ({
             {playerCompany.ideas.length === 0 ? (
               <p className="ac-hint">No ideas yet — use “Create Ideas (R&D)” first.</p>
             ) : (
-              <select value={ideaId} onChange={e => setIdeaId(e.target.value)}>
+              <select value={ideaId} onChange={e => {
+                const nextIdeaId = e.target.value;
+                const nextIdea = playerCompany.ideas.find(idea => idea.id === nextIdeaId);
+                setIdeaId(nextIdeaId);
+                if (!boundCategory && nextIdea) setProductCategory(nextIdea.category);
+              }}>
                 <option value="">Select an idea…</option>
-                {playerCompany.ideas.map(i => (
+                {compatibleIdeas.map(i => (
                   <option key={i.id} value={i.id}>{i.name} · {i.category.replace('_', ' ')}</option>
                 ))}
               </select>
+            )}
+            {boundCategory && compatibleIdeas.length === 0 && (
+              <p className="ac-hint">No {boundCategory.replace('_', ' ')} idea is ready. Create a matching R&amp;D idea before launching into this opportunity.</p>
             )}
           </div>
         )}
@@ -671,14 +699,14 @@ export const ActionComposer: React.FC<Props> = ({
               <input value={productName} onChange={e => setProductName(e.target.value)} />
               <button
                 className="ac-spin"
-                onClick={() => setProductName(spinProductName(spinSeed, productCategory, Math.floor(Math.random() * 999)))}
+                onClick={() => setProductName(spinProductName(spinSeed, effectiveProductCategory, Math.floor(Math.random() * 999)))}
                 title="Surprise me"
               >⟳</button>
             </div>
-            <label>Sector / Category</label>
-            <select value={productCategory} onChange={e => setProductCategory(e.target.value as ProductCategory)}>
-              {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
-            </select>
+            <label>Product Category <span className="ac-hint">(locked by {boundCategory ? (initialDraft?.trendId ? 'exploited trend' : 'weak-signal investment') : selectedIdea ? 'selected idea' : 'idea selection'})</span></label>
+            <input value={ideaId || boundCategory ? effectiveProductCategory.replace('_', ' ') : 'Select an idea above'} readOnly />
+            <label>Target Sector <span className="ac-hint">({productSegments.length ? 'locked by market investment' : 'default launch market'})</span></label>
+            <input value={effectiveProductSegments.map(segment => SEGMENT_LABELS[segment]).join(' · ')} readOnly />
           </div>
         )}
 

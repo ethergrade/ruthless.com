@@ -15,6 +15,7 @@ interface BottomPanelProps {
   selectedTileId?: string | null;
   addAction?: (a: TurnAction) => void;
   onExploit?: (trend: MarketTrend) => void;
+  onInvestSignal?: (signal: WeakSignal) => void;
 }
 
 export const BottomPanel: React.FC<BottomPanelProps> = ({
@@ -26,6 +27,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   selectedTileId,
   addAction,
   onExploit = () => undefined,
+  onInvestSignal = () => undefined,
 }) => {
   const [activeTab, setActiveTab] = useState<'kpi' | 'departments' | 'products' | 'capabilities' | 'orders' | 'trends' | 'tech' | 'workforce' | 'ceo'>(defaultTab);
 
@@ -83,7 +85,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         {activeTab === 'products' && <ProductsPanel products={playerCompany.products} ideas={playerCompany.ideas} />}
         {activeTab === 'capabilities' && <CapabilitiesPanel company={playerCompany} />}
         {activeTab === 'orders' && <OrdersPanel actions={state.actions.filter(a => a.companyId === state.playerCompanyId)} history={state.actionHistory.filter(a => a.companyId === state.playerCompanyId)} alerts={state.alerts} onEdit={onEdit} />}
-        {activeTab === 'trends' && <TrendsPanel trends={state.trends} trendHistory={state.trendHistory} weakSignals={state.weakSignals} currentTurn={state.turn} onExploit={onExploit} />}
+        {activeTab === 'trends' && <TrendsPanel trends={state.trends} trendHistory={state.trendHistory} weakSignals={state.weakSignals} currentTurn={state.turn} onExploit={onExploit} onInvestSignal={onInvestSignal} />}
         {activeTab === 'tech' && <TechnologyBookPanel technologies={TECHNOLOGIES} />}
         {activeTab === 'workforce' && <WorkforcePanel company={playerCompany} />}
         {activeTab === 'ceo' && <CeoPanel company={playerCompany} onEdit={onEdit} />}
@@ -669,7 +671,8 @@ export const TrendsPanel: React.FC<{
   weakSignals: WeakSignal[];
   currentTurn?: number;
   onExploit: (trend: MarketTrend) => void;
-}> = ({ trends, trendHistory = [], weakSignals, currentTurn = 1, onExploit }) => {
+  onInvestSignal?: (signal: WeakSignal) => void;
+}> = ({ trends, trendHistory = [], weakSignals, currentTurn = 1, onExploit, onInvestSignal = () => undefined }) => {
   return (
     <div className="trends-panel">
       <div className="trends-section">
@@ -719,8 +722,10 @@ export const TrendsPanel: React.FC<{
             <p className="trend-blurb">{w.hint}</p>
             <div className="trend-meta">
               <span className="trend-tag cat">{w.relatedCategory.replace('_', ' ')}</span>
+              <span className="trend-tag sec">{w.relatedSector.replace('_', ' ')}</span>
               <span className="trend-exp">conf {(w.confidence * 100).toFixed(0)}% · until T{w.expiresTurn}</span>
             </div>
+            <button className="trend-exploit" onClick={() => onInvestSignal(w)}>INVEST ▶</button>
           </div>
         ))}
       </div>

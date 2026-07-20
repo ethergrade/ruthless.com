@@ -10,7 +10,7 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 |--------|---------|
 | `build_department` | Aggiunge un dipartimento a un edificio con slot liberi |
 | `build_building` | Nuovo edificio su tile libera (richiede dipartimento pertinente) |
-| `launch_product` | Lancia un prodotto |
+| `launch_product` | Lancia un prodotto; idea, trend sfruttato o weak signal finanziato ne vincolano categoria e settore |
 | `improve_product` | Migliora un prodotto esistente |
 | `allocate_compute` | Assegna Compute Points a un prodotto; rendimento e crescita dipendono dal margine |
 | `expand_market` | Espande la quota di mercato |

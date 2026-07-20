@@ -114,4 +114,33 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(html).toContain(`${company.name} Building 3`);
     expect(html).not.toContain('— select tile —');
   });
+
+  it('shows a trend-bound product category and sector and filters incompatible ideas', () => {
+    const engine = new TurnEngine(2026);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.ideas.push(
+      { id: 'bio_ui', name: 'Bio Signal Idea', category: 'biotech', maturity: 80, breakthrough: true, companyId: company.id, createdTurn: state.turn },
+      { id: 'saas_ui', name: 'SaaS Other Idea', category: 'saas', maturity: 50, breakthrough: false, companyId: company.id, createdTurn: state.turn },
+    );
+    const html = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'launch_product',
+      initialDraft: {
+        id: 'ui_exploit', companyId: company.id, type: 'launch_product', budget: 300_000,
+        priority: 1, status: 'planned', trendId: 'bio_trend', productCategory: 'biotech',
+        targetSegments: ['regulated_industry'],
+      },
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(html).toContain('locked by');
+    expect(html).toContain('exploited trend');
+    expect(html).toContain('value="biotech"');
+    expect(html).toContain('Regulated Industry');
+    expect(html).toContain('Bio Signal Idea');
+    expect(html).not.toContain('SaaS Other Idea');
+  });
 });

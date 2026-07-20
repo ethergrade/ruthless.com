@@ -118,20 +118,38 @@ function App() {
     setShowActionModal(true);
   };
 
-  /** EXPLOIT a live trend: open the Orders composer pre-filled to expand into
-   *  the trending category (surge bonus applied by the engine on resolve). */
+  /** EXPLOIT binds product creation to the trend's exact category and sector. */
   const handleExploit = (trend: import('./types').MarketTrend) => {
     const cat = trend.category;
-    setPresetActionType('expand_market');
+    setPresetActionType('launch_product');
     setEditDraft({
       id: `exploit_${cat}_${Date.now()}`,
       companyId: state!.playerCompanyId,
-      type: 'expand_market',
-      budget: 200000,
+      type: 'launch_product',
+      budget: 300000,
       priority: 1,
       status: 'planned',
       productCategory: cat,
+      targetSegments: [trend.sector],
       trendId: trend.id,
+    } as import('./types').TurnAction);
+    if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
+    setShowActionModal(true);
+  };
+
+  /** INVEST turns a weak signal into a category/sector-bound product brief. */
+  const handleInvestSignal = (signal: import('./types').WeakSignal) => {
+    setPresetActionType('launch_product');
+    setEditDraft({
+      id: `invest_${signal.relatedCategory}_${Date.now()}`,
+      companyId: state!.playerCompanyId,
+      type: 'launch_product',
+      budget: 300000,
+      priority: 1,
+      status: 'planned',
+      productCategory: signal.relatedCategory,
+      targetSegments: [signal.relatedSector],
+      weakSignalId: signal.id,
     } as import('./types').TurnAction);
     if (useSettings.getState().sfxEnabled) audio.sfx('exploit');
     setShowActionModal(true);
@@ -289,6 +307,7 @@ function App() {
           state={state}
           newsFeed={state?.newsFeed || []}
           onExploit={handleExploit}
+          onInvestSignal={handleInvestSignal}
         />
       </div>
 
@@ -303,6 +322,7 @@ function App() {
         selectedTileId={selectedTileId}
         addAction={addAction}
         onExploit={handleExploit}
+        onInvestSignal={handleInvestSignal}
         onEdit={handleEdit}
       />
 

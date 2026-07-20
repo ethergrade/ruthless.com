@@ -276,6 +276,97 @@ describe('R&D idea capacity and global trend timing', () => {
     expect(launched.marketFit).toBeLessThanOrEqual(60);
     expect(launched.quality).toBeLessThanOrEqual(70);
   });
+
+  it('locks an exploited trend launch to its category and sector', () => {
+    const engine = new TurnEngine(78);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    const idea = {
+      id: 'biotech_trend_idea', name: 'Biotech Breakthrough', category: 'biotech' as const,
+      maturity: 80, breakthrough: true, companyId: company.id, createdTurn: state.turn,
+    };
+    company.ideas.push(idea);
+    state.inventions.push(idea);
+    state.trends = [{
+      id: 'biotech_regulated_trend', title: 'Biotech regulation wave', category: 'biotech',
+      sector: 'regulated_industry', strength: 0.85, appearedTurn: state.turn,
+      decisionDeadlineTurn: state.turn + 2, expiresTurn: state.turn + 5, blurb: 'Invest now.',
+    }];
+    state.actions.push({
+      id: 'exploit_biotech', companyId: company.id, type: 'launch_product',
+      ideaId: idea.id, trendId: 'biotech_regulated_trend', productName: 'BioGuard',
+      productCategory: 'biotech', targetSegments: ['regulated_industry'],
+      budget: 300_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const product = company.products.find(candidate => candidate.name === 'BioGuard')!;
+    expect(product.category).toBe('biotech');
+    expect(product.targetSegments).toEqual(['regulated_industry']);
+    expect(product.trendTiming).toBe('on_time');
+  });
+
+  it('rejects an idea or manual category that conflicts with the invested trend', () => {
+    const engine = new TurnEngine(79);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    company.ideas.push({
+      id: 'wrong_ai_idea', name: 'Wrong AI Idea', category: 'ai', maturity: 60,
+      breakthrough: false, companyId: company.id, createdTurn: state.turn,
+    });
+    state.trends = [{
+      id: 'biotech_only_trend', title: 'Biotech only', category: 'biotech',
+      sector: 'regulated_industry', strength: 0.8, appearedTurn: state.turn,
+      decisionDeadlineTurn: state.turn + 2, expiresTurn: state.turn + 5, blurb: 'Biotech only.',
+    }];
+    state.actions.push({
+      id: 'invalid_trend_launch', companyId: company.id, type: 'launch_product',
+      ideaId: 'wrong_ai_idea', trendId: 'biotech_only_trend', productName: 'Invalid SaaS',
+      productCategory: 'saas', targetSegments: ['high_growth'],
+      budget: 300_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const outcome = state.actionHistory.find(action => action.id === 'invalid_trend_launch')?.outcome;
+    expect(outcome?.success).toBe(false);
+    expect(outcome?.message).toContain('locked to biotech');
+    expect(company.products.some(product => product.name === 'Invalid SaaS')).toBe(false);
+  });
+
+  it('binds a weak-signal investment to its category and sector, then consumes it', () => {
+    const engine = new TurnEngine(80);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    const idea = {
+      id: 'signal_ai_idea', name: 'Public AI', category: 'ai' as const,
+      maturity: 70, breakthrough: false, companyId: company.id, createdTurn: state.turn,
+    };
+    company.ideas.push(idea);
+    state.inventions.push(idea);
+    state.weakSignals = [{
+      id: 'public_ai_signal', hint: 'Public buyers test AI', relatedCategory: 'ai',
+      relatedSector: 'public_sector', confidence: 0.55, expiresTurn: state.turn + 3,
+    }];
+    state.actions.push({
+      id: 'invest_public_ai', companyId: company.id, type: 'launch_product',
+      ideaId: idea.id, weakSignalId: 'public_ai_signal', productName: 'CivicMind',
+      productCategory: 'ai', targetSegments: ['public_sector'],
+      budget: 300_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const product = company.products.find(candidate => candidate.name === 'CivicMind')!;
+    expect(product.category).toBe('ai');
+    expect(product.targetSegments).toEqual(['public_sector']);
+    expect(product.trendTiming).toBe('on_time');
+    expect(state.weakSignals.some(signal => signal.id === 'public_ai_signal')).toBe(false);
+  });
 });
 
 describe('Compute and cybersecurity capacity', () => {

@@ -157,6 +157,10 @@ export class TurnEngine {
         appearedTurn: trend.appearedTurn ?? state.turn,
         decisionDeadlineTurn: trend.decisionDeadlineTurn ?? state.turn + 2,
       })),
+      weakSignals: (state.weakSignals ?? []).map(signal => ({
+        ...signal,
+        relatedSector: signal.relatedSector ?? 'open_market',
+      })),
       sandbox: legacyMode === 'sandbox'
         ? (state.sandbox ?? { godModeUsed: false, victoryEnabled: false, intelligenceRevealed: false, auditLog: [] })
         : state.sandbox,
@@ -912,6 +916,31 @@ export class TurnEngine {
         return { success: false, message: 'R&D capacity exhausted — each R&D department creates at most one idea per turn', effects: {}, risksTriggered: [] };
       }
     }
+    if (action.type === 'launch_product') {
+      const idea = action.ideaId ? company.ideas.find(candidate => candidate.id === action.ideaId) : undefined;
+      const committedTrend = this.findCommittedTrend(action);
+      const investedSignal = this.findInvestedSignal(action);
+      if (action.ideaId && !idea) {
+        return { success: false, message: 'Selected R&D idea is no longer available', effects: {}, risksTriggered: [] };
+      }
+      if (action.trendId && !committedTrend) {
+        return { success: false, message: 'The exploited trend is no longer committed to this launch', effects: {}, risksTriggered: [] };
+      }
+      if (action.weakSignalId && !investedSignal) {
+        return { success: false, message: 'The invested weak signal has expired or is no longer available', effects: {}, risksTriggered: [] };
+      }
+      const boundCategory = committedTrend?.category ?? investedSignal?.relatedCategory ?? idea?.category;
+      const boundSector = committedTrend?.sector ?? investedSignal?.relatedSector;
+      if (boundCategory && action.productCategory && action.productCategory !== boundCategory) {
+        return { success: false, message: `Product category is locked to ${boundCategory.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
+      }
+      if (idea && boundCategory && idea.category !== boundCategory) {
+        return { success: false, message: `Selected idea must match the invested ${boundCategory.replace('_', ' ')} category`, effects: {}, risksTriggered: [] };
+      }
+      if (boundSector && action.targetSegments?.length && !action.targetSegments.includes(boundSector)) {
+        return { success: false, message: `Product sector is locked to ${boundSector.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
+      }
+    }
     if (action.type === 'build_building') {
       const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
       if (!tile) return { success: false, message: 'Select a valid tile for the new building', effects: {}, risksTriggered: [] };
@@ -1351,13 +1380,29 @@ export class TurnEngine {
     }
   }
 
+  private findCommittedTrend(action: TurnAction): MarketTrend | undefined {
+    if (!action.trendId) return undefined;
+    return this.state.trends.find(trend => trend.id === action.trendId && trend.expiresTurn > this.state.turn)
+      ?? [...this.state.trendHistory].reverse().find(entry =>
+        entry.trend.id === action.trendId
+        && entry.outcome === 'pursued'
+        && (!entry.companyId || entry.companyId === action.companyId))?.trend;
+  }
+
+  private findInvestedSignal(action: TurnAction): WeakSignal | undefined {
+    if (!action.weakSignalId) return undefined;
+    return this.state.weakSignals.find(signal => signal.id === action.weakSignalId && signal.expiresTurn > this.state.turn);
+  }
+
   private launchProduct(company: Company, action: TurnAction): void {
     // T: an R&D idea can seed the launch — it grants extra adopter momentum and
     // is consumed (moved out of the R&D Ideas list into production).
     const idea = action.ideaId
       ? company.ideas.find(i => i.id === action.ideaId)
       : undefined;
-    const category: ProductCategory = (action.productCategory ?? idea?.category) ?? this.rng.shuffle([
+    const committedTrend = this.findCommittedTrend(action);
+    const investedSignal = this.findInvestedSignal(action);
+    const category: ProductCategory = (committedTrend?.category ?? investedSignal?.relatedCategory ?? idea?.category ?? action.productCategory) ?? this.rng.shuffle([
       'saas', 'ai', 'cybersecurity', 'consulting', 'managed_service', 'data_service',
       'platform_api', 'hybrid', 'fintech', 'cloud_infra', 'iot', 'blockchain',
       'healthtech', 'edtech', 'greentech', 'gaming', 'ecommerce', 'data_analytics',
@@ -1366,14 +1411,14 @@ export class TurnEngine {
     const name = action.productName?.trim() || `Product_${company.products.length + 1}`;
 
     // T5: riding an active global trend for this category grants a launch bonus.
-    const trend = this.state.trends.find(t => t.category === category && t.expiresTurn > this.state.turn);
+    const trend = committedTrend ?? this.state.trends.find(t => t.category === category && t.expiresTurn > this.state.turn);
     const latestResolvedTrend = [...this.state.trendHistory].reverse().find(entry => entry.trend.category === category);
     const missedTrend = latestResolvedTrend?.outcome === 'missed'
       && latestResolvedTrend.trend.decisionDeadlineTurn < this.state.turn
       && (!trend || latestResolvedTrend.trend.appearedTurn >= trend.appearedTurn)
       ? latestResolvedTrend
       : undefined;
-    const trendBonus = trend ? trend.strength : 0;
+    const trendBonus = trend ? trend.strength : investedSignal ? investedSignal.confidence * 0.5 : 0;
     // An idea-backed launch rides the R&D push: more early adopters + quality lift.
     const ideaBonus = idea ? (idea.breakthrough ? 0.18 : 0.10) + idea.maturity / 400 : 0;
 
@@ -1394,7 +1439,15 @@ export class TurnEngine {
       lastTurnMargin: 0,
       technicalDebt: 10,
       trust: 50 + (idea ? 6 : 0),
-      targetSegments: trend ? [trend.sector] : ['enterprise_cluster', 'high_growth'],
+      targetSegments: committedTrend
+        ? [committedTrend.sector]
+        : investedSignal
+          ? [investedSignal.relatedSector]
+          : action.targetSegments?.length
+            ? action.targetSegments
+            : trend
+              ? [trend.sector]
+              : ['enterprise_cluster', 'high_growth'],
       tileIds: [],
       // T: lifecycle bootstrapping — launches start at the early-adopter phase.
       lifecycleStage: 'early',
@@ -1403,7 +1456,7 @@ export class TurnEngine {
       baseInstalled: 0,
       pivotCount: 0,
       ageTurns: 0,
-      trendTiming: missedTrend ? 'late' : trend ? 'on_time' : 'none',
+      trendTiming: missedTrend ? 'late' : (trend || investedSignal) ? 'on_time' : 'none',
     };
     if (missedTrend) {
       product.quality = Math.min(product.quality, 70);
@@ -1426,6 +1479,9 @@ export class TurnEngine {
     if (idea) {
       company.ideas = company.ideas.filter(i => i.id !== idea.id);
       this.state.inventions = this.state.inventions.filter(i => i.id !== idea.id);
+    }
+    if (investedSignal) {
+      this.state.weakSignals = this.state.weakSignals.filter(signal => signal.id !== investedSignal.id);
     }
   }
 
@@ -2074,7 +2130,7 @@ export class TurnEngine {
           id: generateId.trend(),
           title: `Open-Source Wave: ${idea.category.replace('_', ' ').toUpperCase()} goes mainstream`,
           category: idea.category,
-          sector: this.rng.shuffle(['open_market', 'startup_zone', 'high_growth', 'innovation_hub']).pop()! as MarketSegment,
+          sector: signal.relatedSector,
           strength: this.rng.nextFloat(0.45, 0.8),
           expiresTurn: this.state.turn + this.rng.nextInt(3, 7),
           appearedTurn: this.state.turn,
@@ -3272,6 +3328,7 @@ export class TurnEngine {
   private generateWeakSignals(count: number): WeakSignal[] {
     const t = this.state?.turn ?? 1;
     const cats: ProductCategory[] = ['fintech', 'cybersecurity', 'ai', 'cloud_infra', 'healthtech', 'greentech', 'data_analytics', 'blockchain', 'iot', 'biotech', 'quantum', 'ar_vr'];
+    const sectors: MarketSegment[] = ['open_market', 'enterprise_cluster', 'public_sector', 'regulated_industry', 'innovation_hub', 'high_growth', 'strategic_account', 'startup_zone', 'legacy_market'];
     const hints = [
       'Whispers of a regulatory shift favouring',
       'A key client was spotted piloting',
@@ -3286,6 +3343,7 @@ export class TurnEngine {
         id: generateId.weak(),
         hint: `${this.rng.shuffle(hints).pop()} ${relatedCategory.replace('_', ' ')}…`,
         relatedCategory,
+        relatedSector: this.rng.shuffle(sectors).pop()!,
         confidence: this.rng.nextFloat(0.25, 0.6),
         expiresTurn: t + this.rng.nextInt(3, 6),
       });

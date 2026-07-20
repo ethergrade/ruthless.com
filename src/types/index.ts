@@ -718,6 +718,8 @@ export interface TurnAction {
   targetId?: string;
   /** Global trend explicitly pursued by an EXPLOIT order. */
   trendId?: string;
+  /** Weak signal explicitly funded through an INVEST order. */
+  weakSignalId?: string;
   budget: number;
   executiveId?: ExecutiveId;
   status: 'planned' | 'resolved' | 'failed';
@@ -758,6 +760,8 @@ export interface TurnAction {
   /** Generated/editable product name + category (product creation). */
   productName?: string;
   productCategory?: ProductCategory;
+  /** Market sectors locked into a product launch by a trend/signal investment. */
+  targetSegments?: MarketSegment[];
   /** OPA: tender price offered. */
   offerPrice?: number;
   /** Success-estimate preview (req 4): 0..1, filled by store before planning. */
@@ -940,6 +944,8 @@ export interface WeakSignal {
   hint: string;
   /** category likely to surge if the signal matures. */
   relatedCategory: ProductCategory;
+  /** market sector in which the early demand is emerging. */
+  relatedSector: MarketSegment;
   /** 0..1 confidence the signal becomes a real trend. */
   confidence: number;
   expiresTurn: number;
