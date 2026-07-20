@@ -424,6 +424,90 @@ describe('R&D idea capacity and global trend timing', () => {
     expect(product.trendTiming).toBe('on_time');
     expect(state.weakSignals.some(signal => signal.id === 'public_ai_signal')).toBe(false);
   });
+
+  it('launches an idea-free INVEST as speculative, then validates it on a thriving explored tile', () => {
+    const engine = new TurnEngine(81);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    state.weakSignals = [{
+      id: 'cyber_growth_signal', hint: 'Security teams are moving early', relatedCategory: 'cybersecurity',
+      relatedSector: 'high_growth', confidence: 0.42, expiresTurn: state.turn + 3,
+    }];
+    state.actions.push({
+      id: 'idea_free_invest', companyId: company.id, type: 'launch_product',
+      weakSignalId: 'cyber_growth_signal', productName: 'SignalShield',
+      productCategory: 'cybersecurity', targetSegments: ['high_growth'],
+      budget: 300_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const product = company.products.find(candidate => candidate.name === 'SignalShield')!;
+    expect(product.marketValidationStatus).toBe('unvalidated');
+    expect(product.marketValidationSector).toBe('high_growth');
+    expect(product.weakSignalOriginId).toBe('cyber_growth_signal');
+    expect(product.technicalDebt).toBeGreaterThanOrEqual(20);
+    expect(product.lifecycleStage).toBe('early');
+
+    const opportunity = [...state.marketTiles.values()][0];
+    opportunity.segment = 'high_growth';
+    opportunity.growth = 0.2;
+    opportunity.demandLevel = 1.4;
+    opportunity.risk = 0.1;
+    opportunity.competitivePressure = 0.1;
+    opportunity.regulation = 0.1;
+    opportunity.controllerId = undefined;
+    opportunity.productId = undefined;
+    const fitBefore = product.marketFit;
+    const adoptersBefore = product.adopters;
+    state.actions.push({
+      id: 'validate_signal_market', companyId: company.id, type: 'validate_market',
+      targetProductId: product.id, targetTileId: opportunity.id,
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const outcome = state.actionHistory.find(action => action.id === 'validate_signal_market')?.outcome;
+    expect(outcome?.success).toBe(true);
+    expect(product.marketValidationStatus).toBe('validated');
+    expect(product.validatedTileId).toBe(opportunity.id);
+    expect(product.tileIds).toContain(opportunity.id);
+    expect(opportunity.productId).toBe(product.id);
+    expect(opportunity.controllerId).toBe(company.id);
+    expect(company.controlledTiles).toContain(opportunity.id);
+    expect(product.marketFit).toBeGreaterThan(fitBefore);
+    expect(product.adopters).toBeGreaterThan(adoptersBefore);
+  });
+
+  it('rejects market validation on a tile outside the INVEST sector', () => {
+    const engine = new TurnEngine(82);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    const product = company.products[0];
+    product.marketValidationStatus = 'unvalidated';
+    product.marketValidationSector = 'public_sector';
+    const tile = [...state.marketTiles.values()][0];
+    tile.segment = 'high_growth';
+    tile.growth = 0.2;
+    tile.demandLevel = 1.4;
+    tile.productId = undefined;
+    state.actions.push({
+      id: 'wrong_validation_sector', companyId: company.id, type: 'validate_market',
+      targetProductId: product.id, targetTileId: tile.id,
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    const outcome = state.actionHistory.find(action => action.id === 'wrong_validation_sector')?.outcome;
+    expect(outcome?.success).toBe(false);
+    expect(outcome?.message).toContain('public sector');
+    expect(product.marketValidationStatus).toBe('unvalidated');
+    expect(product.tileIds).not.toContain(tile.id);
+  });
 });
 
 describe('Compute and cybersecurity capacity', () => {

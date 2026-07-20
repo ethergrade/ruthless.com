@@ -80,7 +80,12 @@ entra in cooldown fino al turno successivo.
   dal trend e l'ordine tenta di conquistare presenza proprio in quel segmento, senza creare
   automaticamente un prodotto.
 - `INVEST` su un weak signal apre invece `Launch Product`, vincolando categoria e settore
-  all'ipotesi anticipata; il picker mostra solo idee R&D compatibili.
+  all'ipotesi anticipata. Un'idea R&D compatibile è facoltativa: senza idea il prodotto nasce
+  speculativo, con debito tecnico maggiore, ricavi ridotti e lifecycle bloccato in `early`.
+- `Validate Market Entry` completa la scommessa senza idea: richiede Sales & Marketing e una
+  tile già esplorata nello stesso settore, con crescita positiva e domanda `>= 0.80`. La qualità
+  dell'opportunità (domanda/crescita meno rischio, regulation e pressione competitiva) determina
+  market fit e adopters; la tile viene collegata al prodotto e diventa presenza o sfida territoriale.
 - Un'acquisizione completata assorbe la company target e trasferisce tile, edifici e relativi
   reparti/prodotti al compratore, rimuovendo il precedente proprietario dai competitor.
   Il premio pagato, la qualità del target, la redditività e l'archetipo del compratore determinano

@@ -97,7 +97,13 @@ builds **trust / awareness**.
 **EXPLOIT** and **INVEST** are intentionally different. Exploiting a Global Trend opens
 a category/sector-locked **Expand Market** order and captures market presence without
 creating a product. Investing in a weak signal opens a category/sector-bound **Launch
-Product** brief, where only compatible R&D ideas can be used.
+Product** brief. A compatible R&D idea is an optional accelerator: without one, the
+product launches as a speculative bet with higher technical debt, limited early growth,
+and low revenue. **Validate Market Entry** can then anchor that product to an already
+explored tile in the promised sector when growth is positive and demand is at least 0.80.
+The chosen tile's demand, growth, risk, regulation, and competition determine the market-fit
+and adopter gain; validation also creates a real product presence or a challenge against
+the incumbent controller.
 
 ### Compute Economy & Competitive Advantage
 

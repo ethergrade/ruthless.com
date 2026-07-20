@@ -168,7 +168,7 @@ export const ACTION_PILLAR: Partial<Record<string, CEOSkill>> = {
   raise_capital: 'analytics', reduce_costs: 'analytics',
   legal_sue: 'analytics', legal_patent: 'analytics', legal_subpoena: 'analytics',
   hire_executive: 'charisma', hire_ceo: 'charisma', hire_coo: 'charisma', fire_ceo: 'charisma',
-  train_ceo: 'resilience', scout_acquisition: 'vision', expand_market: 'resilience',
+  train_ceo: 'resilience', scout_acquisition: 'vision', expand_market: 'resilience', validate_market: 'vision',
   research_push: 'analytics', product_improve: 'analytics',
   // Luck is nudged by anything risky; handled separately in the engine.
 };

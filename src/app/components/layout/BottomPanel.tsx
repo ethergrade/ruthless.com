@@ -334,6 +334,7 @@ const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ produ
             <span className={`lifecycle-badge ${product.lifecycleStage}`}>{product.lifecycleStage.toUpperCase()} · v{product.version}</span>
             <span className="lifecycle-adopters">adopters {(product.adopters * 100).toFixed(0)}%</span>
             {product.pivotCount > 0 && <span className="lifecycle-pivot">pivots {product.pivotCount}</span>}
+            {product.marketValidationStatus && <span className="lifecycle-pivot">{product.marketValidationStatus === 'unvalidated' ? 'SPECULATIVE · MARKET UNVALIDATED' : 'MARKET VALIDATED'}</span>}
             {product.espionageIntelId && <span className="lifecycle-pivot">{product.repatented ? 'RE-PATENTED IP' : 'STOLEN IP · LEGAL RISK'}</span>}
           </div>
         </div>

@@ -228,6 +228,31 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(html).not.toContain('Product Name');
   });
 
+  it('allows Weak Signal INVEST to launch without a matching R&D idea', () => {
+    const engine = new TurnEngine(2030);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.ideas = company.ideas.filter(idea => idea.category !== 'cybersecurity');
+    const html = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'launch_product',
+      initialDraft: {
+        id: 'idea_free_ui_invest', companyId: company.id, type: 'launch_product', budget: 300_000,
+        priority: 1, status: 'planned', weakSignalId: 'cyber_signal', productName: 'SignalShield',
+        productCategory: 'cybersecurity', targetSegments: ['high_growth'],
+      },
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+
+    expect(html).toContain('optional accelerator');
+    expect(html).toContain('still launch now as a speculative product');
+    expect(html).toContain('Validate Market Entry');
+    expect(html).not.toContain('Create a matching R&amp;D idea before launching');
+  });
+
   it('offers re-patent only for stolen ideas and product blueprints', () => {
     const engine = new TurnEngine(2027);
     const state = engine.getState();

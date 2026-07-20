@@ -12,6 +12,7 @@ import { CEO_PILLARS, PILLAR_LABELS } from '../../../data/archetypes';
 import { getDepartmentInitiative } from '../../../data/departmentInitiatives';
 import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots, getOwnedBuildingsWithCapacity } from '../../../simulation/utils/buildings';
 import { calculateComputeExpansion, calculateComputeGeneration } from '../../../simulation/utils/compute';
+import { calculateMarketOpportunityScore, isMarketValidationOpportunity } from '../../../simulation/utils/marketValidation';
 
 interface Props {
   playerCompany: Company;
@@ -62,6 +63,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'allocate_compute', label: 'Allocate Compute', group: 'Product & R&D', baseCost: 0, needs: ['targetProduct', 'resourcePoints'], requiresDept: 'ai_data' },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000, requiresDept: 'ai_data' },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000, requiresDept: 'sales_marketing' },
+  { type: 'validate_market', label: 'Validate Market Entry', group: 'Market & Sales', baseCost: 200000, needs: ['targetProduct', 'targetTile'], requiresDept: 'sales_marketing' },
   { type: 'marketing_campaign', label: 'Marketing Campaign', group: 'Market & Sales', baseCost: 150000, needs: ['targetProduct', 'tone', 'auth'], requiresDept: 'sales_marketing' },
   { type: 'launch_consulting_practice', label: 'Consulting Practice', group: 'Market & Sales', baseCost: 150000, requiresDept: 'consulting_services' },
   { type: 'ceo_social', label: 'CEO Social Post', group: 'Market & Sales', baseCost: 100000, needs: ['tone', 'auth'] },
@@ -184,6 +186,7 @@ export const ActionComposer: React.FC<Props> = ({
   // Build actions only allow the player's own controlled tiles (req T3).
   const needs = def.needs ?? [];
   const chosenTile = targetTileId ? tiles.find(tile => tile.id === targetTileId) : undefined;
+  const selectedProduct = targetProductId ? playerCompany.products.find(product => product.id === targetProductId) : undefined;
   const chosenTileValid = !needs.includes('targetTile') || Boolean(chosenTile && (
     type === 'build_department'
       ? chosenTile.controllerId === playerCompany.id && Boolean(findBuildingOnTile(playerCompany, chosenTile.id) && getBuildingFreeSlots(findBuildingOnTile(playerCompany, chosenTile.id)!) > 0)
@@ -199,12 +202,13 @@ export const ActionComposer: React.FC<Props> = ({
         ? chosenTile.controllerId === targetCompanyId && Boolean(chosenTile.buildingId)
       : type === 'allocate_cybersecurity'
         ? chosenTile.controllerId === playerCompany.id && Boolean(chosenTile.buildingId)
+      : type === 'validate_market' && selectedProduct
+        ? isMarketValidationOpportunity(chosenTile, selectedProduct)
       : true
   ));
   const availableResourcePoints = type === 'allocate_cybersecurity'
     ? playerCompany.cybersecurityPoints
     : playerCompany.computePoints;
-  const selectedProduct = targetProductId ? playerCompany.products.find(product => product.id === targetProductId) : undefined;
   const selectedDepartment = targetDepartmentId
     ? playerCompany.departments.find(department => department.id === targetDepartmentId)
     : undefined;
@@ -214,6 +218,7 @@ export const ActionComposer: React.FC<Props> = ({
     ? initialDraft
     : undefined;
   const boundCategory = marketBinding?.productCategory;
+  const isIdeaOptional = type === 'launch_product' && Boolean(initialDraft?.weakSignalId);
   const compatibleIdeas = boundCategory
     ? playerCompany.ideas.filter(idea => idea.category === boundCategory)
     : playerCompany.ideas;
@@ -247,12 +252,12 @@ export const ActionComposer: React.FC<Props> = ({
     (!needs.includes('targetDept') || (type === 'industrial_espionage' ? !!targetDepartmentId : !!targetDept)) &&
     (!needs.includes('ownedDepartment') || !!selectedDepartment) &&
     (!needs.includes('targetProduct') || !!targetProductId) &&
-    (!needs.includes('targetIdea') || !!ideaId) &&
+    (!needs.includes('targetIdea') || !!ideaId || isIdeaOptional) &&
     (!needs.includes('stolenAsset') || !!stolenAssetId) &&
     (!needs.includes('targetExecutive') || !!targetExecutiveId) &&
     (!needs.includes('hqBuilding') || !!hqBuildingId) &&
     (type !== 'launch_product' || !!productName.trim()) &&
-    (type !== 'launch_product' || !boundCategory || selectedIdea?.category === boundCategory) &&
+    (type !== 'launch_product' || !boundCategory || !selectedIdea || selectedIdea.category === boundCategory) &&
     resourcePointsValid &&
     (type !== 'auction_sell' || !!auctionAssetId);
   const canSubmit = requiredTargetsValid && budget >= def.baseCost && budget <= maxBudget;
@@ -448,6 +453,7 @@ export const ActionComposer: React.FC<Props> = ({
           const isCyberAllocation = type === 'allocate_cybersecurity';
           const isDefendBuilding = type === 'defend_tile' || isCyberAllocation;
           const isCyberAttack = type === 'cyber_attack';
+          const isMarketValidation = type === 'validate_market';
           const isOffensive = ['industrial_espionage', 'cyber_attack', 'sabotage_building', 'legal_action'].includes(type);
           const slotCount = getBuildingUsedSlots;
           const validTile = (t: MarketTile): boolean => {
@@ -461,6 +467,7 @@ export const ActionComposer: React.FC<Props> = ({
             if (isSabotage) return Boolean(t.buildingId && t.controllerId && t.controllerId !== playerCompany.id);
             if (isDefendBuilding) return t.controllerId === playerCompany.id && Boolean(t.buildingId);
             if (isCyberAttack) return Boolean(targetCompanyId && t.buildingId && t.controllerId === targetCompanyId);
+            if (isMarketValidation) return Boolean(selectedProduct && isMarketValidationOpportunity(t, selectedProduct));
             if (isOffensive) return !!t.controllerId && t.controllerId !== playerCompany.id;
             if (isSeize) return !t.buildingId && (!t.controllerId || t.controllerId === playerCompany.id);
             return true;
@@ -495,6 +502,10 @@ export const ActionComposer: React.FC<Props> = ({
               ? isCyberAllocation ? 'Assign Cybersecurity Points to one of YOUR BUILDINGS' : 'Pick one of YOUR BUILDINGS to reinforce firewall and physical security'
             : isCyberAttack
               ? `Pick a building belonging to ${companies.find(company => company.id === targetCompanyId)?.name || 'the selected target corporation'}`
+            : isMarketValidation
+              ? selectedProduct
+                ? `Pick an explored, growing ${SEGMENT_LABELS[selectedProduct.marketValidationSector!]} tile with strong demand`
+                : 'Select a speculative INVEST product first'
             : isOffensive
               ? 'Click a RIVAL-controlled tile to target'
               : isSeize
@@ -540,6 +551,7 @@ export const ActionComposer: React.FC<Props> = ({
               <label>{isSabotage ? 'Sabotage Target Building'
                 : isDefendBuilding ? isCyberAllocation ? 'Building to Protect' : 'Building to Defend'
                 : isCyberAttack ? 'Target Corporation Building'
+                : isMarketValidation ? 'Explored Market Opportunity'
                 : isOffensive ? 'Target Tile (rival building / territory)'
                 : isPhysicalDefense ? 'Your Building'
                 : isOwn ? 'Building Tile'
@@ -551,7 +563,7 @@ export const ActionComposer: React.FC<Props> = ({
                   const t = tiles.find(x => x.id === tid);
                   if (t?.controllerId && t.controllerId !== playerCompany.id) setTargetCompanyId(t.controllerId);
                 }}>
-                  <option value="">{isSabotage ? '— select an opponent building —' : isDefendBuilding ? '— select one of your buildings —' : isCyberAttack ? '— select a building of the target corporation —' : '— select tile —'}</option>
+                  <option value="">{isSabotage ? '— select an opponent building —' : isDefendBuilding ? '— select one of your buildings —' : isCyberAttack ? '— select a building of the target corporation —' : isMarketValidation ? selectedProduct ? '— select a thriving explored tile —' : '— select a product first —' : '— select tile —'}</option>
                   {isSabotage ? <>
                     <optgroup label="OPPONENT BUILDINGS — VALID TARGETS">
                       {opponentBuildings.map(({ company, building }) => (
@@ -585,7 +597,10 @@ export const ActionComposer: React.FC<Props> = ({
                     </optgroup>
                   ) : tiles.filter(validTile).map(t => (
                     <option key={t.id} value={t.id}>
-                      {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}{t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ' · (free)'}
+                      {t.id.replace('tile_', '').toUpperCase()} · {SEGMENT_LABELS[t.segment]}
+                      {isMarketValidation
+                        ? ` · growth ${(t.growth * 100).toFixed(1)}% · demand ${t.demandLevel.toFixed(2)} · opportunity ${Math.round(calculateMarketOpportunityScore(t) * 100)}%`
+                        : t.controllerId && t.controllerId !== playerCompany.id ? ' · (rival)' : t.controllerId === playerCompany.id ? ' · (yours)' : ' · (free)'}
                     </option>
                   ))}
                 </select>
@@ -601,6 +616,11 @@ export const ActionComposer: React.FC<Props> = ({
               {isSabotage && <span className="ac-hint">Your buildings remain visible for orientation but are disabled. Map pick highlights only opponent buildings.</span>}
               {isDefendBuilding && <span className="ac-hint">{isCyberAllocation ? 'Assigned points form the first resilience layer and are depleted before R&D data can be lost.' : 'The order reinforces only the selected building. Empty territory cannot be defended with this action.'}</span>}
               {isCyberAttack && <span className="ac-hint">Every listed structure is a building of the selected target corporation. Tile identifiers are intentionally hidden.</span>}
+              {isMarketValidation && <span className="ac-hint">
+                {selectedProduct
+                  ? `Only explored ${SEGMENT_LABELS[selectedProduct.marketValidationSector!]} tiles with positive growth and demand ≥ 0.80 qualify. A stronger opportunity produces more market fit and adopters.`
+                  : 'Choose an unvalidated product created from an idea-free Weak Signal INVEST to reveal compatible tiles.'}
+              </span>}
               </>}
               {isSeize && <span className="ac-hint">New buildings open with 0 departments and 0 products. Staff them with later orders.</span>}
             </div>
@@ -712,9 +732,11 @@ export const ActionComposer: React.FC<Props> = ({
         {/* idea picker (T9: release / sell source code) */}
         {needs.includes('targetIdea') && (
           <div className="ac-field">
-            <label>Idea / Technology</label>
-            {playerCompany.ideas.length === 0 ? (
-              <p className="ac-hint">No ideas yet — use “Create Ideas (R&D)” first.</p>
+            <label>Idea / Technology {isIdeaOptional && <span className="ac-hint">(optional accelerator)</span>}</label>
+            {compatibleIdeas.length === 0 ? (
+              <p className="ac-hint">{isIdeaOptional
+                ? `No ${boundCategory?.replace('_', ' ')} idea is ready. You can still launch now as a speculative product.`
+                : 'No compatible ideas yet — use “Create Ideas (R&D)” first.'}</p>
             ) : (
               <select value={ideaId} onChange={e => {
                 const nextIdeaId = e.target.value;
@@ -722,15 +744,13 @@ export const ActionComposer: React.FC<Props> = ({
                 setIdeaId(nextIdeaId);
                 if (!boundCategory && nextIdea) setProductCategory(nextIdea.category);
               }}>
-                <option value="">Select an idea…</option>
+                <option value="">{isIdeaOptional ? 'Launch without an idea (speculative)' : 'Select an idea…'}</option>
                 {compatibleIdeas.map(i => (
                   <option key={i.id} value={i.id}>{i.name} · {i.category.replace('_', ' ')}</option>
                 ))}
               </select>
             )}
-            {boundCategory && compatibleIdeas.length === 0 && (
-              <p className="ac-hint">No {boundCategory.replace('_', ' ')} idea is ready. Create a matching R&amp;D idea before launching into this opportunity.</p>
-            )}
+            {isIdeaOptional && <p className="ac-hint">Without an idea, the weak signal still locks category and sector. The product starts unvalidated with higher technical debt and restricted growth until “Validate Market Entry” connects it to a thriving explored tile.</p>}
           </div>
         )}
 
@@ -810,12 +830,18 @@ export const ActionComposer: React.FC<Props> = ({
         {needs.includes('targetProduct') && (
           <div className="ac-field">
             <label>Target Product</label>
-            <select value={targetProductId} onChange={e => setTargetProductId(e.target.value as ProductId)}>
+            <select value={targetProductId} onChange={e => {
+              setTargetProductId(e.target.value as ProductId);
+              if (type === 'validate_market') setTargetTileId('');
+            }}>
               <option value="">— select product —</option>
-              {playerCompany.products.map(p => (
-                <option key={p.id} value={p.id}>{p.name} · {p.category.toUpperCase()} · compute {p.computePoints} · margin {(p.lastTurnMargin * 100).toFixed(0)}%</option>
+              {playerCompany.products.filter(p => type !== 'validate_market' || p.marketValidationStatus === 'unvalidated').map(p => (
+                <option key={p.id} value={p.id}>{p.name} · {p.category.toUpperCase()}{type === 'validate_market' ? ` · ${SEGMENT_LABELS[p.marketValidationSector!]}` : ` · compute ${p.computePoints} · margin ${(p.lastTurnMargin * 100).toFixed(0)}%`}</option>
               ))}
             </select>
+            {type === 'validate_market' && !playerCompany.products.some(product => product.marketValidationStatus === 'unvalidated') && (
+              <span className="ac-hint">No speculative products need validation. Use INVEST on a Weak Signal and launch without an R&amp;D idea first.</span>
+            )}
           </div>
         )}
 

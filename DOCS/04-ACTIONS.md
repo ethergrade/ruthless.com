@@ -11,7 +11,8 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 | `build_department` | Aggiunge un dipartimento a un edificio con slot liberi |
 | `build_building` | Nuovo edificio su tile libera (richiede dipartimento pertinente) |
 | `department_initiative` | Esegue l'ordine strategico del reparto selezionato; probabilità ed effetti dipendono da livello, efficienza, morale, rischio e budget |
-| `launch_product` | Lancia un prodotto; idea, trend sfruttato o weak signal finanziato ne vincolano categoria e settore |
+| `launch_product` | Lancia un prodotto; su `INVEST` categoria/settore sono vincolati ma l'idea è facoltativa, con penalità speculativa se assente |
+| `validate_market` | Valida un prodotto speculativo su una tile esplorata, florida e coerente col settore dell'INVEST; sblocca crescita e ricavi normali |
 | `improve_product` | Migliora un prodotto esistente |
 | `generate_compute` | Espande il Compute Grid: riserva immediata, più generazione futura e upkeep persistente |
 | `allocate_compute` | Assegna Compute Points a un prodotto; rendimento e crescita dipendono dal margine |

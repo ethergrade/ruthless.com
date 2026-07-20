@@ -56,6 +56,7 @@ import {
   calculateComputeGeneration,
   calculateProductComputePerformance,
 } from '../utils/compute';
+import { calculateMarketOpportunityScore, isMarketValidationOpportunity } from '../utils/marketValidation';
 
 export interface TurnResult {
   newState: GameState;
@@ -888,6 +889,7 @@ export class TurnEngine {
     const baseBudgets: Record<ActionType, number> = {
       build_department: 500000,
       launch_product: 300000,
+      validate_market: 200000,
       improve_product: 100000,
       expand_market: 200000,
       marketing_campaign: 150000,
@@ -993,6 +995,18 @@ export class TurnEngine {
       }
       if (boundSector && action.targetSegments?.length && !action.targetSegments.includes(boundSector)) {
         return { success: false, message: `Product sector is locked to ${boundSector.replace('_', ' ')}`, effects: {}, risksTriggered: [] };
+      }
+    }
+    if (action.type === 'validate_market') {
+      const product = action.targetProductId
+        ? company.products.find(candidate => candidate.id === action.targetProductId)
+        : undefined;
+      const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+      if (!product || product.marketValidationStatus !== 'unvalidated') {
+        return { success: false, message: 'Select an unvalidated product created by an idea-free Weak Signal INVEST', effects: {}, risksTriggered: [] };
+      }
+      if (!tile || !isMarketValidationOpportunity(tile, product)) {
+        return { success: false, message: `Select an explored, growing ${product.marketValidationSector?.replace('_', ' ')} tile with demand of at least 0.80`, effects: {}, risksTriggered: [] };
       }
     }
     if (action.type === 'expand_market' && action.trendId) {
@@ -1148,7 +1162,7 @@ export class TurnEngine {
     }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'generate_compute', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile', 'exploit_stolen_asset', 'repatent_stolen_asset'];
+    const alwaysSucceed = ['launch_product', 'validate_market', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'generate_compute', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile', 'exploit_stolen_asset', 'repatent_stolen_asset'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
@@ -1187,6 +1201,8 @@ export class TurnEngine {
         ? `${initiative.label} ${success ? 'delivered its upside' : 'backfired'} — ${success ? initiative.upside : initiative.downside}`
         : success && action.type === 'generate_compute'
         ? `Compute Grid expanded by ${effects.computeInfrastructure ?? 0}; ${effects.computePoints ?? 0} Compute Points commissioned`
+        : success && action.type === 'validate_market'
+        ? `Market entry validated: +${effects.marketFit ?? 0} market fit and +${effects.adopters ?? 0}% adopters`
         : success ? 'Action completed successfully' : 'Action failed to achieve objectives',
       effects,
       risksTriggered: risks,
@@ -1202,6 +1218,7 @@ export class TurnEngine {
     const costs: Record<ActionType, number> = {
       build_department: 500000,
       launch_product: 300000,
+      validate_market: 200000,
       improve_product: 100000,
       expand_market: 200000,
       marketing_campaign: 150000,
@@ -1256,6 +1273,7 @@ export class TurnEngine {
     const mapping: Record<ActionType, string[]> = {
       build_department: ['corporate_strategy', 'finance_investor'],
       launch_product: ['product_rd', 'ai_data'],
+      validate_market: ['sales_marketing', 'corporate_strategy'],
       improve_product: ['product_rd', 'ai_data'],
       expand_market: ['sales_marketing', 'corporate_strategy'],
       marketing_campaign: ['sales_marketing'],
@@ -1327,6 +1345,9 @@ export class TurnEngine {
         break;
       case 'launch_product':
         this.launchProduct(company, action);
+        break;
+      case 'validate_market':
+        this.validateMarketEntry(company, action, _effects);
         break;
       case 'improve_product':
         this.improveProduct(company, action.budget, action.targetProductId);
@@ -1690,7 +1711,7 @@ export class TurnEngine {
       computeAdvantage: 0,
       lastTurnRevenue: 0,
       lastTurnMargin: 0,
-      technicalDebt: 10,
+      technicalDebt: investedSignal && !idea ? 25 : 10,
       trust: 50 + (idea ? 6 : 0),
       targetSegments: committedTrend
         ? [committedTrend.sector]
@@ -1710,6 +1731,9 @@ export class TurnEngine {
       pivotCount: 0,
       ageTurns: 0,
       trendTiming: missedTrend ? 'late' : (trend || investedSignal) ? 'on_time' : 'none',
+      weakSignalOriginId: investedSignal && !idea ? investedSignal.id : undefined,
+      marketValidationStatus: investedSignal && !idea ? 'unvalidated' : undefined,
+      marketValidationSector: investedSignal && !idea ? investedSignal.relatedSector : undefined,
       espionageIntelId: idea?.espionageIntelId,
       stolenFromCompanyId: idea?.stolenFromCompanyId,
       repatented: idea?.repatented,
@@ -1745,6 +1769,52 @@ export class TurnEngine {
     if (investedSignal) {
       this.state.weakSignals = this.state.weakSignals.filter(signal => signal.id !== investedSignal.id);
     }
+  }
+
+  /**
+   * Converts an idea-free Weak Signal bet into a proven market position. The
+   * target is an already generated/explored tile in the signal's sector; its
+   * demand, growth and friction determine how much fit and adoption are earned.
+   */
+  private validateMarketEntry(company: Company, action: TurnAction, effects: Record<string, number>): void {
+    const product = action.targetProductId
+      ? company.products.find(candidate => candidate.id === action.targetProductId)
+      : undefined;
+    const tile = action.targetTileId ? this.state.marketTiles.get(action.targetTileId) : undefined;
+    if (!product || !tile || !isMarketValidationOpportunity(tile, product)) return;
+
+    const opportunity = calculateMarketOpportunityScore(tile);
+    const budgetLift = Math.min(5, Math.max(0, action.budget - 200000) / 100000);
+    const marketFitGain = Math.round(7 + opportunity * 10 + budgetLift);
+    const adopterGain = 0.03 + opportunity * 0.07 + Math.min(0.02, budgetLift * 0.004);
+    const entryStrength = Math.min(0.35, 0.12 + opportunity * 0.18 + budgetLift * 0.01);
+
+    product.marketValidationStatus = 'validated';
+    product.validatedTileId = tile.id;
+    product.marketFit = Math.min(100, product.marketFit + marketFitGain);
+    product.adopters = Math.min(1, product.adopters + adopterGain);
+    product.maturity = Math.min(100, product.maturity + 5 + Math.round(opportunity * 5));
+    product.technicalDebt = Math.max(0, product.technicalDebt - 5);
+    if (!product.tileIds.includes(tile.id)) product.tileIds.push(tile.id);
+    tile.productId = product.id;
+    tile.baseQuality = Math.max(tile.baseQuality, product.quality);
+
+    if (!tile.controllerId) {
+      tile.controllerId = company.id;
+      tile.controlStrength = Math.max(tile.controlStrength, entryStrength);
+      if (!company.controlledTiles.includes(tile.id)) company.controlledTiles.push(tile.id);
+    } else if (tile.controllerId === company.id) {
+      tile.controlStrength = Math.min(1, tile.controlStrength + entryStrength);
+    } else {
+      tile.challengerId = company.id;
+      tile.controlStrength = Math.max(0.05, tile.controlStrength - entryStrength * 0.5);
+    }
+
+    company.brandTrust = Math.min(100, company.brandTrust + 1 + opportunity * 3);
+    company.marketInfluence = Math.min(100, company.marketInfluence + 1 + opportunity * 2);
+    effects.marketFit = marketFitGain;
+    effects.adopters = Math.round(adopterGain * 100);
+    effects.marketOpportunity = Math.round(opportunity * 100);
   }
 
   private improveProduct(company: Company, _budget: number, targetProductId?: string): void {
@@ -2623,11 +2693,16 @@ export class TurnEngine {
         // Adopter growth depends on market fit + a live trend pull for the category.
         const liveTrend = this.state.trends.find(t => t.category === p.category && t.expiresTurn > this.state.turn);
         const trendPull = liveTrend ? liveTrend.strength : 0;
-        const growth = (p.marketFit / 100) * 0.06 + trendPull * 0.04;
+        const validationMultiplier = p.marketValidationStatus === 'unvalidated' ? 0.25 : 1;
+        const validatedTile = p.validatedTileId ? this.state.marketTiles.get(p.validatedTileId) : undefined;
+        const tilePull = validatedTile
+          ? Math.max(0, validatedTile.growth) * 0.08 + Math.max(0, validatedTile.demandLevel - 0.5) * 0.02
+          : 0;
+        const growth = ((p.marketFit / 100) * 0.06 + trendPull * 0.04 + tilePull) * validationMultiplier;
         p.adopters = Math.min(1, p.adopters + growth);
 
         // Phase transitions by age + adoption + upkeep.
-        if (p.lifecycleStage === 'early' && (p.adopters > 0.15 || p.ageTurns > 4)) {
+        if (p.lifecycleStage === 'early' && p.marketValidationStatus !== 'unvalidated' && (p.adopters > 0.15 || p.ageTurns > 4)) {
           p.lifecycleStage = 'growth';
         } else if (p.lifecycleStage === 'growth' && (p.adopters > 0.4 || p.ageTurns > 10)) {
           p.lifecycleStage = 'mature';
@@ -3084,7 +3159,7 @@ export class TurnEngine {
   estimateSuccess(action: TurnAction): number {
     const company = this.state.companies.get(action.companyId);
     if (!company) return 0;
-    if (action.type === 'generate_compute' || action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity') return 1;
+    if (action.type === 'generate_compute' || action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity' || action.type === 'validate_market') return 1;
     if (action.type === 'department_initiative') {
       const department = action.targetDepartmentId
         ? company.departments.find(candidate => candidate.id === action.targetDepartmentId)
@@ -3164,7 +3239,7 @@ export class TurnEngine {
     if (acts.length === 0) return { combat: 0, defense: 0, growth: 0 };
     const combat = acts.filter(a => ['industrial_espionage', 'cyber_attack', 'legal_action', 'acquire_company', 'public_tender_offer'].includes(a.type)).length / acts.length;
     const defense = acts.filter(a => ['security_hardening', 'security_offline', 'security_online'].includes(a.type)).length / acts.length;
-    const growth = acts.filter(a => ['expand_market', 'launch_product', 'improve_product', 'ai_automation', 'build_department', 'department_initiative'].includes(a.type)).length / acts.length;
+    const growth = acts.filter(a => ['expand_market', 'validate_market', 'launch_product', 'improve_product', 'ai_automation', 'build_department', 'department_initiative'].includes(a.type)).length / acts.length;
     return { combat, defense, growth };
   }
 
@@ -3187,7 +3262,14 @@ export class TurnEngine {
         // category) — otherwise the market is skeptical and revenue stays tiny.
         const liveTrend = this.state.trends.find(t => t.category === p.category && t.expiresTurn > this.state.turn);
         const weakSignal = this.state.weakSignals.find(w => w.relatedCategory === p.category && w.expiresTurn > this.state.turn);
-        stageMul = liveTrend ? 0.5 + liveTrend.strength * 0.8 : (weakSignal ? 0.25 : 0.08);
+        const validatedTile = p.marketValidationStatus === 'validated' && p.validatedTileId
+          ? this.state.marketTiles.get(p.validatedTileId)
+          : undefined;
+        stageMul = p.marketValidationStatus === 'unvalidated'
+          ? 0.04
+          : validatedTile
+            ? 0.4 + calculateMarketOpportunityScore(validatedTile) * 0.5
+            : liveTrend ? 0.5 + liveTrend.strength * 0.8 : (weakSignal ? 0.25 : 0.08);
       } else if (p.lifecycleStage === 'growth') {
         // Fidelizzati: existing installed base repurchases a percentage each turn.
         stageMul = 1.0 + Math.min(0.8, p.baseInstalled / 100);

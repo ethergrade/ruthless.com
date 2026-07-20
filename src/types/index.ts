@@ -226,6 +226,7 @@ export type CampaignAuthenticity = 'verified' | 'aspirational' | 'fabricated';
 export type ActionType =
   | 'build_department'
   | 'launch_product'
+  | 'validate_market'       // anchor an idea-free weak-signal product in a thriving explored tile
   | 'improve_product'
   | 'expand_market'
   | 'marketing_campaign'
@@ -585,6 +586,14 @@ export interface Product {
   upForAuction?: boolean;
   /** Timing against the most recent global trend for this category. */
   trendTiming?: 'on_time' | 'late' | 'none';
+  /** Weak-signal provenance for speculative INVEST launches. */
+  weakSignalOriginId?: string;
+  /** Idea-free INVEST products must validate their market before normal growth. */
+  marketValidationStatus?: 'unvalidated' | 'validated';
+  /** Sector promised by the weak signal and required by Validate Market. */
+  marketValidationSector?: MarketSegment;
+  /** Explored market tile that converted the weak signal into real demand. */
+  validatedTileId?: TileId;
   /** Provenance carried by a product derived from industrial espionage. */
   espionageIntelId?: string;
   stolenFromCompanyId?: CompanyId;
