@@ -375,13 +375,17 @@ describe('Compute and cybersecurity capacity', () => {
     const state = engine.getState();
     const company = state.companies.get(state.playerCompanyId)!;
     company.computerPoints = 37;
-    const legacyCompany = company as unknown as { computePoints?: number; cybersecurityPoints?: number; espionageIntel?: unknown[] };
-    const legacyProduct = company.products[0] as unknown as { computePoints?: number; lastTurnRevenue?: number; lastTurnMargin?: number };
+    const legacyCompany = company as unknown as { computePoints?: number; computeInfrastructure?: number; lastComputeGenerated?: number; cybersecurityPoints?: number; espionageIntel?: unknown[] };
+    const legacyProduct = company.products[0] as unknown as { computePoints?: number; lastComputeMultiplier?: number; computeAdvantage?: number; lastTurnRevenue?: number; lastTurnMargin?: number };
     const legacyBuilding = company.buildings[0] as unknown as { cybersecurityPoints?: number };
     delete legacyCompany.computePoints;
+    delete legacyCompany.computeInfrastructure;
+    delete legacyCompany.lastComputeGenerated;
     delete legacyCompany.cybersecurityPoints;
     delete legacyCompany.espionageIntel;
     delete legacyProduct.computePoints;
+    delete legacyProduct.lastComputeMultiplier;
+    delete legacyProduct.computeAdvantage;
     delete legacyProduct.lastTurnRevenue;
     delete legacyProduct.lastTurnMargin;
     delete legacyBuilding.cybersecurityPoints;
@@ -389,10 +393,86 @@ describe('Compute and cybersecurity capacity', () => {
     engine.setState(state);
 
     expect(company.computePoints).toBe(37);
+    expect(company.computeInfrastructure).toBe(0);
+    expect(company.lastComputeGenerated).toBe(0);
     expect(company.cybersecurityPoints).toBe(0);
     expect(company.espionageIntel).toEqual([]);
     expect(company.products[0].computePoints).toBe(0);
+    expect(company.products[0].lastComputeMultiplier).toBe(1);
+    expect(company.products[0].computeAdvantage).toBe(0);
     expect(company.buildings[0].cybersecurityPoints).toBe(0);
+  });
+
+  it('expands the compute grid into immediate reserve and higher renewable generation', () => {
+    const engine = new TurnEngine(604);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    state.companies = new Map([[company.id, company]]);
+    company.cash = 10_000_000;
+    company.computePoints = 0;
+    company.computerPoints = 0;
+    company.computeInfrastructure = 0;
+    const hq = company.buildings.find(building => building.isHQ)!;
+    const aiDepartment = {
+      ...company.departments[0], id: 'ai_grid_test', type: 'ai_data' as const,
+      buildingId: hq.id, level: 1, efficiency: 1,
+    };
+    company.departments.push(aiDepartment);
+    hq.departmentIds.push(aiDepartment.id);
+    state.actions.push({
+      id: 'generate_compute_test', companyId: company.id, type: 'generate_compute',
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    engine.endTurn();
+
+    expect(company.computeInfrastructure).toBe(10);
+    expect(company.lastComputeGenerated).toBe(9);
+    expect(company.computePoints).toBe(24);
+    expect(company.computerPoints).toBe(company.computePoints);
+  });
+
+  it('rejects compute-grid expansion without an AI & Data department', () => {
+    const engine = new TurnEngine(605);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    state.companies = new Map([[company.id, company]]);
+    company.cash = 10_000_000;
+    const action = {
+      id: 'generate_compute_no_ai', companyId: company.id, type: 'generate_compute' as const,
+      budget: 200_000, priority: 1, status: 'planned' as const,
+    };
+    state.actions.push(action);
+
+    engine.endTurn();
+
+    expect(action.status).toBe('failed');
+    expect(company.computeInfrastructure).toBe(0);
+  });
+
+  it('turns a compute lead over direct rival products into a visible revenue advantage', () => {
+    const engine = new TurnEngine(606);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const rival = [...state.companies.values()].find(candidate => candidate.id !== company.id)!;
+    state.companies = new Map([[company.id, company], [rival.id, rival]]);
+    const product = company.products[0];
+    const rivalProduct = rival.products[0];
+    rivalProduct.category = product.category;
+    rivalProduct.targetSegments = [...product.targetSegments];
+    rivalProduct.computePoints = 0;
+    product.computePoints = 100;
+    product.lifecycleStage = 'mature';
+    product.quality = 100;
+    product.marketFit = 100;
+    product.adopters = 0.8;
+    product.price = 50_000;
+    product.operatingCost = 1_000;
+
+    engine.endTurn();
+
+    expect(product.computeAdvantage).toBeCloseTo(0.2);
+    expect(product.lastComputeMultiplier).toBeCloseTo(1.8);
   });
 
   it('allocates compute to a product and compounds it only when the product has healthy margins', () => {

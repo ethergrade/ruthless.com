@@ -52,6 +52,40 @@ Lo scudo cyber assorbe il danno per primo. A difesa completamente azzerata l'RNG
 `strategyTilt(companyId)` misura come gioca il player (tilt offesa/difesa/crescita) dalla
 allocazione di budget delle azioni.
 
+## Compute generation and product edge
+
+La generazione dipartimentale base è deterministica:
+
+```
+base = Σ AI_Data(8 × level × efficiency) + Σ DEV(3 × level × efficiency)
+generated = round(base × (1 + computeInfrastructure / 100))
+```
+
+I dipartimenti interrotti non partecipano. `computeInfrastructure` è limitata a 100,
+quindi il moltiplicatore massimo della generazione è 2×; la riserva è limitata a 500.
+
+Per `generate_compute`, ogni unità di budget da $200k compra circa 10 livelli corretti
+per l'efficienza media AI & Data e per il rendimento decrescente:
+
+```
+diminishing = max(0.2, 1 - infrastructure / 125)
+gridGain = round(10 × budgetUnits × avgAiEfficiency × diminishing)
+immediateReserve = round(gridGain × 1.5)
+```
+
+Sul prodotto, il moltiplicatore storico di throughput resta fino a +50%. Si aggiunge
+solo un bonus positivo quando il prodotto supera il massimo compute di un rivale con
+stessa categoria e almeno un segmento target condiviso:
+
+```
+throughputBonus = min(0.5, productCompute / 200)
+competitiveBonus = min(0.2, max(0, productCompute - rivalCompute) / 500)
+revenueMultiplier = (1 + throughputBonus) × (1 + competitiveBonus)
+```
+
+L'upkeep del grid (`$1.500 × livello`) e del compute assegnato (`$1.000 × punto`)
+entra negli operating costs e quindi nel margine che determina compounding o decadimento.
+
 ## Mappa infinita (`createMarketMap` + `MarketMap`)
 
 - `createMarketMap(rng, w, h, mapSeed)`: genera i tile **deterministicamente** dal seed

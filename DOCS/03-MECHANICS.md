@@ -16,14 +16,19 @@ Ogni `Company` ha (tra gli altri):
 | `buildings: Building[]`, `departments: Department[]` | Asset |
 | `kind` | `'player' | 'rival' | 'startup'` |
 | `ceos: CEO[]`, `ceoBuild?: CeoBuild`, `skills?: Partial<Record<CEOSkill,number>>` | CEO GDR |
-| `computePoints` | Capacità non allocata generata da AI & Data / DEV; alimenta prodotti e cyber-attacchi |
+| `computePoints` | Riserva non allocata generata da AI & Data / DEV; alimenta prodotti e cyber-attacchi |
+| `computeInfrastructure` | Compute Grid 0..100: moltiplicatore persistente della generazione rinnovabile |
 | `cybersecurityPoints` | Resilienza non allocata generata da Cybersecurity; viene assegnata agli edifici |
 
 ## Compute e cybersecurity
 
-- AI & Data genera `8 × livello × efficienza` Compute Points/turno; DEV ne genera 3.
-- `allocate_compute` sposta compute su un prodotto (massimo 100): aumenta throughput fino al 50%, ma ogni punto aggiunge costo operativo.
+- Una company appena creata riceve **20 Compute Points di commissioning per ogni AI & Data iniziale**. Non è una rendita: è la riserva con cui iniziare ad allocare capacità. Acquisizioni e spionaggio possono trasferire altro compute nella riserva.
+- AI & Data genera `8 × livello × efficienza` Compute Points/turno; DEV integra con `3 × livello × efficienza`. Un dipartimento interrotto non genera.
+- `generate_compute` (**Expand Compute Grid**) investe almeno $200k: aggiunge punti immediati e livelli persistenti di infrastruttura. Il livello 100 raddoppia la generazione dipartimentale; i ritorni dell'upgrade diminuiscono e ogni livello costa $1.500/turno.
+- `allocate_compute` sposta compute su un prodotto (massimo 100): aumenta throughput fino al 50%, ma ogni punto aggiunge $1.000/turno di costo operativo.
+- Se il prodotto ha più compute dei rivali nella stessa categoria e negli stessi segmenti, ottiene inoltre fino al 20% di bonus ricavi competitivo. Il bonus non penalizza chi è indietro e si somma moltiplicativamente al throughput.
 - Con margine prodotto `≥25%` il compute assegnato cresce fino al 15%/turno; sotto il 5% decade del 10%.
+- La riserva non allocata ha cap 500 e può anche essere consumata da `cyber_attack`; il compute assegnato a un prodotto resta separato.
 - Cybersecurity genera `8 × livello × efficienza` Cybersecurity Points/turno; `security_online` aggiunge capacità tramite investimento.
 - `allocate_cybersecurity` crea lo scudo del singolo edificio (massimo 100). Lo scudo viene consumato prima di firewall, compute prodotto, efficienza R&D e maturità delle idee.
 - Solo quando cyber points e firewall dell'edificio arrivano entrambi a zero un attacco critico può rubare o distruggere permanentemente un'idea.

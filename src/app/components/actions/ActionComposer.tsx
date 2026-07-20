@@ -10,6 +10,7 @@ import {
 } from '../../../data/generators';
 import { CEO_PILLARS, PILLAR_LABELS } from '../../../data/archetypes';
 import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots, getOwnedBuildingsWithCapacity } from '../../../simulation/utils/buildings';
+import { calculateComputeExpansion, calculateComputeGeneration } from '../../../simulation/utils/compute';
 
 interface Props {
   playerCompany: Company;
@@ -55,6 +56,7 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'sell_source', label: 'Sell Source Code', group: 'Product & R&D', baseCost: 0, needs: ['targetIdea', 'targetCompany'], requiresDept: 'dev_engineering' },
   { type: 'pivot_product', label: 'Pivot Product', group: 'Product & R&D', baseCost: 250000, needs: ['targetProduct'], requiresDept: 'product_rd' },
   { type: 'improve_product', label: 'Improve Product', group: 'Product & R&D', baseCost: 100000, needs: ['targetProduct'], requiresDept: 'product_rd' },
+  { type: 'generate_compute', label: 'Expand Compute Grid', group: 'Product & R&D', baseCost: 200000, requiresDept: 'ai_data' },
   { type: 'allocate_compute', label: 'Allocate Compute', group: 'Product & R&D', baseCost: 0, needs: ['targetProduct', 'resourcePoints'], requiresDept: 'ai_data' },
   { type: 'ai_automation', label: 'AI Automation', group: 'Product & R&D', baseCost: 250000, requiresDept: 'ai_data' },
   { type: 'expand_market', label: 'Expand Market', group: 'Market & Sales', baseCost: 200000, requiresDept: 'sales_marketing' },
@@ -793,6 +795,21 @@ export const ActionComposer: React.FC<Props> = ({
                 : 'Compute committed here is consumed by the offensive operation.'}</span>
           </div>
         )}
+
+        {type === 'generate_compute' && (() => {
+          const expansion = calculateComputeExpansion(playerCompany, budget);
+          const projectedCompany = {
+            ...playerCompany,
+            computeInfrastructure: playerCompany.computeInfrastructure + expansion.infrastructureGain,
+          };
+          return <div className="ac-field">
+            <label>Compute Grid Expansion</label>
+            <span className="ac-hint">
+              Grid {playerCompany.computeInfrastructure}/100 → {projectedCompany.computeInfrastructure}/100 · immediate reserve +{expansion.immediatePoints} · next-turn generation +{calculateComputeGeneration(projectedCompany)} points.
+              Grid upkeep is $1,500 per level each turn; higher levels have diminishing upgrade returns.
+            </span>
+          </div>;
+        })()}
 
         {/* OPA offer */}
         {needs.includes('offer') && (

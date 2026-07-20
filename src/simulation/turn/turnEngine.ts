@@ -43,6 +43,14 @@ import { createMarketMap, buildTileIndex, createTile } from '../factories/market
 import { createCompany } from '../factories/companyFactory';
 import { generateCompanyName } from '../../data/generators';
 import { findBuildingOnTile, getBuildingDisplayName, getBuildingFreeSlots, getBuildingUsedSlots } from '../utils/buildings';
+import {
+  COMPUTE_INFRASTRUCTURE_CAP,
+  COMPUTE_INFRASTRUCTURE_UPKEEP,
+  COMPUTE_POOL_CAP,
+  calculateComputeExpansion,
+  calculateComputeGeneration,
+  calculateProductComputePerformance,
+} from '../utils/compute';
 
 export interface TurnResult {
   newState: GameState;
@@ -130,10 +138,14 @@ export class TurnEngine {
       const migratedCompute = Math.max(0, company.computePoints ?? company.computerPoints ?? 0);
       company.computePoints = migratedCompute;
       company.computerPoints = migratedCompute;
+      company.computeInfrastructure = Math.max(0, Math.min(COMPUTE_INFRASTRUCTURE_CAP, company.computeInfrastructure ?? 0));
+      company.lastComputeGenerated = Math.max(0, company.lastComputeGenerated ?? 0);
       company.cybersecurityPoints = Math.max(0, company.cybersecurityPoints ?? 0);
       company.espionageIntel = company.espionageIntel ?? [];
       company.products.forEach(product => {
         product.computePoints = Math.max(0, Math.min(100, product.computePoints ?? 0));
+        product.lastComputeMultiplier = Math.max(1, product.lastComputeMultiplier ?? 1);
+        product.computeAdvantage = Math.max(0, Math.min(0.2, product.computeAdvantage ?? 0));
         product.lastTurnRevenue = product.lastTurnRevenue ?? 0;
         product.lastTurnMargin = Math.max(-1, Math.min(1, product.lastTurnMargin ?? 0));
       });
@@ -788,6 +800,10 @@ export class TurnEngine {
         action.targetProductId = product.id;
         action.resourcePoints = Math.min(company.computePoints, this.rng.nextInt(5, 15));
       }
+      if (actionType === 'generate_compute') {
+        if (!company.departments.some(department => department.type === 'ai_data')) continue;
+        if (company.computeInfrastructure >= COMPUTE_INFRASTRUCTURE_CAP) continue;
+      }
       if (actionType === 'allocate_cybersecurity') {
         if (!company.departments.some(department => department.type === 'cybersecurity')) continue;
         const building = [...company.buildings].sort((a, b) => a.cybersecurityPoints - b.cybersecurityPoints)[0];
@@ -812,7 +828,7 @@ export class TurnEngine {
       hypergrowth_platform: {
         build_department: 20, launch_product: 25, improve_product: 15,
         expand_market: 20, marketing_campaign: 10, hire_executive: 5,
-        security_hardening: 2, allocate_compute: 8, allocate_cybersecurity: 3, ai_automation: 3, launch_consulting_practice: 1,
+        security_hardening: 2, generate_compute: 5, allocate_compute: 8, allocate_cybersecurity: 3, ai_automation: 3, launch_consulting_practice: 1,
         scout_acquisition: 5, acquire_company: 3, raise_capital: 10, reduce_costs: 1,
         build_building: 8, industrial_espionage: 4, cyber_attack: 3, security_offline: 2,
         security_online: 2, legal_action: 2, ceo_social: 6, public_tender_offer: 4, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -820,7 +836,7 @@ export class TurnEngine {
       security_fortress: {
         build_department: 15, launch_product: 10, improve_product: 15,
         expand_market: 5, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 25, allocate_compute: 3, allocate_cybersecurity: 14, ai_automation: 5, launch_consulting_practice: 5,
+        security_hardening: 25, generate_compute: 3, allocate_compute: 3, allocate_cybersecurity: 14, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 5, acquire_company: 2, raise_capital: 5, reduce_costs: 5,
         build_building: 5, industrial_espionage: 3, cyber_attack: 4, security_offline: 8,
         security_online: 10, legal_action: 6, ceo_social: 3, public_tender_offer: 2, auction_sell: 2, end_turn: 0, auction_bid: 0,
@@ -828,7 +844,7 @@ export class TurnEngine {
       acquisition_machine: {
         build_department: 10, launch_product: 10, improve_product: 10,
         expand_market: 10, marketing_campaign: 5, hire_executive: 10,
-        security_hardening: 5, allocate_compute: 4, allocate_cybersecurity: 5, ai_automation: 5, launch_consulting_practice: 5,
+        security_hardening: 5, generate_compute: 3, allocate_compute: 4, allocate_cybersecurity: 5, ai_automation: 5, launch_consulting_practice: 5,
         scout_acquisition: 20, acquire_company: 20, raise_capital: 10, reduce_costs: 5,
         build_building: 6, industrial_espionage: 4, cyber_attack: 3, security_offline: 3,
         security_online: 3, legal_action: 5, ceo_social: 4, public_tender_offer: 12, auction_sell: 4, end_turn: 0, auction_bid: 0,
@@ -836,7 +852,7 @@ export class TurnEngine {
       lean_specialist: {
         build_department: 10, launch_product: 15, improve_product: 20,
         expand_market: 10, marketing_campaign: 10, hire_executive: 10,
-        security_hardening: 10, allocate_compute: 10, allocate_cybersecurity: 8, ai_automation: 10, launch_consulting_practice: 15,
+        security_hardening: 10, generate_compute: 6, allocate_compute: 10, allocate_cybersecurity: 8, ai_automation: 10, launch_consulting_practice: 15,
         scout_acquisition: 2, acquire_company: 2, raise_capital: 5, reduce_costs: 10,
         build_building: 4, industrial_espionage: 5, cyber_attack: 4, security_offline: 4,
         security_online: 5, legal_action: 3, ceo_social: 8, public_tender_offer: 3, auction_sell: 3, end_turn: 0, auction_bid: 0,
@@ -864,6 +880,7 @@ export class TurnEngine {
       marketing_campaign: 150000,
       hire_executive: 400000,
       security_hardening: 200000,
+      generate_compute: 200000,
       allocate_compute: 0,
       allocate_cybersecurity: 0,
       ai_automation: 250000,
@@ -1037,6 +1054,17 @@ export class TurnEngine {
         return { success: false, message: 'Cyber Attack requires available Compute Points', effects: {}, risksTriggered: [] };
       }
     }
+    if (action.type === 'generate_compute') {
+      if (!company.departments.some(department => department.type === 'ai_data')) {
+        return { success: false, message: 'Compute Grid expansion requires an AI & Data department', effects: {}, risksTriggered: [] };
+      }
+      if (action.budget < 200_000) {
+        return { success: false, message: 'Compute Grid expansion requires at least $200,000', effects: {}, risksTriggered: [] };
+      }
+      if (company.computeInfrastructure >= COMPUTE_INFRASTRUCTURE_CAP) {
+        return { success: false, message: 'Compute Grid is already at maximum level', effects: {}, risksTriggered: [] };
+      }
+    }
     if (action.type === 'allocate_compute') {
       if (!company.departments.some(department => department.type === 'ai_data')) {
         return { success: false, message: 'Compute allocation requires an AI & Data department', effects: {}, risksTriggered: [] };
@@ -1076,7 +1104,7 @@ export class TurnEngine {
     }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile', 'exploit_stolen_asset', 'repatent_stolen_asset'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'generate_compute', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile', 'exploit_stolen_asset', 'repatent_stolen_asset'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
@@ -1093,7 +1121,9 @@ export class TurnEngine {
 
     return {
       success,
-      message: success ? 'Action completed successfully' : 'Action failed to achieve objectives',
+      message: success && action.type === 'generate_compute'
+        ? `Compute Grid expanded by ${effects.computeInfrastructure ?? 0}; ${effects.computePoints ?? 0} Compute Points commissioned`
+        : success ? 'Action completed successfully' : 'Action failed to achieve objectives',
       effects,
       risksTriggered: risks,
     };
@@ -1113,6 +1143,7 @@ export class TurnEngine {
       marketing_campaign: 150000,
       hire_executive: 400000,
       security_hardening: 200000,
+      generate_compute: 200000,
       allocate_compute: 0,
       allocate_cybersecurity: 0,
       ai_automation: 250000,
@@ -1165,6 +1196,7 @@ export class TurnEngine {
       marketing_campaign: ['sales_marketing'],
       hire_executive: ['people_culture', 'corporate_strategy'],
       security_hardening: ['cybersecurity', 'ai_data'],
+      generate_compute: ['ai_data', 'dev_engineering'],
       allocate_compute: ['ai_data', 'dev_engineering'],
       allocate_cybersecurity: ['cybersecurity'],
       ai_automation: ['ai_data', 'product_rd'],
@@ -1244,6 +1276,9 @@ export class TurnEngine {
         break;
       case 'security_hardening':
         this.hardenSecurity(company, action.budget, action.targetProductId);
+        break;
+      case 'generate_compute':
+        this.generateCompute(company, action.budget, _effects);
         break;
       case 'allocate_compute':
         this.allocateCompute(company, action);
@@ -1473,6 +1508,8 @@ export class TurnEngine {
       price: 10000,
       operatingCost: 5000,
       computePoints: 0,
+      lastComputeMultiplier: 1,
+      computeAdvantage: 0,
       lastTurnRevenue: 0,
       lastTurnMargin: 0,
       technicalDebt: 10,
@@ -1628,6 +1665,19 @@ export class TurnEngine {
     company.computePoints -= points;
     company.computerPoints = company.computePoints;
     product.computePoints = Math.min(100, product.computePoints + points);
+  }
+
+  private generateCompute(company: Company, budget: number, effects: Record<string, number>): void {
+    const expansion = calculateComputeExpansion(company, budget);
+    if (expansion.infrastructureGain <= 0) return;
+    company.computeInfrastructure = Math.min(
+      COMPUTE_INFRASTRUCTURE_CAP,
+      company.computeInfrastructure + expansion.infrastructureGain,
+    );
+    company.computePoints = Math.min(COMPUTE_POOL_CAP, company.computePoints + expansion.immediatePoints);
+    company.computerPoints = company.computePoints;
+    effects.computeInfrastructure = expansion.infrastructureGain;
+    effects.computePoints = expansion.immediatePoints;
   }
 
   private allocateCybersecurity(company: Company, action: TurnAction): void {
@@ -2856,7 +2906,7 @@ export class TurnEngine {
   estimateSuccess(action: TurnAction): number {
     const company = this.state.companies.get(action.companyId);
     if (!company) return 0;
-    if (action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity') return 1;
+    if (action.type === 'generate_compute' || action.type === 'allocate_compute' || action.type === 'allocate_cybersecurity') return 1;
     let chance = 0.7;
 
     const relevantDept = company.departments.find(d => this.isDepartmentRelevant(d.type, action.type));
@@ -2963,7 +3013,10 @@ export class TurnEngine {
         rp.category === p.category && rp.targetSegments.some(s => p.targetSegments.includes(s))));
       const blueOcean = hasCompetitor ? 1 : 1.25;
 
-      const computeMultiplier = 1 + Math.min(0.5, p.computePoints / 200);
+      const computePerformance = calculateProductComputePerformance(p, company.id, this.state.companies.values());
+      const computeMultiplier = computePerformance.multiplier;
+      p.lastComputeMultiplier = computeMultiplier;
+      p.computeAdvantage = computePerformance.competitiveBonus;
       const penetration = p.adopters * p.version * blueOcean;
       const units = Math.max(0, (company.marketInfluence + p.marketFit) * 0.5 * penetration * stageMul);
       const revenue = units * p.price * qualityMul * fitMul * computeMultiplier;
@@ -2984,8 +3037,9 @@ export class TurnEngine {
 
     const deptCost = company.departments.reduce((sum, d) => sum + d.recurringCost, 0);
     const productCost = company.products.reduce((sum, p) => sum + p.operatingCost + p.computePoints * 1000, 0);
+    const computeInfrastructureCost = company.computeInfrastructure * COMPUTE_INFRASTRUCTURE_UPKEEP;
 
-    let operatingCosts = Math.round(deptCost + productCost);
+    let operatingCosts = Math.round(deptCost + productCost + computeInfrastructureCost);
     // CEO perks (GDR build): cost_cutter trims recurring costs; high_leverage
     // (Banker) adds extra drag.
     const perks = company.ceos[0]?.perks ?? [];
@@ -3044,17 +3098,14 @@ export class TurnEngine {
     this.state.companies.forEach(company => {
       const activeDepartments = company.departments.filter(department =>
         !department.disruptedUntilTurn || department.disruptedUntilTurn < this.state.turn);
-      const generatedCompute = activeDepartments.reduce((sum, department) => {
-        if (department.type === 'ai_data') return sum + Math.max(1, Math.round(8 * department.level * department.efficiency));
-        if (department.type === 'dev_engineering') return sum + Math.max(1, Math.round(3 * department.level * department.efficiency));
-        return sum;
-      }, 0);
+      const generatedCompute = calculateComputeGeneration(company, this.state.turn);
       const generatedCyber = activeDepartments.reduce((sum, department) =>
         department.type === 'cybersecurity'
           ? sum + Math.max(1, Math.round(8 * department.level * department.efficiency))
           : sum, 0);
 
-      company.computePoints = Math.min(500, company.computePoints + generatedCompute);
+      company.computePoints = Math.min(COMPUTE_POOL_CAP, company.computePoints + generatedCompute);
+      company.lastComputeGenerated = generatedCompute;
       company.cybersecurityPoints = Math.min(500, company.cybersecurityPoints + generatedCyber);
       company.computerPoints = company.computePoints;
 

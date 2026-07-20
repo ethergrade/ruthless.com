@@ -51,10 +51,10 @@ Categories:
 
 | Group | Actions |
 |-------|---------|
-| Corporate | Launch Product, Improve Product, Build Department, Build Building, Expand Market, Raise Capital, Reduce Costs, Hire Executive |
+| Corporate | Build Department, Build Building, Raise Capital, Reduce Costs, Hire Executive / CEO / COO |
 | Market & Sales | Marketing Campaign, CEO Social Post, Create Idea, Release Source Code |
-| Security & M&A | Physical Security, **Sabotage Building (arson)**, Cyber Defense, Industrial Espionage, Cyber Attack, Legal Action, Public Tender Offer (OPA), Auction Sell / Bid |
-| Research | Create Idea (R&D), AI Automation |
+| Product & R&D | Launch / Improve / Pivot Product, Create Idea, Release / Sell Source, AI Automation, Expand / Allocate Compute |
+| Security & M&A | Physical Security, **Sabotage Building (arson)**, Cyber Defense, Industrial Espionage, Cyber Attack, Legal Action, Acquisition, Public Tender Offer (OPA), Auction Sell / Bid |
 
 **Success** is estimated live (EST. SUCCESS %) before you commit. The **MAX SUCCESS ⚡**
 button snaps the budget to the minimum needed for ~95% odds — no slider dragging.
@@ -79,6 +79,44 @@ Global **trends** demand specific product categories in specific sectors (e.g.
 early hints you can exploit by launching the right product or running the right campaign
 before competitors react. Creating ideas and **releasing source code** shifts trends and
 builds **trust / awareness**.
+
+When you **EXPLOIT** a trend or **INVEST** in a weak signal, the opportunity is not
+just a generic launch bonus: Product Creation is locked to the selected category and
+market sector, and only compatible R&D ideas can be used.
+
+### Compute Economy & Competitive Advantage
+
+**Compute Points** are operating capacity, not a passive score:
+
+- Unused generation accumulates in the reserve every turn. A newly created corporation
+  also receives 20 commissioning points for every starting **AI & Data** department.
+- AI & Data generates `8 × level × efficiency` points per turn; **DEV Engineering**
+  supplements it with `3 × level × efficiency`.
+- **Expand Compute Grid** invests cash in a persistent grid (0–100), gives an immediate
+  reserve, and can double department generation at level 100. Expansion has diminishing
+  returns and the grid costs $1,500 per level each turn.
+- **Allocate Compute** assigns up to 100 points to a product. Assigned capacity raises
+  throughput by up to 50% and costs $1,000 per point per turn.
+- A product that leads direct rivals in the same category and market segments earns up
+  to another 20% revenue advantage. Healthy-margin products compound assigned compute;
+  weak-margin products lose it.
+- Unallocated compute can instead power **Cyber Attacks**, or be acquired/stolen. The
+  reserve is capped at 500, so allocation and timing matter.
+
+The AI & Data command page shows the reserve, next-turn generation, Compute Grid level,
+assigned points, upkeep, throughput bonus and direct-rival edge.
+
+### Acquisitions & Industrial Espionage
+
+A successful company acquisition transfers the target's controlled tiles, buildings,
+departments and products to the buyer, recolors the assets, and triggers a positive or
+negative M&A market shock based on price, quality, profitability and buyer archetype.
+
+Industrial Espionage creates a persistent dossier that becomes actionable on the next
+turn. It can contain Compute, Cybersecurity, R&D progress, an idea or a product blueprint.
+The player may exploit it for an advantage, but launching derivative IP can trigger a
+lawsuit by the victim. **Re-Patent Stolen IP** requires Legal & Compliance, applies only
+to stolen ideas/blueprints, and protects their derivative product lineage.
 
 ### News & Events
 A live **news feed** reports Bull Market Rallies, Market Corrections, Breakthroughs,
@@ -114,6 +152,14 @@ npx tsc --noEmit   # typecheck
 npm run lint       # eslint
 npx vitest run     # tests
 ```
+
+## Project Documentation
+
+- [Documentation index](./DOCS/INDEX.md)
+- [Mechanics and resource economy](./DOCS/03-MECHANICS.md)
+- [Complete action catalog](./DOCS/04-ACTIONS.md)
+- [Simulation algorithms](./DOCS/07-ALGORITHMS.md)
+- [Design QA evidence](./design-qa.md)
 
 ---
 

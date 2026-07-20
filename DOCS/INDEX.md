@@ -19,10 +19,11 @@ un gioco di strategia aziendale turn-based ispirato a *Tom Clancy's ruthless.com
 | [07-ALGORITHMS.md](./07-ALGORITHMS.md) | Power score, success chance, mappa infinita, RNG |
 | [08-CRITICITA.md](./08-CRITICITA.md) | Criticità, debiti tecnici, bug risolti |
 
-## Stato attuale (snapshot 2026-07-19)
+## Stato attuale (snapshot 2026-07-20)
 
-- Verified green: `npx tsc --noEmit` · `npm run lint` · `npx vitest run` (13 test) · `npm run build`.
-- Ultimo commit: `2972bbd` — redesign New Game a 2 colonne (zero-scroll) + fix spawn rivali.
+- Verified green: `npm run lint` · `npm test` (59 test) · `npm run build`.
 - Meccaniche implementate: risorse aziendali, 11 dipartimenti, edifici + HQ, mappa infinita
   procedurale, ~45 azioni, CEO GDR a 8 pillar, crisi/calamità, vittoria per power score,
-  placement reale su mappa con spawn rivali automatico al 3° building.
+  placement reale su mappa con spawn rivali automatico al 3° building, Compute Grid con
+  generazione/allocazione/edge competitivo, acquisizioni complete con shock M&A, trend e
+  weak signal vincolanti per il prodotto, spionaggio differito con exploit/re-patent/lawsuit.

@@ -97,6 +97,33 @@ describe('Fase 2 — layout components render without crashing', () => {
     }
   });
 
+  it('explains compute origin, generation, economics and the grid expansion order', () => {
+    const engine = new TurnEngine(2026);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const aiPage = renderToString(createElement(QuickActionPage, {
+      page: 'ai', state, company, onClose: () => {}, onPlan: () => {},
+    }));
+    expect(aiPage).toContain('Why a reserve can exist');
+    expect(aiPage).toContain('NEXT TURN');
+    expect(aiPage).toContain('Expand compute grid');
+
+    const hq = company.buildings.find(building => building.isHQ)!;
+    company.departments.push({
+      ...company.departments[0], id: 'ai_ui_test', type: 'ai_data', buildingId: hq.id,
+    });
+    const composer = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'generate_compute',
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(composer).toContain('Compute Grid Expansion');
+    expect(composer).toContain('immediate reserve');
+  });
+
   it('shows all three friendly player buildings in Build Department', () => {
     const engine = new TurnEngine(2025);
     const state = engine.getState();

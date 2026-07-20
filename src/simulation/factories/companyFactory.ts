@@ -148,6 +148,8 @@ export const createCompany = (
     // the market under the same rules instead of receiving hidden resources.
     computerPoints: departments.filter(department => department.type === 'ai_data').length * 20,
     computePoints: departments.filter(department => department.type === 'ai_data').length * 20,
+    computeInfrastructure: 0,
+    lastComputeGenerated: 0,
     cybersecurityPoints: departments.filter(department => department.type === 'cybersecurity').length * 20,
     legalPoints: 0,
     scandal: 0,
@@ -275,6 +277,8 @@ const createStartingProducts = (rng: ReturnType<typeof createRNG>, archetype: Co
       price: rng.nextInt(5000, 50000),
       operatingCost: rng.nextInt(1000, 10000),
       computePoints: 0,
+      lastComputeMultiplier: 1,
+      computeAdvantage: 0,
       lastTurnRevenue: 0,
       lastTurnMargin: 0,
       technicalDebt: rng.nextInt(10, 30),

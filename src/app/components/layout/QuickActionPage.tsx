@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ActionType, Company, GameState } from '../../../types';
+import { COMPUTE_INFRASTRUCTURE_UPKEEP, calculateComputeGeneration } from '../../../simulation/utils/compute';
 
 type QuickPage = 'market' | 'departments' | 'products' | 'executives' | 'security' | 'ai' | 'finance' | 'news';
 
@@ -17,7 +18,7 @@ const PAGE_META: Record<QuickPage, { eyebrow: string; title: string; description
   products: { eyebrow: 'PRODUCT WAR ROOM', title: 'Products', description: 'Ideas, launches and live product performance.', actions: [{ type: 'create_ideas', label: 'Create R&D idea' }, { type: 'launch_product', label: 'Launch product' }, { type: 'improve_product', label: 'Improve product' }] },
   executives: { eyebrow: 'EXECUTIVE OFFICE', title: 'Executives', description: 'Leadership capacity, energy and corporate command.', actions: [{ type: 'hire_executive', label: 'Hire executive' }, { type: 'train_ceo', label: 'Train CEO' }, { type: 'ceo_praise', label: 'Praise executive' }] },
   security: { eyebrow: 'SECURITY OPERATIONS', title: 'Security', description: 'Spendable resilience protects buildings, data and R&D assets.', actions: [{ type: 'allocate_cybersecurity', label: 'Allocate cyber points' }, { type: 'security_hardening', label: 'Harden security' }, { type: 'security_offline', label: 'Offline defense' }, { type: 'security_online', label: 'Generate cyber capacity' }] },
-  ai: { eyebrow: 'AI & DATA COMMAND', title: 'AI & Data', description: 'Compute capacity scales products when their economics can sustain it.', actions: [{ type: 'allocate_compute', label: 'Allocate compute' }, { type: 'ai_automation', label: 'Deploy automation' }, { type: 'create_ideas', label: 'Create R&D idea' }] },
+  ai: { eyebrow: 'AI & DATA COMMAND', title: 'AI & Data', description: 'Generate compute, assign it to profitable products and outperform direct rivals.', actions: [{ type: 'generate_compute', label: 'Expand compute grid' }, { type: 'allocate_compute', label: 'Allocate compute' }, { type: 'ai_automation', label: 'Deploy automation' }] },
   finance: { eyebrow: 'CASH FLOW CONTROL', title: 'Finance', description: 'Liquidity, leverage and capital operations.', actions: [{ type: 'raise_capital', label: 'Raise capital' }, { type: 'reduce_costs', label: 'Reduce costs' }, { type: 'scout_acquisition', label: 'Scout acquisition' }] },
   news: { eyebrow: 'HEADLINES / REAL TIME', title: 'Newsroom', description: 'All market stories and consequences recorded by the turn resolver.', actions: [] },
 };
@@ -27,6 +28,8 @@ const money = (value: number) => `$${Math.round(value).toLocaleString()}`;
 export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose, onPlan }) => {
   const meta = PAGE_META[page];
   const rdCount = company.departments.filter(department => department.type === 'product_rd').length;
+  const assignedCompute = company.products.reduce((sum, product) => sum + product.computePoints, 0);
+  const nextComputeGeneration = calculateComputeGeneration(company, state.turn);
   const cards = page === 'market' ? [
     ['ACTIVE TRENDS', state.trends.length], ['CONTROLLED TILES', company.controlledTiles.length], ['MARKET INFLUENCE', `${company.marketInfluence.toFixed(0)}%`],
   ] : page === 'departments' ? [
@@ -38,7 +41,7 @@ export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose
   ] : page === 'security' ? [
     ['POSTURE', `${company.securityPosture.toFixed(0)}%`], ['CYBER POOL', company.cybersecurityPoints], ['ASSIGNED', company.buildings.reduce((sum, building) => sum + building.cybersecurityPoints, 0)],
   ] : page === 'ai' ? [
-    ['COMPUTE POOL', company.computePoints], ['ASSIGNED', company.products.reduce((sum, product) => sum + product.computePoints, 0)], ['AI / DATA DEPTS', company.departments.filter(department => department.type === 'ai_data').length],
+    ['RESERVE', company.computePoints], ['NEXT TURN', `+${nextComputeGeneration}`], ['GRID', `${company.computeInfrastructure}/100`], ['ASSIGNED', assignedCompute],
   ] : page === 'finance' ? [
     ['CASH', money(company.cash)], ['CASH FLOW', money(company.cashFlow)], ['DEBT', money(company.debt)],
   ] : [
@@ -65,7 +68,14 @@ export const QuickActionPage: React.FC<Props> = ({ page, state, company, onClose
       ) : page === 'market' ? (
         <div className="quick-page-list">{state.trends.map(trend => <article key={trend.id}><strong>{trend.title}</strong><span>{trend.category.replace('_', ' ')} · {(trend.strength * 100).toFixed(0)}% · deadline T{trend.decisionDeadlineTurn}</span></article>)}</div>
       ) : page === 'products' || page === 'ai' ? (
-        <div className="quick-page-list">{company.products.map(product => <article key={product.id}><strong>{product.name}</strong><span>{product.category.replace('_', ' ')} · compute {product.computePoints} · margin {(product.lastTurnMargin * 100).toFixed(0)}% · revenue {money(product.lastTurnRevenue)}{product.trendTiming === 'late' ? ' · LATE' : ''}</span></article>)}</div>
+        <div className="quick-page-list">
+          {page === 'ai' && <>
+            <article><strong>How you generate it</strong><span>AI & Data produces 8 × level × efficiency each turn; DEV adds 3 × level × efficiency. Expand Compute Grid for immediate points and a permanent output multiplier.</span></article>
+            <article><strong>Why a reserve can exist</strong><span>Unused renewable generation accumulates here every turn. A newly founded company also receives 20 commissioning points for each starting AI & Data department; acquired and stolen compute enters the same reserve.</span></article>
+            <article><strong>Economics</strong><span>Grid upkeep {money(company.computeInfrastructure * COMPUTE_INFRASTRUCTURE_UPKEEP)}/turn · assigned compute costs $1,000/point/turn. Profitable products compound it; weak-margin products lose it.</span></article>
+          </>}
+          {company.products.map(product => <article key={product.id}><strong>{product.name}</strong><span>{product.category.replace('_', ' ')} · compute {product.computePoints} · throughput +{Math.max(0, (product.lastComputeMultiplier - 1) * 100).toFixed(0)}% · rival edge +{(product.computeAdvantage * 100).toFixed(0)}% · margin {(product.lastTurnMargin * 100).toFixed(0)}% · revenue {money(product.lastTurnRevenue)}{product.trendTiming === 'late' ? ' · LATE' : ''}</span></article>)}
+        </div>
       ) : page === 'security' ? (
         <div className="quick-page-list">{company.buildings.map(building => <article key={building.id}><strong>{building.name || (building.isHQ ? 'Headquarters' : 'Building')}</strong><span>cyber {building.cybersecurityPoints} · firewall {building.firewall.toFixed(0)} · {building.departmentIds.length} departments</span></article>)}</div>
       ) : page === 'departments' ? (
