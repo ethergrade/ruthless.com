@@ -41,7 +41,9 @@ Tutte le azioni sono `ActionType` (enum in `types/index.ts`). Ogni azione ha
 
 | Azione | Effetto |
 |--------|---------|
-| `industrial_espionage` | Ruba idea/cash/evidence a un rivale (luck riduce caught%) |
+| `industrial_espionage` | Infiltra un reparto rivale e mette al sicuro un dossier (Compute, Cybersecurity, R&D, idea o blueprint) utilizzabile dal turno successivo |
+| `exploit_stolen_asset` | Converte un dossier pronto in punti Compute/Cybersecurity, capacità R&D o un'idea derivata con provenienza rubata |
+| `repatent_stolen_asset` | Legal-only: protegge esclusivamente idee e blueprint ottenuti con spionaggio; non si applica a punti o R&D generico |
 | `cyber_attack` | Hack rivale: data run / virus / breach |
 | `allocate_cybersecurity` | Assegna Cybersecurity Points a un proprio edificio |
 | `security_offline` | Sicurezza fisica: guardie, lockdown, difesa da sabotaggio |

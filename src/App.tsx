@@ -335,6 +335,7 @@ function App() {
             presetType={presetActionType}
             initialDraft={editDraft}
             initialTileId={selectedTileId ?? undefined}
+            currentTurn={state.turn}
             onClose={() => { setTargeting(null); setShowActionModal(false); setEditDraft(null); }}
             onAdd={handleAddAction}
             estimate={estimateAction}

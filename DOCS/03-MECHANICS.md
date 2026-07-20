@@ -71,6 +71,17 @@ al successo delle azioni rilevanti (`isDepartmentRelevant`).
   Il premio pagato, la qualità del target, la redditività e l'archetipo del compratore determinano
   la probabilità di uno shock M&A positivo o negativo su domanda, valutazione e influenza.
 
+## Catena Industrial Espionage
+
+- Un ordine riuscito non clona più immediatamente un prodotto: genera un dossier persistente
+  con vittima, reparto, asset sorgente e valore, disponibile dal turno seguente per 6 turni.
+- `Exploit Stolen Asset` trasferisce punti Compute/Cybersecurity, aumenta R&D oppure crea
+  un'idea reverse-engineered per idee e blueprint di prodotto rubati.
+- Idee e prodotti derivati mantengono la provenienza. Quando un prodotto simile viene lanciato,
+  l'azienda originale può intentare una causa e ottenere danni, perdita di trust e market fit.
+- `Re-Patent Stolen IP` richiede Legal & Compliance e protegge solo dossier `idea` o
+  `product_blueprint`; la protezione segue l'idea e il prodotto derivato e blocca la causa.
+
 ## Crisi / Calamità (Cataclysm)
 
 - Se `simulation.cataclysms` è attivo, a fine turno può scattare un **cataclisma** di mercato

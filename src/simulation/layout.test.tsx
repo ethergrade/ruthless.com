@@ -143,4 +143,37 @@ describe('Fase 2 — layout components render without crashing', () => {
     expect(html).toContain('Bio Signal Idea');
     expect(html).not.toContain('SaaS Other Idea');
   });
+
+  it('offers re-patent only for stolen ideas and product blueprints', () => {
+    const engine = new TurnEngine(2027);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.departments[0].type = 'legal_compliance';
+    company.espionageIntel.push(
+      {
+        id: 'ui_stolen_ip', ownerCompanyId: company.id, sourceCompanyId: 'rival_ip',
+        sourceDepartmentId: 'rival_rd', sourceDepartmentType: 'product_rd', kind: 'idea',
+        sourceName: 'Quantum Formula', amount: 80, category: 'quantum', stolenTurn: 1,
+        availableTurn: 2, expiresTurn: 8,
+      },
+      {
+        id: 'ui_compute', ownerCompanyId: company.id, sourceCompanyId: 'rival_compute',
+        sourceDepartmentId: 'rival_ai', sourceDepartmentType: 'ai_data', kind: 'compute',
+        sourceName: 'Compute Capacity', amount: 20, stolenTurn: 1, availableTurn: 2, expiresTurn: 8,
+      },
+    );
+    const html = renderToString(createElement(ActionComposer, {
+      playerCompany: company,
+      companies: [...state.companies.values()],
+      tiles: [...state.marketTiles.values()],
+      presetType: 'repatent_stolen_asset',
+      currentTurn: 2,
+      onClose: () => {},
+      onAdd: () => {},
+    }));
+    expect(html).toContain('Re-Patent Stolen IP');
+    expect(html).toContain('Quantum Formula');
+    expect(html).not.toContain('value="ui_compute"');
+    expect(html).toContain('applies only to IP obtained through Industrial Espionage');
+  });
 });

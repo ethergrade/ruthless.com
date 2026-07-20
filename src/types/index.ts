@@ -242,6 +242,8 @@ export type ActionType =
   // --- ruthless.com-inspired new actions ---
   | 'build_building'          // construct a new Building on a tile
   | 'industrial_espionage'    // steal an idea / cash / evidence from a rival
+  | 'exploit_stolen_asset'    // turn next-turn espionage intelligence into an advantage
+  | 'repatent_stolen_asset'   // legal-only protection for stolen ideas/product blueprints
   | 'cyber_attack'            // hack a rival: data run / virus / breach
   | 'security_offline'        // physical security: guards, lockdown, sabotage defense
   | 'sabotage_building'       // arson / physical sabotage: set a rival building on fire
@@ -394,6 +396,8 @@ export interface Company {
   startupPotential?: 'empty' | 'promising' | 'high';
   /** Count of startups / companies acquired by this company. */
   acquisitions?: number;
+  /** Intelligence secured through successful industrial espionage. */
+  espionageIntel: EspionageIntel[];
   /** T9: R&D ideas / invented technologies owned by this company. */
   ideas: Idea[];
   /** T: CEO roster — one per HQ; each grants +1 executive order. */
@@ -571,6 +575,12 @@ export interface Product {
   upForAuction?: boolean;
   /** Timing against the most recent global trend for this category. */
   trendTiming?: 'on_time' | 'late' | 'none';
+  /** Provenance carried by a product derived from industrial espionage. */
+  espionageIntelId?: string;
+  stolenFromCompanyId?: CompanyId;
+  repatented?: boolean;
+  legalExposureUntilTurn?: number;
+  legalClaimResolved?: boolean;
 }
 
 /** T9 — an R&D idea / invented technology. Can be patented, open-sourced, or sold. */
@@ -586,6 +596,38 @@ export interface Idea {
   companyId: CompanyId;
   /** Turn it was created. */
   createdTurn: number;
+  /** Provenance carried by reverse-engineered stolen research/blueprints. */
+  espionageIntelId?: string;
+  stolenFromCompanyId?: CompanyId;
+  repatented?: boolean;
+  espionageTargetSegments?: MarketSegment[];
+}
+
+export type EspionageLootKind = 'compute' | 'cybersecurity' | 'rd' | 'idea' | 'product_blueprint';
+
+/** A stolen asset is secured on turn N and can only be exploited from turn N+1. */
+export interface EspionageIntel {
+  id: string;
+  ownerCompanyId: CompanyId;
+  sourceCompanyId: CompanyId;
+  sourceDepartmentId: DepartmentId;
+  sourceDepartmentType: DepartmentType;
+  kind: EspionageLootKind;
+  sourceAssetId?: string;
+  sourceName: string;
+  amount: number;
+  category?: ProductCategory;
+  targetSegments?: MarketSegment[];
+  quality?: number;
+  maturity?: number;
+  breakthrough?: boolean;
+  stolenTurn: number;
+  availableTurn: number;
+  expiresTurn: number;
+  exploitedTurn?: number;
+  repatentedTurn?: number;
+  derivedIdeaId?: string;
+  derivedProductId?: ProductId;
 }
 
 /** Player-tunable product KPIs shown in the product editor. */
@@ -748,6 +790,8 @@ export interface TurnAction {
   targetProductId?: ProductId;
   /** T9: idea id to release / sell as source code (release_source, sell_source). */
   ideaId?: string;
+  /** Post-espionage dossier selected for exploit or legal re-patent. */
+  stolenAssetId?: string;
   /** T: pivot_product — new category / segments for the scope change. */
   pivotCategory?: ProductCategory;
   pivotSegments?: MarketSegment[];

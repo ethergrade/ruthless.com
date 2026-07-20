@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TurnEngine } from './turn/turnEngine';
-import type { TurnAction } from '../types';
+import type { NewsItem, TurnAction } from '../types';
 
 function planPlayerAction(engine: TurnEngine, type: TurnAction['type'], budget: number): void {
   const state = engine.getState();
@@ -375,11 +375,12 @@ describe('Compute and cybersecurity capacity', () => {
     const state = engine.getState();
     const company = state.companies.get(state.playerCompanyId)!;
     company.computerPoints = 37;
-    const legacyCompany = company as unknown as { computePoints?: number; cybersecurityPoints?: number };
+    const legacyCompany = company as unknown as { computePoints?: number; cybersecurityPoints?: number; espionageIntel?: unknown[] };
     const legacyProduct = company.products[0] as unknown as { computePoints?: number; lastTurnRevenue?: number; lastTurnMargin?: number };
     const legacyBuilding = company.buildings[0] as unknown as { cybersecurityPoints?: number };
     delete legacyCompany.computePoints;
     delete legacyCompany.cybersecurityPoints;
+    delete legacyCompany.espionageIntel;
     delete legacyProduct.computePoints;
     delete legacyProduct.lastTurnRevenue;
     delete legacyProduct.lastTurnMargin;
@@ -389,6 +390,7 @@ describe('Compute and cybersecurity capacity', () => {
 
     expect(company.computePoints).toBe(37);
     expect(company.cybersecurityPoints).toBe(0);
+    expect(company.espionageIntel).toEqual([]);
     expect(company.products[0].computePoints).toBe(0);
     expect(company.buildings[0].cybersecurityPoints).toBe(0);
   });
@@ -691,6 +693,171 @@ describe('Industrial Espionage targeting', () => {
     engine.endTurn();
 
     expect(state.actionHistory.find(action => action.id === 'wrong_spy_department')?.outcome?.message).toContain('belonging to the opponent');
+  });
+
+  it('secures a product blueprint now but only permits exploitation next turn', () => {
+    const engine = new TurnEngine(811);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const opponent = [...state.companies.values()].find(candidate => candidate.id !== company.id)!;
+    const department = opponent.departments.find(candidate => candidate.type === 'product_rd')!;
+    const productsBefore = company.products.length;
+    const spy = (engine as unknown as { runIndustrialEspionage: (owner: typeof company, action: TurnAction) => void }).runIndustrialEspionage.bind(engine);
+    const exploit = (engine as unknown as { runExploitStolenAsset: (owner: typeof company, action: TurnAction) => void }).runExploitStolenAsset.bind(engine);
+
+    spy(company, {
+      id: 'secure_blueprint', companyId: company.id, type: 'industrial_espionage',
+      targetCompanyId: opponent.id, targetDepartmentId: department.id,
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+
+    const intel = company.espionageIntel.at(-1)!;
+    expect(intel.kind).toBe('product_blueprint');
+    expect(intel.availableTurn).toBe(state.turn + 1);
+    expect(company.products).toHaveLength(productsBefore);
+
+    exploit(company, {
+      id: 'too_early', companyId: company.id, type: 'exploit_stolen_asset',
+      stolenAssetId: intel.id, budget: 0, priority: 1, status: 'planned',
+    });
+    expect(intel.exploitedTurn).toBeUndefined();
+
+    state.turn = intel.availableTurn;
+    exploit(company, {
+      id: 'exploit_blueprint', companyId: company.id, type: 'exploit_stolen_asset',
+      stolenAssetId: intel.id, budget: 0, priority: 1, status: 'planned',
+    });
+    const derivedIdea = company.ideas.find(idea => idea.espionageIntelId === intel.id)!;
+    expect(derivedIdea.name).toContain(intel.sourceName);
+    expect(derivedIdea.category).toBe(intel.category);
+    expect(derivedIdea.stolenFromCompanyId).toBe(opponent.id);
+
+    const launch = (engine as unknown as { launchProduct: (owner: typeof company, action: TurnAction) => void }).launchProduct.bind(engine);
+    launch(company, {
+      id: 'launch_derivative', companyId: company.id, type: 'launch_product',
+      ideaId: derivedIdea.id, productName: 'Derivative Product', productCategory: derivedIdea.category,
+      targetSegments: derivedIdea.espionageTargetSegments, budget: 300_000, priority: 1, status: 'planned',
+    });
+    const derivative = company.products.find(product => product.name === 'Derivative Product')!;
+    expect(derivative.espionageIntelId).toBe(intel.id);
+    expect(derivative.stolenFromCompanyId).toBe(opponent.id);
+    expect(derivative.legalExposureUntilTurn).toBe(state.turn + 2);
+  });
+
+  it('steals compute capacity and transfers it only when the dossier is exploited', () => {
+    const engine = new TurnEngine(812);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const opponent = [...state.companies.values()].find(candidate => candidate.id !== company.id)!;
+    const department = opponent.departments[0];
+    department.type = 'ai_data';
+    opponent.computePoints = 30;
+    opponent.computerPoints = 30;
+    const companyComputeBefore = company.computePoints;
+    const spy = (engine as unknown as { runIndustrialEspionage: (owner: typeof company, action: TurnAction) => void }).runIndustrialEspionage.bind(engine);
+    const exploit = (engine as unknown as { runExploitStolenAsset: (owner: typeof company, action: TurnAction) => void }).runExploitStolenAsset.bind(engine);
+
+    spy(company, {
+      id: 'steal_compute', companyId: company.id, type: 'industrial_espionage',
+      targetCompanyId: opponent.id, targetDepartmentId: department.id,
+      budget: 200_000, priority: 1, status: 'planned',
+    });
+    const intel = company.espionageIntel.at(-1)!;
+    expect(intel.kind).toBe('compute');
+    expect(opponent.computePoints).toBe(30 - intel.amount);
+    expect(company.computePoints).toBe(companyComputeBefore);
+
+    state.turn = intel.availableTurn;
+    exploit(company, {
+      id: 'use_compute', companyId: company.id, type: 'exploit_stolen_asset',
+      stolenAssetId: intel.id, budget: 0, priority: 1, status: 'planned',
+    });
+    expect(company.computePoints).toBe(companyComputeBefore + intel.amount);
+  });
+
+  it('allows Legal to re-patent stolen IP but rejects capacity dossiers', () => {
+    const engine = new TurnEngine(813);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    company.cash = 10_000_000;
+    company.departments[0].type = 'legal_compliance';
+    company.espionageIntel.push(
+      {
+        id: 'stolen_ip', ownerCompanyId: company.id, sourceCompanyId: 'source_ip',
+        sourceDepartmentId: company.departments[0].id, sourceDepartmentType: 'product_rd',
+        kind: 'idea', sourceName: 'Quantum IP', amount: 80, category: 'quantum',
+        stolenTurn: 1, availableTurn: 1, expiresTurn: 8,
+      },
+      {
+        id: 'stolen_compute', ownerCompanyId: company.id, sourceCompanyId: 'source_compute',
+        sourceDepartmentId: company.departments[0].id, sourceDepartmentType: 'ai_data',
+        kind: 'compute', sourceName: 'Compute Capacity', amount: 20,
+        stolenTurn: 1, availableTurn: 1, expiresTurn: 8,
+      },
+    );
+    state.actions.push(
+      {
+        id: 'patent_ip', companyId: company.id, type: 'repatent_stolen_asset', stolenAssetId: 'stolen_ip',
+        budget: 200_000, priority: 1, status: 'planned',
+      },
+      {
+        id: 'patent_compute', companyId: company.id, type: 'repatent_stolen_asset', stolenAssetId: 'stolen_compute',
+        budget: 200_000, priority: 2, status: 'planned',
+      },
+    );
+
+    engine.endTurn();
+
+    expect(company.espionageIntel[0].repatentedTurn).toBe(1);
+    expect(state.actionHistory.find(action => action.id === 'patent_compute')?.outcome?.message).toContain('only to stolen ideas or product blueprints');
+  });
+
+  it('lets the original company sue an unprotected derivative product', () => {
+    const engine = new TurnEngine(814);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const victim = [...state.companies.values()].find(candidate => candidate.id !== company.id)!;
+    const product = company.products[0];
+    product.espionageIntelId = 'lawsuit_intel';
+    product.stolenFromCompanyId = victim.id;
+    product.repatented = false;
+    product.legalExposureUntilTurn = state.turn + 2;
+    product.legalClaimResolved = false;
+    const cashBefore = company.cash;
+    const fitBefore = product.marketFit;
+    engine.getRNG().nextBoolean = () => true;
+    const newsItems: NewsItem[] = [];
+    const resolveClaims = (engine as unknown as { resolveEspionageLawsuits: (news: NewsItem[]) => void }).resolveEspionageLawsuits.bind(engine);
+
+    resolveClaims(newsItems);
+
+    expect(product.legalClaimResolved).toBe(true);
+    expect(company.cash).toBeLessThan(cashBefore);
+    expect(product.marketFit).toBeLessThan(fitBefore);
+    expect(newsItems.some(item => item.headline === 'Industrial Espionage Lawsuit')).toBe(true);
+  });
+
+  it('blocks an ownership lawsuit after Legal re-patents the stolen derivative', () => {
+    const engine = new TurnEngine(815);
+    const state = engine.getState();
+    const company = state.companies.get(state.playerCompanyId)!;
+    const victim = [...state.companies.values()].find(candidate => candidate.id !== company.id)!;
+    const product = company.products[0];
+    product.espionageIntelId = 'protected_intel';
+    product.stolenFromCompanyId = victim.id;
+    product.repatented = true;
+    product.legalExposureUntilTurn = state.turn + 2;
+    product.legalClaimResolved = false;
+    const cashBefore = company.cash;
+    engine.getRNG().nextBoolean = () => true;
+    const newsItems: NewsItem[] = [];
+    const resolveClaims = (engine as unknown as { resolveEspionageLawsuits: (news: NewsItem[]) => void }).resolveEspionageLawsuits.bind(engine);
+
+    resolveClaims(newsItems);
+
+    expect(product.legalClaimResolved).toBe(true);
+    expect(company.cash).toBe(cashBefore);
+    expect(newsItems.some(item => item.headline === 'Re-Patent Shield Holds')).toBe(true);
   });
 });
 

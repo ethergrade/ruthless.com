@@ -152,6 +152,7 @@ export const createCompany = (
     legalPoints: 0,
     scandal: 0,
     risk: 0.2,
+    espionageIntel: [],
     ideas: [],
     // T: building & department GDR — seed initial HQ + CEO roster + workforce.
     ceos: isPlayer ? [{

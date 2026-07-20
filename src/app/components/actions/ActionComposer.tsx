@@ -18,6 +18,7 @@ interface Props {
   presetType?: ActionType | null;
   initialDraft?: import('../../../types').TurnAction | null;
   initialTileId?: string | null;
+  currentTurn?: number;
   onClose: () => void;
   onAdd: (action: Omit<import('../../../types').TurnAction, 'id' | 'status'>) => void;
   /** T: action targeting — request the map to enter pick-a-tile mode. */
@@ -34,7 +35,7 @@ interface ActionDef {
   group: string;
   baseCost: number;
   /** what extra inputs this action needs */
-  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'makeHQ' | 'hqBuilding' | 'targetExecutive' | 'resourcePoints')[];
+  needs?: ('targetCompany' | 'targetDept' | 'targetTile' | 'tone' | 'auth' | 'productEditor' | 'offer' | 'auctionAsset' | 'targetProduct' | 'departmentType' | 'targetIdea' | 'stolenAsset' | 'makeHQ' | 'hqBuilding' | 'targetExecutive' | 'resourcePoints')[];
   /** the player must own a department of this type to plan the action */
   requiresDept?: DepartmentType;
 }
@@ -70,6 +71,8 @@ const ACTION_DEFS: ActionDef[] = [
   { type: 'defend_tile', label: 'Defend Building', group: 'Security & M&A', baseCost: 150000, needs: ['targetTile'], requiresDept: 'cybersecurity' },
   { type: 'security_online', label: 'Cyber Defense', group: 'Security & M&A', baseCost: 150000, requiresDept: 'cybersecurity' },
   { type: 'industrial_espionage', label: 'Industrial Espionage', group: 'Security & M&A', baseCost: 200000, needs: ['targetCompany', 'targetDept'], requiresDept: 'cybersecurity' },
+  { type: 'exploit_stolen_asset', label: 'Exploit Stolen Asset', group: 'Security & M&A', baseCost: 0, needs: ['stolenAsset'] },
+  { type: 'repatent_stolen_asset', label: 'Re-Patent Stolen IP', group: 'Security & M&A', baseCost: 200000, needs: ['stolenAsset'], requiresDept: 'legal_compliance' },
   { type: 'cyber_attack', label: 'Cyber Attack', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile', 'resourcePoints'], requiresDept: 'cybersecurity' },
   { type: 'legal_action', label: 'Legal Action', group: 'Security & M&A', baseCost: 250000, needs: ['targetCompany', 'targetTile'], requiresDept: 'legal_compliance' },
   { type: 'scout_acquisition', label: 'Scout Acquisition', group: 'Security & M&A', baseCost: 50000, requiresDept: 'acquisitions' },
@@ -102,7 +105,7 @@ const DEPARTMENT_TYPE_OPTIONS: { value: DepartmentType; label: string }[] = [
 ];
 
 export const ActionComposer: React.FC<Props> = ({
-  playerCompany, companies, tiles, presetType, initialDraft, initialTileId, onClose, onAdd, estimate, onRequestTargeting, targeting,
+  playerCompany, companies, tiles, presetType, initialDraft, initialTileId, currentTurn = 1, onClose, onAdd, estimate, onRequestTargeting, targeting,
 }) => {
   const groups = Array.from(new Set(ACTION_DEFS.map(a => a.group)));
   const ownedDeptTypes = new Set<DepartmentType>(playerCompany.departments.map(d => d.type));
@@ -125,6 +128,7 @@ export const ActionComposer: React.FC<Props> = ({
   const [auctionAssetId, setAuctionAssetId] = useState<string>('');
   const [targetProductId, setTargetProductId] = useState<ProductId | ''>('');
   const [ideaId, setIdeaId] = useState<string>(initialDraft?.ideaId ?? '');
+  const [stolenAssetId, setStolenAssetId] = useState<string>(initialDraft?.stolenAssetId ?? '');
   const [deptType, setDeptType] = useState<DepartmentType>('product_rd');
   const [makeHQ, setMakeHQ] = useState<boolean>(false);
   const [hqBuildingId, setHqBuildingId] = useState<string>('');
@@ -153,6 +157,7 @@ export const ActionComposer: React.FC<Props> = ({
     setTargetTileId(initialDraft.targetTileId ?? (initialTileId || ''));
     setTargetProductId(initialDraft.targetProductId ?? '');
     setIdeaId(initialDraft.ideaId ?? '');
+    setStolenAssetId(initialDraft.stolenAssetId ?? '');
     setResourcePoints(initialDraft.resourcePoints ?? 10);
     setTone(initialDraft.tone ?? (playerCompany.voiceTone ?? 'aggressive'));
     setAuth(initialDraft.authenticity ?? (playerCompany.campaignAuthenticity ?? 'aspirational'));
@@ -204,7 +209,18 @@ export const ActionComposer: React.FC<Props> = ({
   const effectiveProductCategory = boundCategory ?? selectedIdea?.category ?? productCategory;
   const effectiveProductSegments: MarketSegment[] = productSegments.length
     ? productSegments
-    : ['enterprise_cluster', 'high_growth'];
+    : selectedIdea?.espionageTargetSegments?.length
+      ? selectedIdea.espionageTargetSegments
+      : ['enterprise_cluster', 'high_growth'];
+  const actionableIntel = playerCompany.espionageIntel.filter(intel => {
+    const isReady = intel.availableTurn <= currentTurn;
+    if (type === 'exploit_stolen_asset') return isReady && !intel.exploitedTurn && intel.expiresTurn >= currentTurn;
+    if (type === 'repatent_stolen_asset') {
+      return isReady && (intel.kind === 'idea' || intel.kind === 'product_blueprint')
+        && !intel.repatentedTurn && (intel.expiresTurn >= currentTurn || Boolean(intel.exploitedTurn));
+    }
+    return false;
+  });
   const selectedOwnedBuilding = chosenTile?.buildingId
     ? playerCompany.buildings.find(building => building.id === chosenTile.buildingId)
     : undefined;
@@ -220,6 +236,7 @@ export const ActionComposer: React.FC<Props> = ({
     (!needs.includes('targetDept') || (type === 'industrial_espionage' ? !!targetDepartmentId : !!targetDept)) &&
     (!needs.includes('targetProduct') || !!targetProductId) &&
     (!needs.includes('targetIdea') || !!ideaId) &&
+    (!needs.includes('stolenAsset') || !!stolenAssetId) &&
     (!needs.includes('targetExecutive') || !!targetExecutiveId) &&
     (!needs.includes('hqBuilding') || !!hqBuildingId) &&
     (type !== 'launch_product' || !!productName.trim()) &&
@@ -249,6 +266,7 @@ export const ActionComposer: React.FC<Props> = ({
     offerPrice: type === 'public_tender_offer' ? budget : undefined,
     targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
     ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
+    stolenAssetId: needs.includes('stolenAsset') ? stolenAssetId || undefined : undefined,
     buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
     hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
     executiveId: needs.includes('targetExecutive') ? targetExecutiveId || undefined : undefined,
@@ -278,6 +296,7 @@ export const ActionComposer: React.FC<Props> = ({
       offerPrice: type === 'public_tender_offer' ? budget : undefined,
       targetId: type === 'auction_sell' ? auctionAssetId || undefined : undefined,
       ideaId: needs.includes('targetIdea') ? ideaId || undefined : undefined,
+      stolenAssetId: needs.includes('stolenAsset') ? stolenAssetId || undefined : undefined,
       makeHQ: needs.includes('makeHQ') ? makeHQ : undefined,
       buildingName: type === 'build_building' ? buildingName.trim() || undefined : undefined,
       hqBuildingId: needs.includes('hqBuilding') ? hqBuildingId || undefined : undefined,
@@ -294,6 +313,7 @@ export const ActionComposer: React.FC<Props> = ({
     const d = ACTION_DEFS.find(a => a.type === t)!;
     setGroup(d.group);
     setBudget(Math.min(d.baseCost, maxBudget) || 0);
+    setStolenAssetId('');
     const pool = t === 'allocate_cybersecurity' ? playerCompany.cybersecurityPoints : playerCompany.computePoints;
     setResourcePoints(Math.max(1, Math.min(10, pool)));
   };
@@ -656,6 +676,27 @@ export const ActionComposer: React.FC<Props> = ({
             {boundCategory && compatibleIdeas.length === 0 && (
               <p className="ac-hint">No {boundCategory.replace('_', ' ')} idea is ready. Create a matching R&amp;D idea before launching into this opportunity.</p>
             )}
+          </div>
+        )}
+
+        {needs.includes('stolenAsset') && (
+          <div className="ac-field">
+            <label>{type === 'repatent_stolen_asset' ? 'Stolen Idea / Product Blueprint' : 'Espionage Dossier'}</label>
+            <select value={stolenAssetId} onChange={event => setStolenAssetId(event.target.value)}>
+              <option value="">— select secured intelligence —</option>
+              {actionableIntel.map(intel => {
+                const source = companies.find(company => company.id === intel.sourceCompanyId)?.name ?? 'Unknown source';
+                return <option key={intel.id} value={intel.id}>
+                  {intel.kind.replaceAll('_', ' ')} · {intel.sourceName} · from {source}{intel.amount ? ` · value ${intel.amount}` : ''}
+                </option>;
+              })}
+            </select>
+            {actionableIntel.length === 0 && <span className="ac-hint">
+              {type === 'repatent_stolen_asset'
+                ? 'Re-Patent requires a Legal department and an unrepatented stolen idea or product blueprint.'
+                : 'No dossier is ready. Successful espionage intelligence becomes exploitable on the following turn.'}
+            </span>}
+            {type === 'repatent_stolen_asset' && <span className="ac-hint">Legal protection applies only to IP obtained through Industrial Espionage. Compute, Cybersecurity and generic R&amp;D cannot be re-patented.</span>}
           </div>
         )}
 

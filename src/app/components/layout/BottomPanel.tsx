@@ -334,6 +334,7 @@ const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ produ
             <span className={`lifecycle-badge ${product.lifecycleStage}`}>{product.lifecycleStage.toUpperCase()} · v{product.version}</span>
             <span className="lifecycle-adopters">adopters {(product.adopters * 100).toFixed(0)}%</span>
             {product.pivotCount > 0 && <span className="lifecycle-pivot">pivots {product.pivotCount}</span>}
+            {product.espionageIntelId && <span className="lifecycle-pivot">{product.repatented ? 'RE-PATENTED IP' : 'STOLEN IP · LEGAL RISK'}</span>}
           </div>
         </div>
       ))
@@ -347,6 +348,7 @@ const ProductsPanel: React.FC<{ products: Product[]; ideas: Idea[] }> = ({ produ
           <div key={idea.id} className={`idea-card ${idea.breakthrough ? 'breakthrough' : ''}`}>
             <span className="idea-name">{idea.name}</span>
             <span className="idea-meta">{idea.category.replace('_', ' ')} · maturity {idea.maturity}</span>
+            {idea.espionageIntelId && <span className="idea-meta">{idea.repatented ? 're-patented stolen IP' : 'stolen IP · exposed to claims'}</span>}
           </div>
         ))
       )}

@@ -36,6 +36,7 @@ import type { MarketSegment,
   ChiefExecutive,
   GameMode,
   GameModeRules,
+  EspionageIntel,
 } from '../../types';
 import { generateId } from '../utils/ids';
 import { createMarketMap, buildTileIndex, createTile } from '../factories/marketFactory';
@@ -130,6 +131,7 @@ export class TurnEngine {
       company.computePoints = migratedCompute;
       company.computerPoints = migratedCompute;
       company.cybersecurityPoints = Math.max(0, company.cybersecurityPoints ?? 0);
+      company.espionageIntel = company.espionageIntel ?? [];
       company.products.forEach(product => {
         product.computePoints = Math.max(0, Math.min(100, product.computePoints ?? 0));
         product.lastTurnRevenue = product.lastTurnRevenue ?? 0;
@@ -563,6 +565,7 @@ export class TurnEngine {
 
     this.processPlayerActions(events, newsItems);
     this.processAIActions(events, newsItems);
+    this.resolveEspionageLawsuits(newsItems);
     this.resolveAuctions(newsItems);
     this.resolveMarket();
     this.resolveFinancials();
@@ -871,6 +874,8 @@ export class TurnEngine {
       reduce_costs: 0,
       build_building: 750000,
       industrial_espionage: 200000,
+      exploit_stolen_asset: 0,
+      repatent_stolen_asset: 200000,
       cyber_attack: 250000,
       security_offline: 200000,
       sabotage_building: 300000,
@@ -991,6 +996,29 @@ export class TurnEngine {
         return { success: false, message: 'Select a real department belonging to the opponent corporation', effects: {}, risksTriggered: [] };
       }
     }
+    if (action.type === 'exploit_stolen_asset' || action.type === 'repatent_stolen_asset') {
+      const intel = action.stolenAssetId
+        ? company.espionageIntel.find(candidate => candidate.id === action.stolenAssetId)
+        : undefined;
+      if (!intel) {
+        return { success: false, message: 'Select intelligence secured through Industrial Espionage', effects: {}, risksTriggered: [] };
+      }
+      if (intel.availableTurn > this.state.turn) {
+        return { success: false, message: `Stolen intelligence becomes actionable on turn ${intel.availableTurn}`, effects: {}, risksTriggered: [] };
+      }
+      if (action.type === 'exploit_stolen_asset') {
+        if (intel.exploitedTurn) return { success: false, message: 'This stolen asset has already been exploited', effects: {}, risksTriggered: [] };
+        if (intel.expiresTurn < this.state.turn) return { success: false, message: 'This espionage dossier has expired', effects: {}, risksTriggered: [] };
+      } else {
+        if (!company.departments.some(department => department.type === 'legal_compliance')) {
+          return { success: false, message: 'Re-Patent requires a Legal & Compliance department', effects: {}, risksTriggered: [] };
+        }
+        if (intel.kind !== 'idea' && intel.kind !== 'product_blueprint') {
+          return { success: false, message: 'Re-Patent applies only to stolen ideas or product blueprints', effects: {}, risksTriggered: [] };
+        }
+        if (intel.repatentedTurn) return { success: false, message: 'This stolen IP has already been re-patented', effects: {}, risksTriggered: [] };
+      }
+    }
     if (action.type === 'cyber_attack') {
       if (!company.departments.some(department => department.type === 'cybersecurity')) {
         return { success: false, message: 'Cyber Attack requires a Cybersecurity department', effects: {}, risksTriggered: [] };
@@ -1048,7 +1076,7 @@ export class TurnEngine {
     }
     // Building/construction actions are investments, not gambles: they always succeed.
     // Only offensive / market / social actions are subject to the success roll.
-    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile'];
+    const alwaysSucceed = ['launch_product', 'build_department', 'build_building', 'hire_executive', 'hire_ceo', 'hire_coo', 'mass_layoff', 'raise_capital', 'reduce_costs', 'ai_automation', 'allocate_compute', 'allocate_cybersecurity', 'launch_consulting_practice', 'acquire_company', 'acquire_below_value', 'security_offline', 'defend_tile', 'exploit_stolen_asset', 'repatent_stolen_asset'];
     const successChance = this.calculateSuccessChance(action, company);
     const success = alwaysSucceed.includes(action.type) || this.rng.nextBoolean(successChance);
 
@@ -1095,6 +1123,8 @@ export class TurnEngine {
       reduce_costs: 0,
       build_building: 750000,
       industrial_espionage: 200000,
+      exploit_stolen_asset: 0,
+      repatent_stolen_asset: 200000,
       cyber_attack: 250000,
       security_offline: 200000,
       sabotage_building: 300000,
@@ -1145,6 +1175,8 @@ export class TurnEngine {
       reduce_costs: ['finance_investor', 'people_culture'],
       build_building: ['corporate_strategy', 'finance_investor'],
       industrial_espionage: ['cybersecurity', 'product_rd', 'ai_data'],
+      exploit_stolen_asset: ['product_rd', 'ai_data', 'cybersecurity'],
+      repatent_stolen_asset: ['legal_compliance'],
       cyber_attack: ['cybersecurity', 'ai_data'],
       security_offline: ['cybersecurity', 'people_culture'],
       sabotage_building: ['cybersecurity', 'corporate_strategy'],
@@ -1243,6 +1275,12 @@ export class TurnEngine {
         break;
       case 'industrial_espionage':
         this.runIndustrialEspionage(company, action);
+        break;
+      case 'exploit_stolen_asset':
+        this.runExploitStolenAsset(company, action);
+        break;
+      case 'repatent_stolen_asset':
+        this.runRepatentStolenAsset(company, action);
         break;
       case 'cyber_attack':
         this.runCyberAttack(company, action);
@@ -1457,6 +1495,11 @@ export class TurnEngine {
       pivotCount: 0,
       ageTurns: 0,
       trendTiming: missedTrend ? 'late' : (trend || investedSignal) ? 'on_time' : 'none',
+      espionageIntelId: idea?.espionageIntelId,
+      stolenFromCompanyId: idea?.stolenFromCompanyId,
+      repatented: idea?.repatented,
+      legalExposureUntilTurn: idea?.stolenFromCompanyId ? this.state.turn + 2 : undefined,
+      legalClaimResolved: idea?.repatented ? true : undefined,
     };
     if (missedTrend) {
       product.quality = Math.min(product.quality, 70);
@@ -1465,6 +1508,10 @@ export class TurnEngine {
       product.adopters = Math.min(product.adopters, 0.04);
     }
     company.products.push(product);
+    if (product.espionageIntelId) {
+      const intel = company.espionageIntel.find(candidate => candidate.id === product.espionageIntelId);
+      if (intel) intel.derivedProductId = product.id;
+    }
     // Keep product ownership spatially coherent: cyber incidents target the
     // building that actually hosts the R&D department responsible for it.
     const ownerDepartment = company.departments.find(department => department.type === 'product_rd' && !department.productId)
@@ -1849,7 +1896,7 @@ export class TurnEngine {
     if (!company.controlledTiles.includes(tileId)) company.controlledTiles.push(tileId);
   }
 
-  /** Industrial espionage: steal an idea / cash / evidence from a rival. */
+  /** Industrial espionage secures a dossier that becomes actionable next turn. */
   private runIndustrialEspionage(company: Company, action: TurnAction): void {
     const target = action.targetCompanyId ? this.state.companies.get(action.targetCompanyId) : undefined;
     const department = action.targetDepartmentId ? target?.departments.find(candidate => candidate.id === action.targetDepartmentId) : undefined;
@@ -1858,26 +1905,175 @@ export class TurnEngine {
     if (building && !this.state.revealedBuildings.includes(building.id)) this.state.revealedBuildings.push(building.id);
     department.efficiency = Math.max(0.3, department.efficiency - 0.08);
     department.morale = Math.max(0.2, department.morale - 0.05);
-    this.addNews(company.id, `${company.name} infiltrated ${target.name}'s ${department.type.replaceAll('_', ' ')} department${building ? ` inside ${building.name || 'a building'}` : ''}.`);
-    switch (department.type) {
-      case 'product_rd':
-      case 'ai_data':
-      case 'dev_engineering': {
-        // steal an idea -> boost innovation + spawn a product insight
-        company.innovation = Math.min(100, company.innovation + 6);
-        const p = target.products[0];
-        if (p) company.products.push({ ...p, id: generateId.product(), companyId: company.id, name: `${p.name} Clone`, tileIds: [] });
-        break;
-      }
-      case 'sales_marketing':
-      case 'people_culture': {
-        company.cash += Math.round(action.budget * 0.5);
-        target.cash -= Math.round(action.budget * 0.3);
-        break;
-      }
-      default:
-        company.cash += Math.round(action.budget * 0.3);
+    department.disruptedUntilTurn = Math.max(department.disruptedUntilTurn ?? 0, this.state.turn + 1);
+
+    const baseAmount = Math.max(6, Math.round(department.level * 5 + department.efficiency * 10));
+    const relevantProductIds = new Set([
+      ...(department.productId ? [department.productId] : []),
+      ...(building?.productIds ?? []),
+    ]);
+    const sourceProduct = target.products.find(product => relevantProductIds.has(product.id)) ?? target.products[0];
+    const sourceIdea = target.ideas[target.ideas.length - 1];
+    const baseIntel: Omit<EspionageIntel, 'kind' | 'sourceName' | 'amount'> = {
+      id: generateId.action(),
+      ownerCompanyId: company.id,
+      sourceCompanyId: target.id,
+      sourceDepartmentId: department.id,
+      sourceDepartmentType: department.type,
+      stolenTurn: this.state.turn,
+      availableTurn: this.state.turn + 1,
+      expiresTurn: this.state.turn + 6,
+    };
+    let intel: EspionageIntel;
+
+    if (department.type === 'ai_data' && target.computePoints > 0) {
+      const amount = Math.min(baseAmount, target.computePoints);
+      target.computePoints -= amount;
+      target.computerPoints = target.computePoints;
+      intel = { ...baseIntel, kind: 'compute', sourceName: 'Compute Capacity', amount };
+    } else if (department.type === 'cybersecurity' && (target.cybersecurityPoints > 0 || (building?.cybersecurityPoints ?? 0) > 0)) {
+      const corporateTake = Math.min(baseAmount, target.cybersecurityPoints);
+      target.cybersecurityPoints -= corporateTake;
+      const buildingTake = building ? Math.min(baseAmount - corporateTake, building.cybersecurityPoints) : 0;
+      if (building) building.cybersecurityPoints -= buildingTake;
+      intel = { ...baseIntel, kind: 'cybersecurity', sourceName: 'Cybersecurity Capacity', amount: corporateTake + buildingTake };
+    } else if (department.type === 'product_rd' && sourceIdea) {
+      intel = {
+        ...baseIntel, kind: 'idea', sourceAssetId: sourceIdea.id, sourceName: sourceIdea.name,
+        amount: Math.max(baseAmount, sourceIdea.maturity), category: sourceIdea.category,
+        maturity: sourceIdea.maturity, breakthrough: sourceIdea.breakthrough,
+      };
+    } else if (sourceProduct && ['product_rd', 'dev_engineering', 'ai_data', 'consulting_services', 'sales_marketing'].includes(department.type)) {
+      intel = {
+        ...baseIntel, kind: 'product_blueprint', sourceAssetId: sourceProduct.id, sourceName: sourceProduct.name,
+        amount: Math.max(baseAmount, Math.round((sourceProduct.quality + sourceProduct.marketFit) / 2)),
+        category: sourceProduct.category, targetSegments: [...sourceProduct.targetSegments],
+        quality: sourceProduct.quality, maturity: sourceProduct.maturity,
+      };
+    } else {
+      intel = { ...baseIntel, kind: 'rd', sourceName: `${department.type.replaceAll('_', ' ')} R&D`, amount: baseAmount };
     }
+
+    company.espionageIntel.push(intel);
+    this.addNews(company.id, `${company.name} infiltrated ${target.name}'s ${department.type.replaceAll('_', ' ')} department and secured ${intel.sourceName}. The dossier unlocks on turn ${intel.availableTurn}.`);
+    if (company.isPlayer) {
+      this.state.alerts.push({
+        id: generateId.event(), turn: this.state.turn, title: 'Espionage Asset Secured',
+        body: `${intel.sourceName} stolen from ${target.name}. Use Exploit Stolen Asset from turn ${intel.availableTurn}.`,
+        importance: 'major',
+      });
+    }
+  }
+
+  /** Convert one ready dossier into capacity, R&D, or a provenance-tracked idea. */
+  private runExploitStolenAsset(company: Company, action: TurnAction): void {
+    const intel = action.stolenAssetId
+      ? company.espionageIntel.find(candidate => candidate.id === action.stolenAssetId)
+      : undefined;
+    if (!intel || intel.availableTurn > this.state.turn || intel.exploitedTurn || intel.expiresTurn < this.state.turn) return;
+
+    if (intel.kind === 'compute') {
+      company.computePoints = Math.min(500, company.computePoints + intel.amount);
+      company.computerPoints = company.computePoints;
+    } else if (intel.kind === 'cybersecurity') {
+      company.cybersecurityPoints = Math.min(500, company.cybersecurityPoints + intel.amount);
+    } else if (intel.kind === 'rd') {
+      company.innovation = Math.min(100, company.innovation + intel.amount);
+      company.productRd = Math.min(100, company.productRd + intel.amount * 0.6);
+    } else {
+      const idea: Idea = {
+        id: generateId.trend(),
+        name: `Reverse-Engineered ${intel.sourceName}`,
+        category: intel.category ?? 'data_analytics',
+        maturity: Math.max(20, Math.min(95, Math.round((intel.maturity ?? intel.quality ?? 50) * 0.75))),
+        breakthrough: false,
+        companyId: company.id,
+        createdTurn: this.state.turn,
+        espionageIntelId: intel.id,
+        stolenFromCompanyId: intel.sourceCompanyId,
+        repatented: Boolean(intel.repatentedTurn),
+        espionageTargetSegments: intel.targetSegments ? [...intel.targetSegments] : undefined,
+      };
+      company.ideas.push(idea);
+      this.state.inventions.push(idea);
+      intel.derivedIdeaId = idea.id;
+    }
+    intel.exploitedTurn = this.state.turn;
+    this.addNews(company.id, `${company.name} exploits stolen ${intel.sourceName} intelligence for a competitive advantage.`);
+  }
+
+  /** Legal can re-patent only espionage-derived ideas/product blueprints. */
+  private runRepatentStolenAsset(company: Company, action: TurnAction): void {
+    const intel = action.stolenAssetId
+      ? company.espionageIntel.find(candidate => candidate.id === action.stolenAssetId)
+      : undefined;
+    if (!intel || (intel.kind !== 'idea' && intel.kind !== 'product_blueprint') || intel.repatentedTurn) return;
+    if (!company.departments.some(department => department.type === 'legal_compliance')) return;
+
+    intel.repatentedTurn = this.state.turn;
+    company.legalPoints += Math.max(100, Math.round(action.budget / 1000));
+    company.ideas.forEach(idea => {
+      if (idea.espionageIntelId === intel.id) idea.repatented = true;
+    });
+    company.products.forEach(product => {
+      if (product.espionageIntelId === intel.id) product.repatented = true;
+    });
+    this.addNews(company.id, `${company.name}'s Legal department re-patents ${intel.sourceName}, shielding derivative IP from the original owner.`);
+  }
+
+  /** Original owners may litigate once when an unprotected derivative launches. */
+  private resolveEspionageLawsuits(newsItems: NewsItem[]): void {
+    this.state.companies.forEach(owner => {
+      owner.products.forEach(product => {
+        if (!product.espionageIntelId || !product.stolenFromCompanyId || product.legalClaimResolved) return;
+        if (product.repatented) {
+          product.legalClaimResolved = true;
+          newsItems.push(this.createNewsItem(
+            this.state.turn, 'regulatory', 'Re-Patent Shield Holds',
+            `${owner.name}'s protected ${product.name} derivative is insulated from an ownership claim.`,
+            owner.id, 'minor',
+          ));
+          return;
+        }
+        if ((product.legalExposureUntilTurn ?? -1) < this.state.turn) {
+          product.legalClaimResolved = true;
+          return;
+        }
+
+        const victim = this.state.companies.get(product.stolenFromCompanyId);
+        if (!victim) {
+          product.legalClaimResolved = true;
+          return;
+        }
+        const victimLegal = victim.departments.filter(department => department.type === 'legal_compliance');
+        const victimLegalStrength = victimLegal.reduce((sum, department) => sum + department.level * department.efficiency, 0);
+        const ownerLegalStrength = owner.departments
+          .filter(department => department.type === 'legal_compliance')
+          .reduce((sum, department) => sum + department.level * department.efficiency, 0);
+        const filingChance = Math.max(0.2, Math.min(0.9, 0.3 + victimLegalStrength * 0.1 + product.marketFit / 500));
+        product.legalClaimResolved = true;
+        if (!this.rng.nextBoolean(filingChance)) return;
+
+        const victimWins = this.rng.nextBoolean(Math.max(0.2, Math.min(0.9,
+          0.55 + victimLegalStrength * 0.08 - ownerLegalStrength * 0.06,
+        )));
+        if (victimWins) {
+          const damages = Math.round(150000 + product.quality * 2500 + product.marketFit * 1500);
+          owner.cash -= damages;
+          victim.cash += Math.round(damages * 0.6);
+          owner.scandal = Math.min(100, owner.scandal + 8);
+          owner.brandTrust = Math.max(0, owner.brandTrust - 6);
+          product.marketFit = Math.max(0, product.marketFit - 15);
+          product.trust = Math.max(0, product.trust - 12);
+          const body = `${victim.name} proves ${product.name} was derived from stolen IP. ${owner.name} pays $${damages.toLocaleString()} and the product loses market trust.`;
+          newsItems.push(this.createNewsItem(this.state.turn, 'regulatory', 'Industrial Espionage Lawsuit', body, owner.id, 'critical'));
+          this.state.alerts.push({ id: generateId.event(), turn: this.state.turn, title: 'Industrial Espionage Lawsuit', body, importance: 'critical' });
+        } else {
+          const body = `${victim.name} files an IP claim against ${product.name}, but cannot prove ownership. ${owner.name} keeps the derivative on the market.`;
+          newsItems.push(this.createNewsItem(this.state.turn, 'regulatory', 'Stolen-IP Claim Dismissed', body, owner.id, 'major'));
+        }
+      });
+    });
   }
 
   /** Cyber attack: compute is the offensive resource; the building's assigned
